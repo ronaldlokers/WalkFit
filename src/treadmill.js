@@ -1,4 +1,5 @@
 import { reactive } from 'vue'
+import { setSpeedFrame, STATUS_QUERY, parseTelemetry, createSpeedFilter } from './protocol.js'
 
 // --- Dreaver Motion One (FitShow FS-BT-T4) BLE identifiers ---
 const FTMS_SERVICE   = 0x1826            // Fitness Machine Service
@@ -10,12 +11,6 @@ const VENDOR_NOTIFY  = 0xfff1            // vendor telemetry stream (notify)
 export const SPEED_MIN = 1.0             // km/h  (from FTMS supported-speed range 2ad4)
 export const SPEED_MAX = 6.0             // km/h
 export const SPEED_STEP = 0.1
-
-// Build a FitShow vendor frame: 02 <inner...> <xor(inner)> 03
-function frame(inner) {
-  const ck = inner.reduce((a, b) => a ^ b, 0)
-  return Uint8Array.from([0x02, ...inner, ck, 0x03])
-}
 
 export function useTreadmill() {
   const state = reactive({
@@ -59,41 +54,32 @@ export function useTreadmill() {
   // The real value is therefore always the smaller of the pair: track readings over a
   // short window and report the minimum. No dependence on the commanded target, so it
   // tracks ramps and remote-driven changes correctly.
-  let speedWindow = []
+  const speedFilter = createSpeedFilter(1600)
   function onSpeedReading(v) {
-    const now = performance.now()
-    lastSpeedRx = now
+    lastSpeedRx = performance.now()
     if (v === 0) {
-      speedWindow = []
+      speedFilter.reset()
       state.speed = 0
       state.running = false
       dbg('rx', 0)
       return
     }
-    speedWindow.push({ v, t: now })
-    speedWindow = speedWindow.filter(e => now - e.t < 1600)
-    const min = Math.min(...speedWindow.map(e => e.v))
+    const min = speedFilter.push(v, lastSpeedRx)
     state.speed = min
     state.running = true
-    dbg(v === min ? 'rx' : 'x2', v)
+    dbg(v === min ? 'rx' : 'x2', v)     // 'x2' = discarded phantom 2x frame
   }
 
   function onTelemetry(event) {
     const dv = event.target.value
     const b = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)
-    if (b.length < 4 || b[0] !== 0x02) return
-    // status class: 02 53 <sub> <val> ...
-    if (b[1] === 0x53) {
-      // 02 53 02 <speed*10> 00  — speed report (real, plus a phantom 2x frame)
-      if (b[2] === 0x02) onSpeedReading(b[3] / 10)
-      // 02 53 01 <x> — status heartbeat; NB the device also emits 02 53 01 03 while
-      // running, so this must NOT zero the speed. Speed comes only from 02 53 02 (above)
-      // and the staleness timeout in the ticker.
-      else if (b[2] === 0x01) { dbg('st1', b[3]) }
-      else if (b[2] === 0x03) { dbg('st3', b[3]) }
-    }
-    // running sport data (some firmwares): 02 51 03 <speed*10> ...
-    else if (b[1] === 0x51 && b[2] === 0x03) onSpeedReading(b[3] / 10)
+    const ev = parseTelemetry(b)
+    if (!ev) return
+    // NB the device emits 02 53 01 03 "idle" even while running, so status frames must
+    // NOT zero the speed — speed comes only from 'speed' events + the staleness timeout.
+    if (ev.type === 'speed') onSpeedReading(ev.speed)
+    else if (ev.type === 'status') dbg('st1', ev.running ? 0 : 3)
+    else if (ev.type === 'stop') dbg('st3', 0)
   }
 
   function startTicker() {
@@ -131,7 +117,7 @@ export function useTreadmill() {
     }, 1000)
     poller = setInterval(() => {
       if (vendorWrite) {
-        vendorWrite.writeValueWithoutResponse(frame([0x51, 0x03, 0x00])).catch(() => {})
+        vendorWrite.writeValueWithoutResponse(STATUS_QUERY).catch(() => {})
       }
     }, 1000)
   }
@@ -252,7 +238,7 @@ export function useTreadmill() {
   // Speed control goes through the vendor channel (FTMS set-speed is ignored by this FW).
   function writeSpeed(kmh) {
     if (!vendorWrite) return
-    return vendorWrite.writeValueWithoutResponse(frame([0x53, 0x02, Math.round(kmh * 10)]))
+    return vendorWrite.writeValueWithoutResponse(setSpeedFrame(kmh))
   }
   async function setSpeed(kmh) {
     kmh = Math.min(SPEED_MAX, Math.max(SPEED_MIN, Math.round(kmh / SPEED_STEP) * SPEED_STEP))

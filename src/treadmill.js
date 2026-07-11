@@ -1,0 +1,269 @@
+import { reactive } from 'vue'
+
+// --- Dreaver Motion One (FitShow FS-BT-T4) BLE identifiers ---
+const FTMS_SERVICE   = 0x1826            // Fitness Machine Service
+const FTMS_CONTROL   = 0x2ad9            // Fitness Machine Control Point (write + indicate)
+const VENDOR_SERVICE = 0xfff0            // FitShow vendor service
+const VENDOR_WRITE   = 0xfff2            // vendor command channel (write w/o response)
+const VENDOR_NOTIFY  = 0xfff1            // vendor telemetry stream (notify)
+
+export const SPEED_MIN = 1.0             // km/h  (from FTMS supported-speed range 2ad4)
+export const SPEED_MAX = 6.0             // km/h
+export const SPEED_STEP = 0.1
+
+// Build a FitShow vendor frame: 02 <inner...> <xor(inner)> 03
+function frame(inner) {
+  const ck = inner.reduce((a, b) => a ^ b, 0)
+  return Uint8Array.from([0x02, ...inner, ck, 0x03])
+}
+
+export function useTreadmill() {
+  const state = reactive({
+    secure: window.isSecureContext,
+    hasApi: 'bluetooth' in navigator,
+    supported: window.isSecureContext && 'bluetooth' in navigator,
+    connecting: false,
+    connected: false,
+    remembered: !!localStorage.getItem('walkfit.treadmill.id'),
+    running: false,          // belt actually moving (from telemetry)
+    deviceName: '',
+    speed: 0,                // live speed reported by device (km/h)
+    targetSpeed: SPEED_MIN,  // last speed we asked for (km/h)
+    distance: 0,             // metres, integrated client-side from live speed
+    elapsed: 0,              // seconds the belt has been moving
+    error: '',
+    history: [],             // speed (km/h) sampled once per second since connect
+    log: [],                 // TEMP debug: recent speed-write / speed-rx events
+  })
+  function dbg(ev, val) {
+    state.log.push(`${(performance.now() / 1000).toFixed(1)} ${ev} ${val}`)
+    if (state.log.length > 16) state.log.shift()
+  }
+  const MAX_SAMPLES = 1800   // ~30 min of history
+
+  let device = null
+  let control = null         // FTMS control point characteristic
+  let vendorWrite = null     // fff2
+  let vendorNotify = null    // fff1
+  let ticker = null          // distance/time integrator
+  let sampler = null         // 1 Hz speed-history sampler
+  let poller = null          // 1 Hz status query — the FW doesn't stream running data
+                             // unprompted; writing 02 51 03 elicits a running-data frame
+  let lastTick = 0
+  let lastEnforce = 0        // throttle for target-speed enforcement
+  let enforceUntil = 0       // stop re-sending after this time (bounds the retry window)
+  let lastSpeedRx = 0        // time of last accepted speed frame (for staleness stop)
+
+  // The firmware interleaves TWO 02 53 02 speed frames: the real speed (km/h x10) and a
+  // duplicate at exactly 2x (same speed in 0.05 km/h units), byte-identical in structure.
+  // The real value is therefore always the smaller of the pair: track readings over a
+  // short window and report the minimum. No dependence on the commanded target, so it
+  // tracks ramps and remote-driven changes correctly.
+  let speedWindow = []
+  function onSpeedReading(v) {
+    const now = performance.now()
+    lastSpeedRx = now
+    if (v === 0) {
+      speedWindow = []
+      state.speed = 0
+      state.running = false
+      dbg('rx', 0)
+      return
+    }
+    speedWindow.push({ v, t: now })
+    speedWindow = speedWindow.filter(e => now - e.t < 1600)
+    const min = Math.min(...speedWindow.map(e => e.v))
+    state.speed = min
+    state.running = true
+    dbg(v === min ? 'rx' : 'x2', v)
+  }
+
+  function onTelemetry(event) {
+    const dv = event.target.value
+    const b = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)
+    if (b.length < 4 || b[0] !== 0x02) return
+    // status class: 02 53 <sub> <val> ...
+    if (b[1] === 0x53) {
+      // 02 53 02 <speed*10> 00  — speed report (real, plus a phantom 2x frame)
+      if (b[2] === 0x02) onSpeedReading(b[3] / 10)
+      // 02 53 01 <x> — status heartbeat; NB the device also emits 02 53 01 03 while
+      // running, so this must NOT zero the speed. Speed comes only from 02 53 02 (above)
+      // and the staleness timeout in the ticker.
+      else if (b[2] === 0x01) { dbg('st1', b[3]) }
+      else if (b[2] === 0x03) { dbg('st3', b[3]) }
+    }
+    // running sport data (some firmwares): 02 51 03 <speed*10> ...
+    else if (b[1] === 0x51 && b[2] === 0x03) onSpeedReading(b[3] / 10)
+  }
+
+  function startTicker() {
+    lastTick = performance.now()
+    stopTicker()
+    ticker = setInterval(() => {
+      const now = performance.now()
+      const dt = (now - lastTick) / 1000
+      lastTick = now
+      if (state.running && state.speed > 0) {
+        state.distance += (state.speed * 1000 / 3600) * dt   // km/h -> m/s
+        state.elapsed += dt
+      }
+      // Staleness stop: if no speed frame for a while, the belt has stopped.
+      if (state.speed > 0 && now - lastSpeedRx > 3000) {
+        state.speed = 0
+        state.running = false
+      }
+      // Enforce the target speed only for a bounded window after it changes: writes are
+      // ignored during the belt's 3-2-1 start countdown, so retry until the belt reaches
+      // the target — but stop once matched (or the window ends) to avoid endless writes.
+      if (state.running && vendorWrite) {
+        if (Math.abs(state.speed - state.targetSpeed) < 0.05) {
+          enforceUntil = 0
+        } else if (now < enforceUntil && now - lastEnforce > 900) {
+          lastEnforce = now
+          writeSpeed(state.targetSpeed)
+          dbg('enforce', state.targetSpeed)
+        }
+      }
+    }, 250)
+    sampler = setInterval(() => {
+      state.history.push(state.speed)
+      if (state.history.length > MAX_SAMPLES) state.history.shift()
+    }, 1000)
+    poller = setInterval(() => {
+      if (vendorWrite) {
+        vendorWrite.writeValueWithoutResponse(frame([0x51, 0x03, 0x00])).catch(() => {})
+      }
+    }, 1000)
+  }
+  function stopTicker() {
+    if (ticker) { clearInterval(ticker); ticker = null }
+    if (sampler) { clearInterval(sampler); sampler = null }
+    if (poller) { clearInterval(poller); poller = null }
+  }
+
+  // Wire up a chosen device: connect GATT, resolve characteristics, subscribe, start loops.
+  async function attach(dev) {
+    device = dev
+    device.addEventListener('gattserverdisconnected', onDisconnected)
+    const gatt = await device.gatt.connect()
+
+    const ftms = await gatt.getPrimaryService(FTMS_SERVICE)
+    control = await ftms.getCharacteristic(FTMS_CONTROL)
+
+    const vendor = await gatt.getPrimaryService(VENDOR_SERVICE)
+    vendorWrite = await vendor.getCharacteristic(VENDOR_WRITE)
+    vendorNotify = await vendor.getCharacteristic(VENDOR_NOTIFY)
+    await vendorNotify.startNotifications()
+    vendorNotify.addEventListener('characteristicvaluechanged', onTelemetry)
+
+    state.deviceName = device.name || 'Dreaver Motion One'
+    state.connected = true
+    state.remembered = true
+    localStorage.setItem('walkfit.treadmill.id', device.id)
+    startTicker()
+  }
+
+  async function connect() {
+    if (!state.supported) {
+      state.error = 'Web Bluetooth not available. In Brave: enable brave://flags/#brave-web-bluetooth-api and relaunch. Otherwise use Chrome or Edge.'
+      return
+    }
+    state.error = ''
+    state.connecting = true
+    try {
+      const dev = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: 'Dreaver' }, { namePrefix: 'Motion' }],
+        optionalServices: [FTMS_SERVICE, VENDOR_SERVICE, 0x180a, 0x180d],
+      })
+      await attach(dev)
+    } catch (e) {
+      state.error = e.message || String(e)
+    } finally {
+      state.connecting = false
+    }
+  }
+
+  // Silent reconnect on load to a previously-granted device (no picker). Times out so a
+  // powered-off treadmill doesn't hang. Requires navigator.bluetooth.getDevices support.
+  async function autoConnect() {
+    if (!state.supported || !navigator.bluetooth.getDevices) return
+    const id = localStorage.getItem('walkfit.treadmill.id')
+    if (!id) return
+    let dev
+    try { dev = (await navigator.bluetooth.getDevices()).find(d => d.id === id) } catch { return }
+    if (!dev) return
+    state.connecting = true
+    try {
+      await Promise.race([
+        attach(dev),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
+      ])
+    } catch {
+      /* not in range / off — user can connect manually */
+    } finally {
+      state.connecting = false
+    }
+  }
+
+  function onDisconnected() {
+    state.connected = false
+    state.running = false
+    state.speed = 0
+    stopTicker()
+  }
+
+  async function disconnect() {
+    try { if (device?.gatt?.connected) device.gatt.disconnect() } catch {}
+    onDisconnected()
+  }
+
+  // Forget: disconnect, drop the saved id, and revoke the Web Bluetooth permission so it
+  // won't silently reconnect. Works whether or not it's currently connected this session.
+  async function forget() {
+    const id = localStorage.getItem('walkfit.treadmill.id')
+    try {
+      let d = device
+      if (!d && navigator.bluetooth.getDevices) d = (await navigator.bluetooth.getDevices()).find(x => x.id === id)
+      if (d?.gatt?.connected) d.gatt.disconnect()
+      if (d?.forget) await d.forget()
+    } catch {}
+    localStorage.removeItem('walkfit.treadmill.id')
+    state.remembered = false
+    state.deviceName = ''
+    onDisconnected()
+  }
+
+  // FTMS: request control + start. Belt still needs its physical safety key / a foot
+  // on the belt; it beeps and counts down 3-2-1 before the belt moves.
+  async function start() {
+    if (!control) return
+    await control.writeValueWithResponse(Uint8Array.of(0x00))   // request control
+    await control.writeValueWithResponse(Uint8Array.of(0x07))   // start / resume
+    await setSpeed(state.targetSpeed)
+  }
+
+  async function stop() {
+    if (!control) return
+    await control.writeValueWithResponse(Uint8Array.of(0x08, 0x01))
+    state.running = false
+    state.speed = 0
+  }
+
+  // Speed control goes through the vendor channel (FTMS set-speed is ignored by this FW).
+  function writeSpeed(kmh) {
+    if (!vendorWrite) return
+    return vendorWrite.writeValueWithoutResponse(frame([0x53, 0x02, Math.round(kmh * 10)]))
+  }
+  async function setSpeed(kmh) {
+    kmh = Math.min(SPEED_MAX, Math.max(SPEED_MIN, Math.round(kmh / SPEED_STEP) * SPEED_STEP))
+    state.targetSpeed = Math.round(kmh * 10) / 10
+    lastEnforce = performance.now()
+    enforceUntil = performance.now() + 8000   // retry to reach the new target for ~8s
+    dbg('SET', state.targetSpeed)
+    await writeSpeed(state.targetSpeed)
+  }
+
+  function resetStats() { state.distance = 0; state.elapsed = 0; state.history = [] }
+
+  return { state, connect, autoConnect, disconnect, forget, start, stop, setSpeed, resetStats }
+}

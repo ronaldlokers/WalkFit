@@ -1,0 +1,65 @@
+# WalkFit
+
+Vue 3 + Vite web app to control a **Dreaver Motion One** walking treadmill (FitShow
+`FS-BT-T4` OEM controller) from the browser over **Web Bluetooth**, with a virtual 1 km loop,
+guided weight-loss trainings, and optional heart-rate display.
+
+## Run
+
+```bash
+npm install
+npm run dev      # http://localhost:5173
+npm run build
+```
+
+Requires a Chromium browser (Web Bluetooth). `localhost` is a secure context (no HTTPS needed).
+**On Linux, Chrome hides Web Bluetooth behind a flag:** enable
+`chrome://flags/#enable-experimental-web-platform-features` and relaunch, or `navigator.bluetooth`
+is `undefined`. No test framework or linter is configured; verify by building and driving the UI.
+
+## Layout
+
+- `src/treadmill.js` — `useTreadmill()` composable: Web Bluetooth connection + the reverse-engineered
+  protocol (connect, start/stop, set speed, telemetry decode, distance/time integration).
+- `src/heartrate.js` — `useHeartRate()` composable: standard BLE Heart Rate Service (`0x180D`).
+- `src/trainings.js` — training presets (segments of `{speed, minutes}`), `trainingStats`, `timeline`.
+- `src/App.vue` — the whole UI (single component): loop, chart, controls, stats, trainings menu,
+  settings, onboarding wizard.
+- `src/main.js`, `src/style.css` — bootstrap + global styles/theme vars (`--accent`).
+
+Treadmill and HR are two independent GATT devices; each needs its own user-gesture connect
+the first time. Both composables expose `autoConnect()` (called on mount) which silently
+reconnects to a previously-granted device via `navigator.bluetooth.getDevices()` (no picker),
+with an 8s timeout so an off/out-of-range device doesn't hang the UI.
+
+`localStorage` keys: `walkfit.treadmill.id`, `walkfit.hr.id` (remembered device ids),
+`walkfit.maxhr`, `walkfit.debug`.
+
+## Treadmill BLE protocol (hard-won — do not "simplify" without a device to test)
+
+Connect over **BLE** (public address, advertises FTMS `0x1826` + vendor `0xfff0`). Classic
+Bluetooth pairing only exposes audio profiles — a dead end.
+
+- **Start / stop** via FTMS Control Point `0x2ad9` (write): `00` request control, `07` start, `08 01`
+  stop. Start triggers an on-belt 3-2-1 countdown; the belt needs its safety key / a foot on it.
+- **Set speed** via vendor write char `0xfff2` (FTMS set-speed is ignored by this firmware). Frame:
+  `02 53 02 <speed> <xor> 03`, `speed` = km/h × 10, checksum = XOR of opcode..last payload byte.
+  Range 1.0–6.0 km/h.
+- **Telemetry** on vendor notify `0xfff1`. Three gotchas, all handled in `treadmill.js`:
+  1. **Speed writes are ignored during the 3-2-1 countdown** → enforce/retry the target for a
+     bounded ~8s window (unbounded retry spams writes forever).
+  2. The FW **interleaves a phantom `02 53 02` frame at exactly 2× the real speed** (0.05 km/h
+     units). Decode = take the **minimum** speed reading over a ~1.5s window. Never filter against
+     the commanded target — that breaks ramp tracking.
+  3. The FW **does not stream running data unprompted**, and `02 53 01 03` "idle" frames fire even
+     while running. So: **poll** `02 51 03 00` to `0xfff2` at ~1 Hz to elicit data, derive stopped
+     from a ~3s speed-frame staleness timeout (not from status frames).
+
+`src/treadmill.js` keeps a small `state.log` debug ring (toggle via the ⚙ settings "Debug panel").
+
+## Conventions
+
+- Vue 3 `<script setup>`, Composition API, composables return a `reactive` `state` + methods.
+- No component library; hand-rolled CSS in `App.vue` (scoped) + `style.css`. Dark theme,
+  `--accent` green. Prefer editing the single `App.vue` over splitting components unless it grows.
+- Speed is always km/h; distances metres internally, formatted for display.

@@ -14,7 +14,7 @@ export function useHeartRate() {
     remembered: !!localStorage.getItem('walkfit.hr.id'),
     deviceName: '',
     bpm: 0,
-    history: [],             // recent bpm samples for the sparkline
+    history: [], // recent bpm samples for the sparkline
     error: '',
   })
   const MAX_SAMPLES = 120
@@ -47,7 +47,10 @@ export function useHeartRate() {
   }
 
   async function connect() {
-    if (!state.supported) { state.error = 'Web Bluetooth unavailable here.'; return }
+    if (!state.supported) {
+      state.error = 'Web Bluetooth unavailable here.'
+      return
+    }
     state.error = ''
     state.connecting = true
     try {
@@ -69,7 +72,11 @@ export function useHeartRate() {
     const id = localStorage.getItem('walkfit.hr.id')
     if (!id) return
     let dev
-    try { dev = (await navigator.bluetooth.getDevices()).find(d => d.id === id) } catch { return }
+    try {
+      dev = (await navigator.bluetooth.getDevices()).find((d) => d.id === id)
+    } catch {
+      return
+    }
     if (!dev) return
     state.connecting = true
     try {
@@ -84,9 +91,14 @@ export function useHeartRate() {
     }
   }
 
-  function onDisconnected() { state.connected = false; state.bpm = 0 }
+  function onDisconnected() {
+    state.connected = false
+    state.bpm = 0
+  }
   function disconnect() {
-    try { if (device?.gatt?.connected) device.gatt.disconnect() } catch {}
+    try {
+      if (device?.gatt?.connected) device.gatt.disconnect()
+    } catch {}
     onDisconnected()
   }
 
@@ -94,7 +106,8 @@ export function useHeartRate() {
     const id = localStorage.getItem('walkfit.hr.id')
     try {
       let d = device
-      if (!d && navigator.bluetooth.getDevices) d = (await navigator.bluetooth.getDevices()).find(x => x.id === id)
+      if (!d && navigator.bluetooth.getDevices)
+        d = (await navigator.bluetooth.getDevices()).find((x) => x.id === id)
       if (d?.gatt?.connected) d.gatt.disconnect()
       if (d?.forget) await d.forget()
     } catch {}

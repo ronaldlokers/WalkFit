@@ -19,10 +19,14 @@ export const trainings = [
     focus: 'Brisk/recovery intervals to torch more calories',
     segments: [
       { speed: 2.5, minutes: 3 },
-      { speed: 5.5, minutes: 3 }, { speed: 3.0, minutes: 3 },
-      { speed: 5.5, minutes: 3 }, { speed: 3.0, minutes: 3 },
-      { speed: 5.5, minutes: 3 }, { speed: 3.0, minutes: 3 },
-      { speed: 5.5, minutes: 3 }, { speed: 3.0, minutes: 3 },
+      { speed: 5.5, minutes: 3 },
+      { speed: 3.0, minutes: 3 },
+      { speed: 5.5, minutes: 3 },
+      { speed: 3.0, minutes: 3 },
+      { speed: 5.5, minutes: 3 },
+      { speed: 3.0, minutes: 3 },
+      { speed: 5.5, minutes: 3 },
+      { speed: 3.0, minutes: 3 },
       { speed: 2.0, minutes: 3 },
     ],
   },
@@ -42,9 +46,12 @@ export const trainings = [
     focus: 'Short, punchy intervals for a busy day',
     segments: [
       { speed: 2.5, minutes: 2 },
-      { speed: 5.0, minutes: 3 }, { speed: 3.0, minutes: 1 },
-      { speed: 5.0, minutes: 3 }, { speed: 3.0, minutes: 1 },
-      { speed: 5.0, minutes: 3 }, { speed: 3.0, minutes: 1 },
+      { speed: 5.0, minutes: 3 },
+      { speed: 3.0, minutes: 1 },
+      { speed: 5.0, minutes: 3 },
+      { speed: 3.0, minutes: 1 },
+      { speed: 5.0, minutes: 3 },
+      { speed: 3.0, minutes: 1 },
       { speed: 5.0, minutes: 3 },
       { speed: 2.0, minutes: 2 },
     ],
@@ -77,7 +84,9 @@ function metForSpeed(kmh) {
 
 // Rolled-up stats for a training. weightKg used for the calorie estimate.
 export function trainingStats(t, weightKg = 70) {
-  let minutes = 0, distanceKm = 0, kcal = 0
+  let minutes = 0,
+    distanceKm = 0,
+    kcal = 0
   for (const s of t.segments) {
     minutes += s.minutes
     distanceKm += (s.speed * s.minutes) / 60

@@ -22,7 +22,7 @@ export const STATUS_QUERY = frame([0x51, 0x03, 0x00])
 export function parseTelemetry(b) {
   if (b.length < 4 || b[0] !== 0x02) return null
   if (b[1] === 0x53) {
-    if (b[2] === 0x02) return { type: 'speed', speed: b[3] / 10 }        // + phantom 2x frame
+    if (b[2] === 0x02) return { type: 'speed', speed: b[3] / 10 } // + phantom 2x frame
     if (b[2] === 0x01) return { type: 'status', running: b[3] === 0x00 }
     if (b[2] === 0x03) return { type: 'stop' }
     return null
@@ -38,16 +38,21 @@ export function createSpeedFilter(windowMs = 1600) {
   let win = []
   return {
     push(v, now) {
-      if (v === 0) { win = []; return 0 }
+      if (v === 0) {
+        win = []
+        return 0
+      }
       win.push({ v, t: now })
-      win = win.filter(e => now - e.t < windowMs)
-      return Math.min(...win.map(e => e.v))
+      win = win.filter((e) => now - e.t < windowMs)
+      return Math.min(...win.map((e) => e.v))
     },
-    reset() { win = [] },
+    reset() {
+      win = []
+    },
   }
 }
 
 // Heart Rate Measurement (0x2A37): flags bit0 selects uint8 vs uint16 LE.
 export function parseHeartRate(b) {
-  return (b[0] & 0x01) ? (b[1] | (b[2] << 8)) : b[1]
+  return b[0] & 0x01 ? b[1] | (b[2] << 8) : b[1]
 }

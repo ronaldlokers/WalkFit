@@ -18,13 +18,21 @@ Requires a Chromium browser (Web Bluetooth). `localhost` is a secure context (no
 is `undefined`.
 
 ```bash
-npm test          # Vitest — unit tests for the pure protocol/training logic
+npm test           # Vitest (run once)
 npm run test:watch
+npm run lint       # ESLint (flat config, Vue-aware)
+npm run format     # Prettier --write   (format:check in CI)
 ```
 
-Tests cover `src/protocol.js` (framing/checksum, phantom-2x speed filter, telemetry + HR
-parsing) and `src/trainings.js`. UI/composables are not unit-tested (Web Bluetooth + reactive);
-verify those by building and driving the app.
+CI (`.github/workflows/ci.yml`) runs lint → format:check → test → build on PRs; the deploy
+workflow gates on tests too. Tests: `src/protocol.test.js` (framing/checksum, phantom-2x speed
+filter, telemetry + HR parsing), `src/trainings.test.js`, and `src/App.happy.test.js` (jsdom +
+@vue/test-utils happy-path: wizard → walk/training flows). `test/setup.js` polyfills
+`localStorage`; component test files opt into jsdom with a `// @vitest-environment jsdom` docblock.
+
+Formatting is Prettier (no semicolons, single quotes, width 100). Note: Prettier splits long
+inline template handlers across lines, which breaks multi-statement `@click="a; b"` — use a
+method instead of inline multi-statement handlers.
 
 ## Layout
 

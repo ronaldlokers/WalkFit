@@ -19,7 +19,7 @@ so no HTTPS is needed for local use.
 > → **Enabled** → relaunch. If `navigator.bluetooth` is `undefined` in the console, this is why.
 >
 > **Brave** uses its own flag: `brave://flags/#brave-web-bluetooth-api` → **Enabled** → relaunch. To use it from a phone, serve over HTTPS (e.g.
-`npm run build` + any static host with TLS, or a tunnel).
+> `npm run build` + any static host with TLS, or a tunnel).
 
 ## Use
 
@@ -43,9 +43,9 @@ with a fixed 1:45 cooldown at 1 km/h. **End** returns to free walking.
 Tap **♥ HR** to connect any standard BLE heart-rate source over the Bluetooth Heart Rate
 Service (`0x180D`) — a chest strap, or a Garmin watch broadcasting HR.
 
-On a **Garmin Forerunner 970**: enable heart-rate broadcast (controls menu → *Broadcast Heart
-Rate*, or Settings → Sensors & Accessories → Wrist Heart Rate → *Broadcast During Activity* /
-*Broadcast Now*). While broadcasting, the watch shows the broadcast icon; then hit **♥ HR** in
+On a **Garmin Forerunner 970**: enable heart-rate broadcast (controls menu → _Broadcast Heart
+Rate_, or Settings → Sensors & Accessories → Wrist Heart Rate → _Broadcast During Activity_ /
+_Broadcast Now_). While broadcasting, the watch shows the broadcast icon; then hit **♥ HR** in
 WalkFit and pick it. The app shows live bpm and a training zone; set your **Max HR** to tune the
 zones (defaults to 190, remembered locally). The zones are Warm-up / **Fat burn** / Cardio /
 Hard / Max — the green "Fat burn" band (60–70% max HR) is the sweet spot for weight loss.

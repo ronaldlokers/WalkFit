@@ -2,14 +2,14 @@ import { reactive } from 'vue'
 import { setSpeedFrame, STATUS_QUERY, parseTelemetry, createSpeedFilter } from './protocol.js'
 
 // --- Dreaver Motion One (FitShow FS-BT-T4) BLE identifiers ---
-const FTMS_SERVICE   = 0x1826            // Fitness Machine Service
-const FTMS_CONTROL   = 0x2ad9            // Fitness Machine Control Point (write + indicate)
-const VENDOR_SERVICE = 0xfff0            // FitShow vendor service
-const VENDOR_WRITE   = 0xfff2            // vendor command channel (write w/o response)
-const VENDOR_NOTIFY  = 0xfff1            // vendor telemetry stream (notify)
+const FTMS_SERVICE = 0x1826 // Fitness Machine Service
+const FTMS_CONTROL = 0x2ad9 // Fitness Machine Control Point (write + indicate)
+const VENDOR_SERVICE = 0xfff0 // FitShow vendor service
+const VENDOR_WRITE = 0xfff2 // vendor command channel (write w/o response)
+const VENDOR_NOTIFY = 0xfff1 // vendor telemetry stream (notify)
 
-export const SPEED_MIN = 1.0             // km/h  (from FTMS supported-speed range 2ad4)
-export const SPEED_MAX = 6.0             // km/h
+export const SPEED_MIN = 1.0 // km/h  (from FTMS supported-speed range 2ad4)
+export const SPEED_MAX = 6.0 // km/h
 export const SPEED_STEP = 0.1
 
 export function useTreadmill() {
@@ -20,34 +20,34 @@ export function useTreadmill() {
     connecting: false,
     connected: false,
     remembered: !!localStorage.getItem('walkfit.treadmill.id'),
-    running: false,          // belt actually moving (from telemetry)
+    running: false, // belt actually moving (from telemetry)
     deviceName: '',
-    speed: 0,                // live speed reported by device (km/h)
-    targetSpeed: SPEED_MIN,  // last speed we asked for (km/h)
-    distance: 0,             // metres, integrated client-side from live speed
-    elapsed: 0,              // seconds the belt has been moving
+    speed: 0, // live speed reported by device (km/h)
+    targetSpeed: SPEED_MIN, // last speed we asked for (km/h)
+    distance: 0, // metres, integrated client-side from live speed
+    elapsed: 0, // seconds the belt has been moving
     error: '',
-    history: [],             // speed (km/h) sampled once per second since connect
-    log: [],                 // TEMP debug: recent speed-write / speed-rx events
+    history: [], // speed (km/h) sampled once per second since connect
+    log: [], // TEMP debug: recent speed-write / speed-rx events
   })
   function dbg(ev, val) {
     state.log.push(`${(performance.now() / 1000).toFixed(1)} ${ev} ${val}`)
     if (state.log.length > 16) state.log.shift()
   }
-  const MAX_SAMPLES = 1800   // ~30 min of history
+  const MAX_SAMPLES = 1800 // ~30 min of history
 
   let device = null
-  let control = null         // FTMS control point characteristic
-  let vendorWrite = null     // fff2
-  let vendorNotify = null    // fff1
-  let ticker = null          // distance/time integrator
-  let sampler = null         // 1 Hz speed-history sampler
-  let poller = null          // 1 Hz status query — the FW doesn't stream running data
-                             // unprompted; writing 02 51 03 elicits a running-data frame
+  let control = null // FTMS control point characteristic
+  let vendorWrite = null // fff2
+  let vendorNotify = null // fff1
+  let ticker = null // distance/time integrator
+  let sampler = null // 1 Hz speed-history sampler
+  let poller = null // 1 Hz status query — the FW doesn't stream running data
+  // unprompted; writing 02 51 03 elicits a running-data frame
   let lastTick = 0
-  let lastEnforce = 0        // throttle for target-speed enforcement
-  let enforceUntil = 0       // stop re-sending after this time (bounds the retry window)
-  let lastSpeedRx = 0        // time of last accepted speed frame (for staleness stop)
+  let lastEnforce = 0 // throttle for target-speed enforcement
+  let enforceUntil = 0 // stop re-sending after this time (bounds the retry window)
+  let lastSpeedRx = 0 // time of last accepted speed frame (for staleness stop)
 
   // The firmware interleaves TWO 02 53 02 speed frames: the real speed (km/h x10) and a
   // duplicate at exactly 2x (same speed in 0.05 km/h units), byte-identical in structure.
@@ -67,7 +67,7 @@ export function useTreadmill() {
     const min = speedFilter.push(v, lastSpeedRx)
     state.speed = min
     state.running = true
-    dbg(v === min ? 'rx' : 'x2', v)     // 'x2' = discarded phantom 2x frame
+    dbg(v === min ? 'rx' : 'x2', v) // 'x2' = discarded phantom 2x frame
   }
 
   function onTelemetry(event) {
@@ -90,7 +90,7 @@ export function useTreadmill() {
       const dt = (now - lastTick) / 1000
       lastTick = now
       if (state.running && state.speed > 0) {
-        state.distance += (state.speed * 1000 / 3600) * dt   // km/h -> m/s
+        state.distance += ((state.speed * 1000) / 3600) * dt // km/h -> m/s
         state.elapsed += dt
       }
       // Staleness stop: if no speed frame for a while, the belt has stopped.
@@ -122,9 +122,18 @@ export function useTreadmill() {
     }, 1000)
   }
   function stopTicker() {
-    if (ticker) { clearInterval(ticker); ticker = null }
-    if (sampler) { clearInterval(sampler); sampler = null }
-    if (poller) { clearInterval(poller); poller = null }
+    if (ticker) {
+      clearInterval(ticker)
+      ticker = null
+    }
+    if (sampler) {
+      clearInterval(sampler)
+      sampler = null
+    }
+    if (poller) {
+      clearInterval(poller)
+      poller = null
+    }
   }
 
   // Wire up a chosen device: connect GATT, resolve characteristics, subscribe, start loops.
@@ -151,7 +160,8 @@ export function useTreadmill() {
 
   async function connect() {
     if (!state.supported) {
-      state.error = 'Web Bluetooth not available. In Brave: enable brave://flags/#brave-web-bluetooth-api and relaunch. Otherwise use Chrome or Edge.'
+      state.error =
+        'Web Bluetooth not available. In Brave: enable brave://flags/#brave-web-bluetooth-api and relaunch. Otherwise use Chrome or Edge.'
       return
     }
     state.error = ''
@@ -176,7 +186,11 @@ export function useTreadmill() {
     const id = localStorage.getItem('walkfit.treadmill.id')
     if (!id) return
     let dev
-    try { dev = (await navigator.bluetooth.getDevices()).find(d => d.id === id) } catch { return }
+    try {
+      dev = (await navigator.bluetooth.getDevices()).find((d) => d.id === id)
+    } catch {
+      return
+    }
     if (!dev) return
     state.connecting = true
     try {
@@ -199,7 +213,9 @@ export function useTreadmill() {
   }
 
   async function disconnect() {
-    try { if (device?.gatt?.connected) device.gatt.disconnect() } catch {}
+    try {
+      if (device?.gatt?.connected) device.gatt.disconnect()
+    } catch {}
     onDisconnected()
   }
 
@@ -209,7 +225,8 @@ export function useTreadmill() {
     const id = localStorage.getItem('walkfit.treadmill.id')
     try {
       let d = device
-      if (!d && navigator.bluetooth.getDevices) d = (await navigator.bluetooth.getDevices()).find(x => x.id === id)
+      if (!d && navigator.bluetooth.getDevices)
+        d = (await navigator.bluetooth.getDevices()).find((x) => x.id === id)
       if (d?.gatt?.connected) d.gatt.disconnect()
       if (d?.forget) await d.forget()
     } catch {}
@@ -223,8 +240,8 @@ export function useTreadmill() {
   // on the belt; it beeps and counts down 3-2-1 before the belt moves.
   async function start() {
     if (!control) return
-    await control.writeValueWithResponse(Uint8Array.of(0x00))   // request control
-    await control.writeValueWithResponse(Uint8Array.of(0x07))   // start / resume
+    await control.writeValueWithResponse(Uint8Array.of(0x00)) // request control
+    await control.writeValueWithResponse(Uint8Array.of(0x07)) // start / resume
     await setSpeed(state.targetSpeed)
   }
 
@@ -244,12 +261,16 @@ export function useTreadmill() {
     kmh = Math.min(SPEED_MAX, Math.max(SPEED_MIN, Math.round(kmh / SPEED_STEP) * SPEED_STEP))
     state.targetSpeed = Math.round(kmh * 10) / 10
     lastEnforce = performance.now()
-    enforceUntil = performance.now() + 8000   // retry to reach the new target for ~8s
+    enforceUntil = performance.now() + 8000 // retry to reach the new target for ~8s
     dbg('SET', state.targetSpeed)
     await writeSpeed(state.targetSpeed)
   }
 
-  function resetStats() { state.distance = 0; state.elapsed = 0; state.history = [] }
+  function resetStats() {
+    state.distance = 0
+    state.elapsed = 0
+    state.history = []
+  }
 
   return { state, connect, autoConnect, disconnect, forget, start, stop, setSpeed, resetStats }
 }

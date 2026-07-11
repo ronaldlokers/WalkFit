@@ -12,7 +12,12 @@ describe('trainings data', () => {
 
 describe('timeline', () => {
   it('produces contiguous segment boundaries in seconds and a total', () => {
-    const t = { segments: [{ speed: 2.5, minutes: 3 }, { speed: 4.5, minutes: 2 }] }
+    const t = {
+      segments: [
+        { speed: 2.5, minutes: 3 },
+        { speed: 4.5, minutes: 2 },
+      ],
+    }
     const { segs, total } = timeline(t)
     expect(segs).toEqual([
       { speed: 2.5, start: 0, end: 180 },
@@ -28,18 +33,18 @@ describe('trainingStats', () => {
   it('sums duration and integrates distance from speed x time', () => {
     const s = trainingStats(t)
     expect(s.minutes).toBe(20)
-    expect(s.distanceKm).toBeCloseTo(1.0, 5)   // 3 km/h * (20/60) h
+    expect(s.distanceKm).toBeCloseTo(1.0, 5) // 3 km/h * (20/60) h
   })
 
   it('scales the calorie estimate with body weight', () => {
     const light = trainingStats(t, 60).kcal
     const heavy = trainingStats(t, 90).kcal
     expect(heavy).toBeGreaterThan(light)
-    expect(heavy / light).toBeCloseTo(1.5, 1)  // linear in weight
+    expect(heavy / light).toBeCloseTo(1.5, 1) // linear in weight
   })
 
   it('includes the cooldown in a real preset total', () => {
-    const fatburn = trainings.find(t => t.id === 'fatburn30')
+    const fatburn = trainings.find((t) => t.id === 'fatburn30')
     // 3 + 24 + 3 warm/work/cool + 1.75 cooldown
     expect(trainingStats(fatburn).minutes).toBeCloseTo(31.75, 5)
   })

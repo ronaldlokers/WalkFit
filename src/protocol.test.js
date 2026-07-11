@@ -1,14 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import {
-  checksum, frame, setSpeedFrame, STATUS_QUERY,
-  parseTelemetry, createSpeedFilter, parseHeartRate,
+  checksum,
+  frame,
+  setSpeedFrame,
+  STATUS_QUERY,
+  parseTelemetry,
+  createSpeedFilter,
+  parseHeartRate,
 } from './protocol.js'
 
-const hex = a => Array.from(a, x => x.toString(16).padStart(2, '0')).join(' ')
+const hex = (a) => Array.from(a, (x) => x.toString(16).padStart(2, '0')).join(' ')
 
 describe('framing', () => {
   it('xor checksum over the inner bytes', () => {
-    expect(checksum([0x53, 0x02, 0x14])).toBe(0x45)   // 53^02^14
+    expect(checksum([0x53, 0x02, 0x14])).toBe(0x45) // 53^02^14
     expect(checksum([0x51, 0x03, 0x00])).toBe(0x52)
   })
 
@@ -29,15 +34,26 @@ describe('framing', () => {
 
 describe('parseTelemetry', () => {
   it('decodes a speed frame (km/h x10)', () => {
-    expect(parseTelemetry([0x02, 0x53, 0x02, 0x19, 0x00, 0x48, 0x03]))
-      .toEqual({ type: 'speed', speed: 2.5 })
+    expect(parseTelemetry([0x02, 0x53, 0x02, 0x19, 0x00, 0x48, 0x03])).toEqual({
+      type: 'speed',
+      speed: 2.5,
+    })
   })
   it('decodes the running-data frame variant (02 51 03)', () => {
-    expect(parseTelemetry([0x02, 0x51, 0x03, 0x0a, 0x00, 0x74])).toEqual({ type: 'speed', speed: 1.0 })
+    expect(parseTelemetry([0x02, 0x51, 0x03, 0x0a, 0x00, 0x74])).toEqual({
+      type: 'speed',
+      speed: 1.0,
+    })
   })
   it('status: 00 = running, 03 = idle (must not be treated as speed)', () => {
-    expect(parseTelemetry([0x02, 0x53, 0x01, 0x00, 0x52, 0x03])).toEqual({ type: 'status', running: true })
-    expect(parseTelemetry([0x02, 0x53, 0x01, 0x03, 0x51, 0x03])).toEqual({ type: 'status', running: false })
+    expect(parseTelemetry([0x02, 0x53, 0x01, 0x00, 0x52, 0x03])).toEqual({
+      type: 'status',
+      running: true,
+    })
+    expect(parseTelemetry([0x02, 0x53, 0x01, 0x03, 0x51, 0x03])).toEqual({
+      type: 'status',
+      running: false,
+    })
   })
   it('rejects malformed / non-frame input', () => {
     expect(parseTelemetry([0x00, 0x53, 0x02, 0x19])).toBeNull()
@@ -50,7 +66,7 @@ describe('createSpeedFilter (phantom 2x rejection)', () => {
     const f = createSpeedFilter(1600)
     // real 2.5 (0x19) alternating with phantom 5.0 (0x32)
     expect(f.push(2.5, 1000)).toBe(2.5)
-    expect(f.push(5.0, 1300)).toBe(2.5)   // phantom ignored — min stays 2.5
+    expect(f.push(5.0, 1300)).toBe(2.5) // phantom ignored — min stays 2.5
     expect(f.push(2.5, 1600)).toBe(2.5)
     expect(f.push(5.0, 1900)).toBe(2.5)
   })
@@ -58,15 +74,15 @@ describe('createSpeedFilter (phantom 2x rejection)', () => {
   it('tracks a genuine ramp up as old low samples age out of the window', () => {
     const f = createSpeedFilter(1000)
     expect(f.push(1.0, 0)).toBe(1.0)
-    expect(f.push(2.5, 500)).toBe(1.0)    // 1.0 still in window
-    expect(f.push(2.5, 1600)).toBe(2.5)   // 1.0 aged out (>1000ms) -> min is 2.5
+    expect(f.push(2.5, 500)).toBe(1.0) // 1.0 still in window
+    expect(f.push(2.5, 1600)).toBe(2.5) // 1.0 aged out (>1000ms) -> min is 2.5
   })
 
   it('reset() and a 0 reading clear the window', () => {
     const f = createSpeedFilter(1600)
     f.push(3.0, 0)
     expect(f.push(0, 100)).toBe(0)
-    expect(f.push(4.0, 200)).toBe(4.0)    // window was cleared by the 0
+    expect(f.push(4.0, 200)).toBe(4.0) // window was cleared by the 0
   })
 })
 
@@ -75,6 +91,19 @@ describe('parseHeartRate (0x2A37)', () => {
     expect(parseHeartRate([0x00, 72])).toBe(72)
   })
   it('uint16 LE format when flags bit0 = 1', () => {
-    expect(parseHeartRate([0x01, 0x2c, 0x01])).toBe(300)   // 0x012c
+    expect(parseHeartRate([0x01, 0x2c, 0x01])).toBe(300) // 0x012c
+  })
+  it('ignores other flag bits (sensor contact / energy) for the format choice', () => {
+    expect(parseHeartRate([0x16, 65])).toBe(65) // bit0=0 despite other bits set
+    expect(parseHeartRate([0x17, 0x40, 0x01])).toBe(320) // bit0=1 -> 0x0140
+  })
+})
+
+describe('phantom rejection is order-independent', () => {
+  it('keeps the real speed even when the phantom arrives first', () => {
+    const f = createSpeedFilter(1600)
+    expect(f.push(5.0, 1000)).toBe(5.0) // only sample so far
+    expect(f.push(2.5, 1100)).toBe(2.5) // real is smaller -> min drops to real
+    expect(f.push(5.0, 1400)).toBe(2.5)
   })
 })

@@ -8,6 +8,8 @@ export default defineConfig({
   plugins: [vue()],
   server: { host: true },
   test: {
+    // Vitest owns unit/component tests in src/; Playwright owns e2e/*.spec.js.
+    include: ['src/**/*.test.js'],
     // env is node by default; component tests opt into jsdom via a file docblock
     setupFiles: ['./test/setup.js'],
   },

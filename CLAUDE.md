@@ -34,6 +34,20 @@ Formatting is Prettier (no semicolons, single quotes, width 100). Note: Prettier
 inline template handlers across lines, which breaks multi-statement `@click="a; b"` — use a
 method instead of inline multi-statement handlers.
 
+**E2E / visual (Playwright):** `npm run e2e` (spec in `e2e/`, config `playwright.config.js`).
+One smoke spec: loads the app, asserts the wizard + walk flow, and a `toHaveScreenshot`
+baseline. Baselines (`e2e/*-snapshots/*.png`) are committed and MUST be generated in the same
+container CI uses, or font differences fail the diff:
+
+```bash
+# regenerate baselines to match CI (Playwright pinned to 1.49.1)
+docker run --rm -v "$PWD":/work -w /work -e CI=1 mcr.microsoft.com/playwright:v1.49.1-noble \
+  bash -c "npm ci && npm run e2e:update"
+```
+
+The `E2E` workflow runs `npm run e2e` inside `mcr.microsoft.com/playwright:v1.49.1-noble`.
+Keep the pinned Playwright version and the image tag in sync.
+
 ## Layout
 
 - `src/protocol.js` — **pure, framework-free** protocol logic (framing/checksum, set-speed frame,

@@ -9,3 +9,9 @@ dist/
 .vite/
 .DS_Store
 *.log
+
+# playwright (keep e2e/*-snapshots baselines; ignore run artifacts)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

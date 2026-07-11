@@ -1,4 +1,5 @@
 import { reactive } from 'vue'
+import { parseHeartRate } from './protocol.js'
 
 // Standard Bluetooth Heart Rate Service (works with Garmin "Broadcast Heart Rate",
 // chest straps, etc.) — separate GATT device from the treadmill.
@@ -23,9 +24,7 @@ export function useHeartRate() {
 
   function onMeasurement(event) {
     const dv = event.target.value
-    const flags = dv.getUint8(0)
-    // flags bit0: 0 = uint8 HR, 1 = uint16 HR (little-endian)
-    state.bpm = (flags & 0x01) ? dv.getUint16(1, true) : dv.getUint8(1)
+    state.bpm = parseHeartRate(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength))
     if (state.bpm > 0) {
       state.history.push(state.bpm)
       if (state.history.length > MAX_SAMPLES) state.history.shift()

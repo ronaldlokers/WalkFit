@@ -15,12 +15,23 @@ npm run build
 Requires a Chromium browser (Web Bluetooth). `localhost` is a secure context (no HTTPS needed).
 **On Linux, Chrome hides Web Bluetooth behind a flag:** enable
 `chrome://flags/#enable-experimental-web-platform-features` and relaunch, or `navigator.bluetooth`
-is `undefined`. No test framework or linter is configured; verify by building and driving the UI.
+is `undefined`.
+
+```bash
+npm test          # Vitest — unit tests for the pure protocol/training logic
+npm run test:watch
+```
+
+Tests cover `src/protocol.js` (framing/checksum, phantom-2x speed filter, telemetry + HR
+parsing) and `src/trainings.js`. UI/composables are not unit-tested (Web Bluetooth + reactive);
+verify those by building and driving the app.
 
 ## Layout
 
-- `src/treadmill.js` — `useTreadmill()` composable: Web Bluetooth connection + the reverse-engineered
-  protocol (connect, start/stop, set speed, telemetry decode, distance/time integration).
+- `src/protocol.js` — **pure, framework-free** protocol logic (framing/checksum, set-speed frame,
+  telemetry parse, phantom-2x speed filter, HR parse). Unit-tested in `src/protocol.test.js`.
+- `src/treadmill.js` — `useTreadmill()` composable: Web Bluetooth connection wiring around
+  `protocol.js` (connect, start/stop, set speed, distance/time integration, auto-reconnect).
 - `src/heartrate.js` — `useHeartRate()` composable: standard BLE Heart Rate Service (`0x180D`).
 - `src/trainings.js` — training presets (segments of `{speed, minutes}`), `trainingStats`, `timeline`.
 - `src/App.vue` — the whole UI (single component): loop, chart, controls, stats, trainings menu,

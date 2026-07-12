@@ -3,13 +3,10 @@
   "build": { "dockerfile": "Dockerfile" },
   "remoteUser": "dev",
   "updateRemoteUserUID": true,
-  "features": {
-    "ghcr.io/devcontainers/features/node:1": { "version": "22" }
-  },
   // Web Bluetooth in Chromium talks to the host's BlueZ daemon over the D-Bus system
   // bus — mounting the socket is all the "passthrough" needed (Linux hosts only).
   "mounts": ["source=/run/dbus/system_bus_socket,target=/run/dbus/system_bus_socket,type=bind"],
-  "postCreateCommand": "npm ci && npx playwright install --with-deps chromium",
+  "postCreateCommand": "npm ci && npx playwright install --with-deps chromium; command -v mise >/dev/null && mise install --yes || true",
   "forwardPorts": [5173],
   "portsAttributes": {
     "5173": {

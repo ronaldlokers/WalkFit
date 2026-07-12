@@ -17,13 +17,14 @@ Requires a Chromium browser (Web Bluetooth). `localhost` is a secure context (no
 `chrome://flags/#enable-experimental-web-platform-features` and relaunch, or `navigator.bluetooth`
 is `undefined`.
 
-`.devcontainer/` (devpod/neovim) builds from plain `debian:trixie`; the common-utils feature
+`.devcontainer/` (devpod/neovim) uses plain `debian:trixie` plus features: common-utils
 creates the `dev` user (uid 1000, sudo, zsh) the same way the upstream base-debian image
 creates `vscode` — don't switch to a prebuilt devcontainer image and rename its user, that
-breaks feature `_REMOTE_USER` resolution and sudoers. Node and neovim install from official
-tarballs in the Dockerfile (nvm-/homebrew-based features misbehave here); Playwright browsers
-install via postCreate. The host's BlueZ D-Bus socket is bind-mounted (Linux hosts only), so
-a Chromium inside the container can use Web Bluetooth against real hardware. **Screenshot baselines must NOT be
+breaks feature `_REMOTE_USER` resolution and sudoers. Node 22 and git come from features;
+neovim comes from mise via the dotfiles. `post-create.sh` installs deps, Playwright's
+chromium (for e2e, matching CI), and Chrome for Testing (`chrome` on PATH) for interactive
+Web Bluetooth debugging — the host's BlueZ D-Bus socket is bind-mounted (Linux hosts only),
+so Chrome inside the container reaches real hardware. **Screenshot baselines must NOT be
 regenerated inside the devcontainer** — Debian fonts differ from the CI image; use the docker
 command below.
 

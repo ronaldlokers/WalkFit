@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill.js'
 import { useHeartRate } from './heartrate.js'
 import { trainings, trainingStats, timeline, metForSpeed } from './trainings.js'
@@ -105,7 +105,42 @@ const hrSpark = computed(() => {
   return { line: pts.join(' '), area: `M0,${H} L${pts.join(' L')} L${W},${H} Z` }
 })
 
-// --- virtual loop geometry ---
+// --- view mode: athletics track loop, or a side-scrolling scenic walk ---
+const viewMode = ref(localStorage.getItem('walkfit.view') === 'scenic' ? 'scenic' : 'track')
+watch(viewMode, async (v) => {
+  localStorage.setItem('walkfit.view', v)
+  if (v === 'track') {
+    // The track <svg> only exists in the DOM while this view is active (v-if), so its
+    // path geometry — needed for the runner marker + progress ring — has to be (re)read
+    // whenever it (re)mounts, not just once in onMounted. Without this, loading straight
+    // into a persisted "scenic" preference leaves pathLen stuck at 0 forever, even after
+    // switching to Track: marker frozen at (0,0), progress ring invisible.
+    await nextTick()
+    if (trackEl.value) pathLen.value = trackEl.value.getTotalLength()
+  }
+})
+
+// Scenic view scrolls a fixed prop layout (trees/streetlight/car/bin/bird/dog/grass) that
+// repeats every SCENE_REPEAT metres — deterministic from distance, not randomized, so the
+// scene never jumps or differs between renders. Two copies of the layout sit side by side
+// in the SVG and slide left together; since the offset wraps exactly at one tile width, the
+// second copy is always sliding into the position the first just vacated — seamless loop.
+const SCENE_REPEAT = 30 // metres per scenic tile — tuned for a brisk, readable scroll pace
+const SCENE_TILE_PX = 400 // svg units per tile (matches the track viewBox width)
+const sceneOffset = computed(
+  () => -((state.distance % SCENE_REPEAT) / SCENE_REPEAT) * SCENE_TILE_PX,
+)
+// x=170..230 stays clear of ground-level props — the walker is fixed at x=200.
+const sceneProps = [
+  { type: 'tree', emoji: '🌳', x: 20, y: 178, size: 34 },
+  { type: 'light', x: 75 },
+  { type: 'car', emoji: '🚗', x: 130, y: 190, size: 26 },
+  { type: 'bird', emoji: '🐦', x: 250, y: 118, size: 16 },
+  { type: 'dog', emoji: '🐕', x: 285, y: 196, size: 18 },
+  { type: 'bin', emoji: '🗑️', x: 335, y: 194, size: 18 },
+  { type: 'tree', emoji: '🌳', x: 375, y: 182, size: 28 },
+]
+
 const trackEl = ref(null)
 const pathLen = ref(0)
 const lapLength = 400 // metres per virtual lap — one athletics-track lap
@@ -465,9 +500,22 @@ const pace = computed(() => {
     </p>
     <p v-if="state.error" class="warn">{{ state.error }}</p>
 
-    <!-- virtual loop -->
+    <!-- virtual loop / scenic walk -->
     <section class="track-wrap">
-      <svg viewBox="0 0 400 260" class="track">
+      <div class="view-toggle">
+        <button class="view-btn" :class="{ on: viewMode === 'track' }" @click="viewMode = 'track'">
+          🏟️ Track
+        </button>
+        <button
+          class="view-btn"
+          :class="{ on: viewMode === 'scenic' }"
+          @click="viewMode = 'scenic'"
+        >
+          🌳 Scenic
+        </button>
+      </div>
+
+      <svg v-if="viewMode === 'track'" viewBox="0 0 400 260" class="track">
         <!-- athletics track: red surface, white lane lines, start/finish at the left straight -->
         <path
           class="track-band"
@@ -513,6 +561,61 @@ const pace = computed(() => {
         <text v-if="lastLap !== null" class="lap-times" x="200" y="174">
           last {{ mmss(lastLap) }} · best {{ mmss(bestLap) }}
         </text>
+      </svg>
+
+      <!-- scenic walk: side-scrolling street scene, scrolled by actual distance walked.
+           Prop layout is a fixed, hand-placed 200 m tile (not randomized) rendered twice
+           back-to-back so the scroll wraps seamlessly — see sceneOffset/SCENE_REPEAT. -->
+      <svg v-else viewBox="0 0 400 260" class="scene">
+        <defs>
+          <linearGradient id="sceneSky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#1a2233" />
+            <stop offset="100%" stop-color="#222c40" />
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="400" height="196" fill="url(#sceneSky)" />
+        <rect class="scene-grass" x="0" y="196" width="400" height="64" />
+        <rect class="scene-path" x="0" y="150" width="400" height="46" />
+        <line class="scene-path-line" x1="0" y1="173" x2="400" y2="173" />
+
+        <g :style="{ transform: `translateX(${sceneOffset}px)` }" class="scene-scroll">
+          <template v-for="tile in [0, 1]" :key="tile">
+            <g v-for="(p, i) in sceneProps" :key="`p${tile}-${i}`">
+              <g
+                v-if="p.type === 'light'"
+                :transform="`translate(${p.x + tile * SCENE_TILE_PX},0)`"
+              >
+                <line class="scene-light-pole" x1="0" y1="150" x2="0" y2="205" />
+                <line class="scene-light-pole" x1="0" y1="150" x2="10" y2="150" />
+                <circle class="scene-light-lamp" cx="10" cy="150" r="4" />
+              </g>
+              <text
+                v-else
+                class="scene-prop"
+                :x="p.x + tile * SCENE_TILE_PX"
+                :y="p.y"
+                :font-size="p.size"
+              >
+                {{ p.emoji }}
+              </text>
+            </g>
+          </template>
+        </g>
+
+        <text class="scene-walker" x="200" y="178">🚶</text>
+
+        <g class="scene-badge">
+          <rect x="8" y="8" width="128" height="42" rx="10" />
+          <text x="18" y="27">
+            {{ laps }}
+            <tspan class="scene-badge-unit">× 400m</tspan>
+          </text>
+          <text x="18" y="42" class="scene-badge-sub">
+            {{
+              lastLap !== null ? `last ${mmss(lastLap)} · best ${mmss(bestLap)}` : 'walk to start'
+            }}
+          </text>
+        </g>
       </svg>
     </section>
 
@@ -1136,6 +1239,94 @@ code {
   font-size: 11px;
   fill: #8a93a3;
   font-variant-numeric: tabular-nums;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.view-btn {
+  flex: 1;
+  background: #171a21;
+  border: 1px solid #232833;
+  color: #8a93a3;
+  border-radius: 10px;
+  padding: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.view-btn.on {
+  color: #e8ecf2;
+  border-color: var(--accent);
+  background: #1a2420;
+}
+
+.scene {
+  width: 100%;
+  display: block;
+  border-radius: 16px;
+  overflow: hidden;
+}
+.scene-grass {
+  fill: #1c2820;
+}
+.scene-path {
+  fill: #2b2f38;
+}
+.scene-path-line {
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 2;
+  stroke-dasharray: 10 8;
+}
+.scene-scroll {
+  transition: transform 0.25s linear;
+}
+.scene-prop {
+  text-anchor: middle;
+  dominant-baseline: text-after-edge;
+}
+.scene-light-pole {
+  stroke: #4a5261;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+.scene-light-lamp {
+  fill: #ffd97a;
+  filter: drop-shadow(0 0 4px rgba(255, 217, 122, 0.8));
+}
+.scene-walker {
+  text-anchor: middle;
+  dominant-baseline: text-after-edge;
+  font-size: 30px;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
+  /* The 🚶 glyph faces left by default; the scenery scrolls left too (walking forward
+     slides the world backward past you), so mirror the walker to face the direction
+     of travel instead of reversing every prop's scroll direction. */
+  transform: scaleX(-1);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.scene-badge rect {
+  fill: rgba(10, 12, 16, 0.72);
+  stroke: #232833;
+  stroke-width: 1;
+}
+.scene-badge text {
+  fill: #e8ecf2;
+  font-size: 13px;
+  font-weight: 700;
+}
+.scene-badge-unit {
+  fill: #8a93a3;
+  font-size: 10px;
+  font-weight: 500;
+}
+.scene-badge text.scene-badge-sub {
+  font-size: 10.5px;
+  font-weight: 500;
+  fill: #8a93a3;
 }
 
 .chart-wrap {

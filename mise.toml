@@ -1,2 +1,4 @@
 [tools]
 node = "22"
+# CLI for installing Chrome for Testing (used by .devcontainer/post-create.sh)
+"npm:@puppeteer/browsers" = "latest"

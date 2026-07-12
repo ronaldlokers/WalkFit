@@ -15,7 +15,7 @@ mise exec -- npx playwright install --with-deps chromium
 # Chrome for Testing (https://developer.chrome.com/blog/chrome-for-testing): pinned,
 # auto-update-free Chrome for interactive work — Web Bluetooth debugging against the
 # host's BlueZ via the mounted D-Bus socket. Exposed as `chrome` on PATH.
-mise exec -- npx --yes @puppeteer/browsers install chrome@stable --path "$HOME/.cache/chrome-for-testing"
+mise exec -- browsers install chrome@stable --path "$HOME/.cache/chrome-for-testing"
 chrome_bin=$(find "$HOME/.cache/chrome-for-testing" -type f -name chrome -path '*chrome-linux64*' | sort | tail -1)
 mkdir -p "$HOME/.local/bin"
 ln -sf "$chrome_bin" "$HOME/.local/bin/chrome"

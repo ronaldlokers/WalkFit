@@ -654,38 +654,51 @@ const pace = computed(() => {
           <button class="x" @click="historyOpen = false">✕</button>
         </div>
 
-        <p v-if="!history.length" class="hint">
-          No walks logged yet — finish a walk to see it here.
-        </p>
+        <div v-if="!history.length" class="hist-empty">
+          <span class="hist-empty-icon">🏃</span>
+          <p class="hint">No walks logged yet — finish a walk to see it here.</p>
+        </div>
 
-        <template v-else>
-          <div class="detail-tiles">
+        <div v-else class="hist-body">
+          <div class="detail-tiles hist-tiles">
             <div>
-              <span class="v">{{ streak }}</span
-              ><span class="k">day streak</span>
+              <span class="v">{{ streak }}<span class="unit">🔥</span></span>
+              <span class="k">day streak</span>
             </div>
             <div>
-              <span class="v">{{ history.length }}</span
-              ><span class="k">walks</span>
+              <span class="v">{{ history.length }}</span>
+              <span class="k">{{ history.length === 1 ? 'walk' : 'walks' }} total</span>
             </div>
           </div>
 
-          <ul class="weeklist">
-            <li v-for="w in weekly" :key="w.week">
-              <div class="week-head">
-                <span class="week-label">{{ w.week }}</span>
-                <span class="week-meta"
-                  >{{ w.sessions }} {{ w.sessions === 1 ? 'walk' : 'walks' }}</span
-                >
-              </div>
-              <div class="week-stats">
-                <span>{{ (w.distance / 1000).toFixed(1) }} km</span>
-                <span>{{ mmss(w.duration) }}</span>
-                <span>~{{ Math.round(w.kcal) }} kcal</span>
-              </div>
-            </li>
-          </ul>
-        </template>
+          <div class="hist-section">
+            <h3>By week</h3>
+            <ul class="weeklist">
+              <li v-for="w in weekly" :key="w.week">
+                <div class="week-head">
+                  <span class="week-label">{{ w.week }}</span>
+                  <span class="week-meta"
+                    >{{ w.sessions }} {{ w.sessions === 1 ? 'walk' : 'walks' }}</span
+                  >
+                </div>
+                <div class="week-stats">
+                  <span class="week-stat"
+                    ><span class="week-stat-v">{{ (w.distance / 1000).toFixed(1) }}</span
+                    ><span class="week-stat-k">km</span></span
+                  >
+                  <span class="week-stat"
+                    ><span class="week-stat-v">{{ mmss(w.duration) }}</span
+                    ><span class="week-stat-k">time</span></span
+                  >
+                  <span class="week-stat"
+                    ><span class="week-stat-v">~{{ Math.round(w.kcal) }}</span
+                    ><span class="week-stat-k">kcal</span></span
+                  >
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1606,27 +1619,80 @@ input[type='range'] {
   letter-spacing: 0.5px;
   color: #8a93a3;
 }
-.seglist,
-.weeklist {
+.seglist {
   list-style: none;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
+
+/* --- history --- */
+.hist-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 48px 16px 36px;
+}
+.hist-empty-icon {
+  font-size: 40px;
+  opacity: 0.6;
+}
+.hist-empty .hint {
+  margin-top: 0;
+}
+.hist-body {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding-top: 4px;
+}
+.hist-tiles > div {
+  padding: 16px 10px;
+}
+.hist-tiles .v {
+  font-size: 26px;
+}
+.hist-tiles .unit {
+  margin-left: 3px;
+  font-size: 16px;
+  vertical-align: 2px;
+}
+.hist-section h3 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #8a93a3;
+  margin: 0 0 10px 2px;
+}
+.weeklist {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 .weeklist li {
-  padding: 10px 12px;
+  padding: 14px 16px;
   background: #171a21;
-  border-radius: 10px;
+  border: 1px solid #232833;
+  border-radius: 14px;
+  transition: border-color 0.15s;
+}
+.weeklist li:hover {
+  border-color: #333a46;
 }
 .week-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 4px;
+  margin-bottom: 12px;
 }
 .week-label {
-  font-weight: 700;
-  font-size: 13px;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.2px;
 }
 .week-meta {
   font-size: 12px;
@@ -1634,10 +1700,29 @@ input[type='range'] {
 }
 .week-stats {
   display: flex;
-  gap: 14px;
-  font-size: 12.5px;
-  color: #cbd3df;
+  gap: 10px;
+}
+.week-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  background: #12151b;
+  border-radius: 8px;
+  text-align: center;
+}
+.week-stat-v {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
   font-variant-numeric: tabular-nums;
+}
+.week-stat-k {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #8a93a3;
 }
 .seglist li {
   display: flex;

@@ -17,6 +17,14 @@ Requires a Chromium browser (Web Bluetooth). `localhost` is a secure context (no
 `chrome://flags/#enable-experimental-web-platform-features` and relaunch, or `navigator.bluetooth`
 is `undefined`.
 
+`.devcontainer/` (devpod/neovim) builds on `mcr.microsoft.com/devcontainers/base:debian` with
+Node 22 + neovim features; Playwright browsers install via postCreate. The Dockerfile renames
+the stock `vscode` user to `dev` (uid 1000) so container-written files stay owned by the host
+user. The host's BlueZ D-Bus socket is bind-mounted (Linux hosts only), so a Chromium inside
+the container can use Web Bluetooth against real hardware. **Screenshot baselines must NOT be
+regenerated inside the devcontainer** — Debian fonts differ from the CI image; use the docker
+command below.
+
 ```bash
 npm test           # Vitest (run once)
 npm run test:watch
@@ -40,12 +48,12 @@ baseline. Baselines (`e2e/*-snapshots/*.png`) are committed and MUST be generate
 container CI uses, or font differences fail the diff:
 
 ```bash
-# regenerate baselines to match CI (Playwright pinned to 1.49.1)
-docker run --rm -v "$PWD":/work -w /work -e CI=1 mcr.microsoft.com/playwright:v1.49.1-noble \
+# regenerate baselines to match CI (Playwright pinned to 1.61.1)
+docker run --rm -v "$PWD":/work -w /work -e CI=1 mcr.microsoft.com/playwright:v1.61.1-noble \
   bash -c "npm ci && npm run e2e:update"
 ```
 
-The `E2E` workflow runs `npm run e2e` inside `mcr.microsoft.com/playwright:v1.49.1-noble`.
+The `E2E` workflow runs `npm run e2e` inside `mcr.microsoft.com/playwright:v1.61.1-noble`.
 Keep the pinned Playwright version and the image tag in sync.
 
 ## Layout

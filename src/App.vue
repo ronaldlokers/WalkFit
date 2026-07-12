@@ -38,6 +38,38 @@ const settingsOpen = ref(false)
 const debugOn = ref(localStorage.getItem('walkfit.debug') === '1')
 watch(debugOn, (v) => localStorage.setItem('walkfit.debug', v ? '1' : '0'))
 
+// --- audio cues ---
+const audioOn = ref(localStorage.getItem('walkfit.audio') !== '0') // default on
+watch(audioOn, (v) => localStorage.setItem('walkfit.audio', v ? '1' : '0'))
+let audioCtx = null
+function beep(freq = 880, ms = 120) {
+  if (!audioOn.value) return
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)()
+    const o = audioCtx.createOscillator()
+    const g = audioCtx.createGain()
+    o.frequency.value = freq
+    g.gain.value = 0.08
+    o.connect(g)
+    g.connect(audioCtx.destination)
+    o.start()
+    o.stop(audioCtx.currentTime + ms / 1000)
+  } catch {
+    // no audio output available — cues are best-effort
+  }
+}
+function speak(text) {
+  if (!audioOn.value) return
+  try {
+    const u = new SpeechSynthesisUtterance(text)
+    u.rate = 1.1
+    speechSynthesis.cancel()
+    speechSynthesis.speak(u)
+  } catch {
+    // speech synthesis unavailable — cues are best-effort
+  }
+}
+
 // --- heart rate zones ---
 const maxHr = ref(Number(localStorage.getItem('walkfit.maxhr')) || 190)
 watch(maxHr, (v) => localStorage.setItem('walkfit.maxhr', v))
@@ -93,6 +125,9 @@ watch(laps, (n, old) => {
   if (n > old) {
     lapTimes.value.push(state.elapsed - lapStartElapsed)
     lapStartElapsed = state.elapsed
+    // two-tone lap chime
+    beep(988, 90)
+    setTimeout(() => beep(1319, 140), 110)
   } else if (n < old) {
     // stats were reset
     lapTimes.value = []
@@ -144,6 +179,26 @@ const timeToNext = computed(() =>
   curSeg.value ? Math.max(0, curSeg.value.end - state.elapsed) : 0,
 )
 
+// Countdown beeps in the last 3 s of a segment, then announce the new speed at the
+// switch. Elapsed ticks at ~1 Hz, so track the last-beeped second to fire each once.
+let lastCountdown = 0
+watch(
+  () => Math.ceil(timeToNext.value),
+  (s) => {
+    if (!active.value || !state.running) return
+    if (s >= 1 && s <= 3 && s !== lastCountdown) {
+      lastCountdown = s
+      beep(s === 1 ? 1175 : 880, 110)
+    } else if (s > 3) {
+      lastCountdown = 0
+    }
+  },
+)
+watch(curSegIndex, (i, old) => {
+  if (!active.value || !state.running || i <= 0 || old < 0) return
+  speak(`${activeTl.value.segs[i].speed.toFixed(1)} kilometers per hour`)
+})
+
 // Drive the belt through the plan: set the target to the current segment's speed at
 // each boundary. The Bluetooth layer enforces it until the belt actually reaches it,
 // so the countdown-ignored first write is retried automatically.
@@ -177,7 +232,10 @@ function finishTraining() {
   const t = active.value
   active.value = null
   stop()
-  if (t) alert(`${t.name} complete! ${(state.distance / 1000).toFixed(2)} km walked.`)
+  if (t) {
+    speak(`${t.name} complete`)
+    alert(`${t.name} complete! ${(state.distance / 1000).toFixed(2)} km walked.`)
+  }
 }
 
 // --- chart geometry (shared) ---
@@ -704,6 +762,13 @@ const pace = computed(() => {
           <p class="set-note">
             Fat-burn zone: {{ Math.round(maxHr * 0.6) }}–{{ Math.round(maxHr * 0.7) }} bpm
           </p>
+
+          <h3>Sound</h3>
+          <label class="set-row toggle">
+            <span>Audio cues</span>
+            <input v-model="audioOn" type="checkbox" />
+          </label>
+          <p class="set-note">Countdown beeps + spoken speed at segment changes, lap chime.</p>
 
           <h3>Advanced</h3>
           <label class="set-row toggle">

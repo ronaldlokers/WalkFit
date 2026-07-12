@@ -97,7 +97,16 @@ same transition opens the upload-prompt popup.
 
 `localStorage` keys: `walkfit.treadmill.id`, `walkfit.hr.id` (remembered device ids),
 `walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.history`,
-`walkfit.strava` (OAuth tokens).
+`walkfit.strava` (OAuth tokens), `walkfit.view` (`track` | `scenic`).
+
+The main visual has two modes, toggled above it: the 400 m athletics **track** (default),
+or a side-scrolling **scenic** walk (trees/streetlight/car/bin/bird/dog/grass). Both read
+the same `state.distance`/`state.speed` — no separate tracking. Scenic's prop layout is a
+fixed 200 m tile (hand-placed, not randomized, so the scene never jumps between renders),
+rendered twice back-to-back and scrolled by distance so it wraps seamlessly; the walker
+emoji is fixed at the tile's x=200 center, so props must leave that x range clear on the
+ground level (see the comment above `sceneProps` in `App.vue`). Lap count/lap-times carry
+over into scenic mode as a corner badge instead of the track's big centered number.
 
 ## Strava upload
 

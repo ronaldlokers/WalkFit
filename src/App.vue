@@ -69,7 +69,7 @@ const hrSpark = computed(() => {
 // --- virtual loop geometry ---
 const trackEl = ref(null)
 const pathLen = ref(0)
-const lapLength = 1000 // metres per virtual lap (fixed 1 km)
+const lapLength = 400 // metres per virtual lap — one athletics-track lap
 onMounted(() => {
   if (trackEl.value) pathLen.value = trackEl.value.getTotalLength()
   state.supported && connectAuto() // silent reconnect to remembered devices
@@ -85,6 +85,22 @@ const marker = computed(() => {
   return { x: p.x, y: p.y }
 })
 const dashOffset = computed(() => pathLen.value * (1 - lapFraction.value))
+
+// --- lap times ---
+const lapTimes = ref([])
+let lapStartElapsed = 0
+watch(laps, (n, old) => {
+  if (n > old) {
+    lapTimes.value.push(state.elapsed - lapStartElapsed)
+    lapStartElapsed = state.elapsed
+  } else if (n < old) {
+    // stats were reset
+    lapTimes.value = []
+    lapStartElapsed = 0
+  }
+})
+const lastLap = computed(() => lapTimes.value[lapTimes.value.length - 1] ?? null)
+const bestLap = computed(() => (lapTimes.value.length ? Math.min(...lapTimes.value) : null))
 
 // --- speed control ---
 const speedInput = ref(state.targetSpeed)
@@ -302,9 +318,26 @@ const pace = computed(() => {
     <!-- virtual loop -->
     <section class="track-wrap">
       <svg viewBox="0 0 400 260" class="track">
+        <!-- athletics track: red surface, white lane lines, start/finish at the left straight -->
         <path
           class="track-band"
           d="M110,40 L290,40 A90,90 0 0 1 290,220 L110,220 A90,90 0 0 1 110,40 Z"
+        />
+        <path
+          class="track-border"
+          d="M110,23 L290,23 A107,107 0 0 1 290,237 L110,237 A107,107 0 0 1 110,23 Z"
+        />
+        <path
+          class="track-border"
+          d="M110,57 L290,57 A73,73 0 0 1 290,203 L110,203 A73,73 0 0 1 110,57 Z"
+        />
+        <path
+          class="track-lane"
+          d="M110,31.5 L290,31.5 A98.5,98.5 0 0 1 290,228.5 L110,228.5 A98.5,98.5 0 0 1 110,31.5 Z"
+        />
+        <path
+          class="track-lane"
+          d="M110,48.5 L290,48.5 A81.5,81.5 0 0 1 290,211.5 L110,211.5 A81.5,81.5 0 0 1 110,48.5 Z"
         />
         <path
           ref="trackEl"
@@ -317,14 +350,19 @@ const pace = computed(() => {
           :stroke-dasharray="pathLen"
           :stroke-dashoffset="dashOffset"
         />
-        <line class="startline" x1="110" y1="24" x2="110" y2="56" />
+        <line class="startline" x1="110" y1="23" x2="110" y2="57" />
         <g :transform="`translate(${marker.x},${marker.y})`" class="runner">
           <circle class="halo" r="16" />
           <circle class="body" r="9" />
           <text y="1">🏃</text>
         </g>
         <text class="lap-num" x="200" y="120">{{ laps }}</text>
-        <text class="lap-label" x="200" y="150">{{ laps === 1 ? 'lap' : 'laps' }} · 1 km loop</text>
+        <text class="lap-label" x="200" y="150">
+          {{ laps === 1 ? 'lap' : 'laps' }} · 400 m track
+        </text>
+        <text v-if="lastLap !== null" class="lap-times" x="200" y="174">
+          last {{ mmss(lastLap) }} · best {{ mmss(bestLap) }}
+        </text>
       </svg>
     </section>
 
@@ -749,15 +787,26 @@ code {
 }
 .track-band {
   fill: none;
-  stroke: #20242c;
+  stroke: #6e352c; /* tartan red, muted for the dark theme */
   stroke-width: 34;
   stroke-linejoin: round;
 }
+.track-border {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 1.5;
+}
+.track-lane {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-width: 1;
+  stroke-dasharray: 8 6;
+}
 .track-line {
   fill: none;
-  stroke: #333a46;
-  stroke-width: 2;
-  stroke-dasharray: 5 7;
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-width: 1;
+  stroke-dasharray: 8 6;
 }
 .track-progress {
   fill: none;
@@ -795,6 +844,12 @@ code {
   font-size: 12px;
   fill: #8a93a3;
   letter-spacing: 0.5px;
+}
+.lap-times {
+  text-anchor: middle;
+  font-size: 11px;
+  fill: #8a93a3;
+  font-variant-numeric: tabular-nums;
 }
 
 .chart-wrap {

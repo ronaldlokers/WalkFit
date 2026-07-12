@@ -73,7 +73,7 @@ const COOLDOWN = { speed: 1.0, minutes: 1.75 }
 for (const t of trainings) t.segments.push({ ...COOLDOWN })
 
 // Approx metabolic equivalent for a walking speed (km/h).
-function metForSpeed(kmh) {
+export function metForSpeed(kmh) {
   if (kmh < 3) return 2.0
   if (kmh < 4) return 3.0
   if (kmh < 4.5) return 3.5

@@ -44,7 +44,8 @@ npm run format     # Prettier --write   (format:check in CI)
 
 CI (`.github/workflows/ci.yml`) runs lint → format:check → test → build on PRs; the deploy
 workflow gates on tests too. Tests: `src/protocol.test.js` (framing/checksum, phantom-2x speed
-filter, telemetry + HR parsing), `src/trainings.test.js`, and `src/App.happy.test.js` (jsdom +
+filter, telemetry + HR parsing), `src/trainings.test.js`, `src/history.test.js`, and
+`src/App.happy.test.js` (jsdom +
 @vue/test-utils happy-path: wizard → walk/training flows). `test/setup.js` polyfills
 `localStorage`; component test files opt into jsdom with a `// @vitest-environment jsdom` docblock.
 
@@ -73,9 +74,13 @@ Keep the pinned Playwright version and the image tag in sync.
 - `src/treadmill.js` — `useTreadmill()` composable: Web Bluetooth connection wiring around
   `protocol.js` (connect, start/stop, set speed, distance/time integration, auto-reconnect).
 - `src/heartrate.js` — `useHeartRate()` composable: standard BLE Heart Rate Service (`0x180D`).
-- `src/trainings.js` — training presets (segments of `{speed, minutes}`), `trainingStats`, `timeline`.
+- `src/trainings.js` — training presets (segments of `{speed, minutes}`), `trainingStats`,
+  `timeline`, `metForSpeed` (MET-based kcal estimate, also used for live session kcal).
+- `src/history.js` — completed-session log persisted to `localStorage` (`walkfit.history`):
+  `addSession`, `weeklyTotals` (ISO-week rollups), `currentStreak`. Unit-tested in
+  `src/history.test.js`.
 - `src/App.vue` — the whole UI (single component): loop, chart, controls, stats, trainings menu,
-  settings, onboarding wizard.
+  history view, settings, onboarding wizard.
 - `src/main.js`, `src/style.css` — bootstrap + global styles/theme vars (`--accent`).
 
 Treadmill and HR are two independent GATT devices; each needs its own user-gesture connect
@@ -83,8 +88,12 @@ the first time. Both composables expose `autoConnect()` (called on mount) which 
 reconnects to a previously-granted device via `navigator.bluetooth.getDevices()` (no picker),
 with an 8s timeout so an off/out-of-range device doesn't hang the UI.
 
+A session is logged to history when `state.running` goes true→false and covered at least
+50 m (filters accidental starts) — this fires both on an explicit Stop and on the belt's own
+staleness-timeout auto-stop, so it doesn't matter which one ends the walk.
+
 `localStorage` keys: `walkfit.treadmill.id`, `walkfit.hr.id` (remembered device ids),
-`walkfit.maxhr`, `walkfit.debug`.
+`walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.history`.
 
 ## Treadmill BLE protocol (hard-won — do not "simplify" without a device to test)
 

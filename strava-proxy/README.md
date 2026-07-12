@@ -8,19 +8,21 @@ of `worker.js` for why activity upload does NOT need to go through here.
 
 ## Deploy
 
+`wrangler` is pinned in the repo root `mise.toml` — `mise install` picks it up. Run
+commands via `mise exec -- wrangler ...`, or `mise x -- wrangler ...` for short:
+
 ```bash
-npm install -g wrangler   # or: npx wrangler ...
 cd strava-proxy
-wrangler login
-wrangler secret put STRAVA_CLIENT_ID
-wrangler secret put STRAVA_CLIENT_SECRET
+mise exec -- wrangler login
+mise exec -- wrangler secret put STRAVA_CLIENT_ID
+mise exec -- wrangler secret put STRAVA_CLIENT_SECRET
 ```
 
 Set `ALLOWED_ORIGIN` in `wrangler.toml` to the app's exact origin(s), comma-separated
 (e.g. `http://localhost:5173,https://ronaldlokers.github.io`), then:
 
 ```bash
-wrangler deploy
+mise exec -- wrangler deploy
 ```
 
 Note the deployed `*.workers.dev` URL — it's `VITE_STRAVA_PROXY_URL` (see repo root

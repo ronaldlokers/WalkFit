@@ -142,6 +142,31 @@ watch(laps, (n, old) => {
 const lastLap = computed(() => lapTimes.value[lapTimes.value.length - 1] ?? null)
 const bestLap = computed(() => (lapTimes.value.length ? Math.min(...lapTimes.value) : null))
 
+// --- live calorie counter ---
+// Integrated per-tick from actual speed (via metForSpeed), not a single average-speed
+// estimate — accumulates correctly through a training's varying-speed segments.
+const liveKcal = ref(0)
+let kcalAccum = 0
+let lastKcalElapsed = 0
+watch(
+  () => state.elapsed,
+  (elapsed, prevElapsed) => {
+    if (elapsed < prevElapsed) {
+      // stats were reset (Reset button, wizard pick, training start)
+      kcalAccum = 0
+      lastKcalElapsed = 0
+      liveKcal.value = 0
+      return
+    }
+    if (!state.running) return
+    const dt = elapsed - lastKcalElapsed
+    if (dt <= 0) return
+    kcalAccum += metForSpeed(state.speed) * weightKg.value * (dt / 3600)
+    lastKcalElapsed = elapsed
+    liveKcal.value = Math.round(kcalAccum)
+  },
+)
+
 // --- session history ---
 const MIN_SESSION_DISTANCE = 50 // metres — filters out accidental/blip starts
 const history = ref(loadHistory())
@@ -169,13 +194,11 @@ watch(
       hrCount = 0
     } else if (!running && was) {
       if (state.distance >= MIN_SESSION_DISTANCE) {
-        const avgSpeedKmh = state.distance / 1000 / (state.elapsed / 3600)
-        const kcal = Math.round(metForSpeed(avgSpeedKmh) * weightKg.value * (state.elapsed / 3600))
         history.value = addSession({
           date: (sessionStart || new Date()).toISOString(),
           distance: Math.round(state.distance),
           duration: Math.round(state.elapsed),
-          kcal,
+          kcal: liveKcal.value,
           avgHr: hrCount ? Math.round(hrSum / hrCount) : null,
         })
       }
@@ -563,6 +586,10 @@ const pace = computed(() => {
       <div class="stat">
         <span class="v">{{ pace }}</span
         ><span class="k">pace</span>
+      </div>
+      <div class="stat">
+        <span class="v">{{ liveKcal }}</span
+        ><span class="k">kcal</span>
       </div>
     </section>
 
@@ -1125,7 +1152,7 @@ code {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-bottom: 18px;
 }
@@ -1139,7 +1166,7 @@ code {
   gap: 2px;
 }
 .stat.big {
-  grid-column: span 3;
+  grid-column: span 4;
   align-items: baseline;
   flex-direction: row;
   gap: 8px;

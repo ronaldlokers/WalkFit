@@ -2,7 +2,8 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill.js'
 import { useHeartRate } from './heartrate.js'
-import { trainings, trainingStats, timeline } from './trainings.js'
+import { trainings, trainingStats, timeline, metForSpeed } from './trainings.js'
+import { loadHistory, addSession, weeklyTotals, currentStreak } from './history.js'
 
 const {
   state,
@@ -17,7 +18,7 @@ const {
 } = useTreadmill()
 const hr = useHeartRate()
 const origin = window.location.origin
-const stats = (t) => trainingStats(t)
+const stats = (t) => trainingStats(t, weightKg.value)
 
 // --- onboarding wizard ---
 const wizardOpen = ref(true)
@@ -73,6 +74,10 @@ function speak(text) {
 // --- heart rate zones ---
 const maxHr = ref(Number(localStorage.getItem('walkfit.maxhr')) || 190)
 watch(maxHr, (v) => localStorage.setItem('walkfit.maxhr', v))
+
+// --- weight (used for calorie estimates — see trainingStats / metForSpeed) ---
+const weightKg = ref(Number(localStorage.getItem('walkfit.weight')) || 70)
+watch(weightKg, (v) => localStorage.setItem('walkfit.weight', v))
 const hrZone = computed(() => {
   const bpm = hr.state.bpm
   if (!bpm) return { z: 0, name: '—', color: '#8a93a3' }
@@ -136,6 +141,48 @@ watch(laps, (n, old) => {
 })
 const lastLap = computed(() => lapTimes.value[lapTimes.value.length - 1] ?? null)
 const bestLap = computed(() => (lapTimes.value.length ? Math.min(...lapTimes.value) : null))
+
+// --- session history ---
+const MIN_SESSION_DISTANCE = 50 // metres — filters out accidental/blip starts
+const history = ref(loadHistory())
+const historyOpen = ref(false)
+const weekly = computed(() => weeklyTotals(history.value))
+const streak = computed(() => currentStreak(history.value))
+let sessionStart = null
+let hrSum = 0
+let hrCount = 0
+watch(
+  () => hr.state.bpm,
+  (bpm) => {
+    if (state.running && bpm > 0) {
+      hrSum += bpm
+      hrCount += 1
+    }
+  },
+)
+watch(
+  () => state.running,
+  (running, was) => {
+    if (running && !was) {
+      sessionStart = new Date()
+      hrSum = 0
+      hrCount = 0
+    } else if (!running && was) {
+      if (state.distance >= MIN_SESSION_DISTANCE) {
+        const avgSpeedKmh = state.distance / 1000 / (state.elapsed / 3600)
+        const kcal = Math.round(metForSpeed(avgSpeedKmh) * weightKg.value * (state.elapsed / 3600))
+        history.value = addSession({
+          date: (sessionStart || new Date()).toISOString(),
+          distance: Math.round(state.distance),
+          duration: Math.round(state.elapsed),
+          kcal,
+          avgHr: hrCount ? Math.round(hrSum / hrCount) : null,
+        })
+      }
+      sessionStart = null
+    }
+  },
+)
 
 // --- speed control ---
 const speedInput = ref(state.targetSpeed)
@@ -334,6 +381,7 @@ const pace = computed(() => {
       </div>
       <div class="head-actions">
         <button class="btn ghost sm" @click="openTrainingMenu">Training</button>
+        <button class="btn ghost sm" @click="historyOpen = true">History</button>
         <span v-if="hr.state.connected" class="hr-badge" :title="hrZone.name">
           <svg
             v-if="hrSpark"
@@ -598,6 +646,49 @@ const pace = computed(() => {
       </div>
     </div>
 
+    <!-- session history -->
+    <div v-if="historyOpen" class="overlay" @click.self="historyOpen = false">
+      <div class="sheet">
+        <div class="sheet-head">
+          <h2>History</h2>
+          <button class="x" @click="historyOpen = false">✕</button>
+        </div>
+
+        <p v-if="!history.length" class="hint">
+          No walks logged yet — finish a walk to see it here.
+        </p>
+
+        <template v-else>
+          <div class="detail-tiles">
+            <div>
+              <span class="v">{{ streak }}</span
+              ><span class="k">day streak</span>
+            </div>
+            <div>
+              <span class="v">{{ history.length }}</span
+              ><span class="k">walks</span>
+            </div>
+          </div>
+
+          <ul class="weeklist">
+            <li v-for="w in weekly" :key="w.week">
+              <div class="week-head">
+                <span class="week-label">{{ w.week }}</span>
+                <span class="week-meta"
+                  >{{ w.sessions }} {{ w.sessions === 1 ? 'walk' : 'walks' }}</span
+                >
+              </div>
+              <div class="week-stats">
+                <span>{{ (w.distance / 1000).toFixed(1) }} km</span>
+                <span>{{ mmss(w.duration) }}</span>
+                <span>~{{ Math.round(w.kcal) }} kcal</span>
+              </div>
+            </li>
+          </ul>
+        </template>
+      </div>
+    </div>
+
     <!-- onboarding wizard -->
     <div v-if="wizardOpen" class="overlay wizard-overlay">
       <div class="wizard">
@@ -762,6 +853,14 @@ const pace = computed(() => {
           <p class="set-note">
             Fat-burn zone: {{ Math.round(maxHr * 0.6) }}–{{ Math.round(maxHr * 0.7) }} bpm
           </p>
+          <div class="set-row">
+            <span>Weight</span>
+            <span class="set-inline">
+              <input v-model.number="weightKg" type="number" min="30" max="200" />
+              <span class="set-unit">kg</span>
+            </span>
+          </div>
+          <p class="set-note">Used to estimate calories burned.</p>
 
           <h3>Sound</h3>
           <label class="set-row toggle">
@@ -1157,6 +1256,15 @@ code {
   font-size: 14px;
   text-align: right;
 }
+.set-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.set-unit {
+  color: #8a93a3;
+  font-size: 13px;
+}
 .set-row input[type='checkbox'] {
   width: 20px;
   height: 20px;
@@ -1498,11 +1606,38 @@ input[type='range'] {
   letter-spacing: 0.5px;
   color: #8a93a3;
 }
-.seglist {
+.seglist,
+.weeklist {
   list-style: none;
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+.weeklist li {
+  padding: 10px 12px;
+  background: #171a21;
+  border-radius: 10px;
+}
+.week-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.week-label {
+  font-weight: 700;
+  font-size: 13px;
+}
+.week-meta {
+  font-size: 12px;
+  color: #8a93a3;
+}
+.week-stats {
+  display: flex;
+  gap: 14px;
+  font-size: 12.5px;
+  color: #cbd3df;
+  font-variant-numeric: tabular-nums;
 }
 .seglist li {
   display: flex;

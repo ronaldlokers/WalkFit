@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     # Same image the screenshot baselines were generated in, so rendering matches.
     container:
-      image: mcr.microsoft.com/playwright:v1.49.1-noble
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

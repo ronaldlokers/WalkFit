@@ -22,6 +22,10 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
   exec tmux attach-session -t "$SESSION"
 fi
 
+# If setup fails partway, kill the half-built session — otherwise the next login
+# attaches to a session of bare shells.
+trap 'tmux kill-session -t "$SESSION" 2>/dev/null || true' ERR
+
 # Address panes by id, not index — the dotfiles set pane-base-index 1, so
 # hardcoded .0/.1 targets don't exist.
 tmux new-session -d -s "$SESSION" -n dev -c "$REPO_DIR"

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Attaches (or creates) the walkfit dev tmux session: Claude on the left,
-# resuming the last conversation in this repo; `npm run dev` on the right.
+# resuming the last conversation in this repo; `npm run dev` on the right,
+# with lazygit below it.
 set -euo pipefail
 
 # This runs from the global zshrc hook, before the user's mise activation — pull in
@@ -34,6 +35,9 @@ tmux send-keys -t "$left" 'claude --dangerously-skip-permissions --continue' C-m
 
 right=$(tmux split-window -h -P -F '#{pane_id}' -t "$SESSION:dev" -c "$REPO_DIR")
 tmux send-keys -t "$right" 'npm run dev' C-m
+
+lazygit_pane=$(tmux split-window -v -P -F '#{pane_id}' -t "$right" -c "$REPO_DIR")
+tmux send-keys -t "$lazygit_pane" 'lazygit' C-m
 
 tmux select-pane -t "$left"
 

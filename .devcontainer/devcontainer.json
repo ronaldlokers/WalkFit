@@ -1,6 +1,7 @@
 {
   "name": "WalkFit",
   "image": "debian:trixie",
+  "runArgs": ["--hostname=walkfit"],
   "remoteUser": "dev",
   "updateRemoteUserUID": true,
   // Same pattern the upstream base-debian image uses to create its user: common-utils

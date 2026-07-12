@@ -29,6 +29,11 @@ so Chrome inside the container reaches real hardware. **Screenshot baselines mus
 regenerated inside the devcontainer** — Debian fonts differ from the CI image; use the docker
 command below.
 
+Every new interactive shell in the container auto-attaches to a `walkfit` tmux session
+(`scripts/tmux-dev.sh`, wired in via a block `post-create.sh` appends to `~/.zshrc`): left
+pane runs `claude --dangerously-skip-permissions --continue`, right pane runs `npm run dev`.
+Guarded by `$TMUX` so panes opened from inside that session don't recurse.
+
 ```bash
 npm test           # Vitest (run once)
 npm run test:watch

@@ -19,3 +19,20 @@ mise exec -- browsers install chrome@stable --path "$HOME/.cache/chrome-for-test
 chrome_bin=$(find "$HOME/.cache/chrome-for-testing" -type f -name chrome -path '*chrome-linux64*' | sort | tail -1)
 mkdir -p "$HOME/.local/bin"
 ln -sf "$chrome_bin" "$HOME/.local/bin/chrome"
+
+# Drop straight into the Claude + dev-server tmux session on every new interactive
+# shell (skip if already nested in tmux, e.g. a pane opened from inside the session).
+# Goes into /etc/zsh/zshrc, NOT ~/.zshrc: the dotfiles' chezmoi apply (which runs
+# after this script, on shell init or user profile load) regenerates ~/.zshrc from
+# its own source and would silently wipe an appended block there. /etc/zsh/zshrc is
+# outside chezmoi's reach and container-only, which is what this hook should be.
+marker="# --- walkfit tmux dev session ---"
+if ! sudo grep -qF "$marker" /etc/zsh/zshrc 2>/dev/null; then
+  sudo tee -a /etc/zsh/zshrc >/dev/null <<EOF
+
+$marker
+if [[ -z "\${TMUX:-}" && \$- == *i* ]]; then
+  exec /workspaces/walkfit/scripts/tmux-dev.sh
+fi
+EOF
+fi

@@ -1,4 +1,5 @@
 [tools]
 node = "22"
+tmux = "latest"
 # CLI for installing Chrome for Testing (used by .devcontainer/post-create.sh)
 "npm:@puppeteer/browsers" = "latest"

@@ -79,6 +79,8 @@ Keep pinned Playwright version and image tag in sync.
 - `src/history.js` — completed-session log persisted to `localStorage` (`walkfit.history`):
   `addSession`, `weeklyTotals` (ISO-week rollups), `currentStreak`. Unit-tested in
   `src/history.test.js`.
+- `src/strava.js` — `useStrava()` composable: OAuth2 connect + per-session upload. See
+  "Strava upload" below.
 - `src/App.vue` — whole UI (single component): loop, chart, controls, stats, trainings menu,
   history view, settings, onboarding wizard.
 - `src/main.js`, `src/style.css` — bootstrap + global styles/theme vars (`--accent`).
@@ -90,10 +92,38 @@ with 8s timeout so off/out-of-range device doesn't hang UI.
 
 Session logged to history when `state.running` goes true→false and covered at least
 50 m (filters accidental starts) — fires both on explicit Stop and on belt's own
-staleness-timeout auto-stop, so doesn't matter which one ends walk.
+staleness-timeout auto-stop, so doesn't matter which one ends walk. If Strava connected,
+same transition opens the upload-prompt popup.
 
 `localStorage` keys: `walkfit.treadmill.id`, `walkfit.hr.id` (remembered device ids),
-`walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.history`.
+`walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.history`,
+`walkfit.strava` (OAuth tokens).
+
+## Strava upload
+
+Optional (#25) — hidden entirely unless both `VITE_STRAVA_CLIENT_ID` and
+`VITE_STRAVA_PROXY_URL` are set at build time (see `.env.example`). WalkFit is otherwise a
+static site with **no backend** (`deploy.yml` → GitHub Pages); Strava is the one exception
+because its OAuth token endpoint requires `client_secret` for both the initial exchange and
+every refresh — no PKCE, confirmed against Strava's own docs — and a secret can't live in a
+browser bundle.
+
+- `strava-proxy/` — standalone Cloudflare Worker, two routes (`/token`, `/refresh`), both
+  thin passthroughs to `POST https://www.strava.com/oauth/token` with the secret injected
+  server-side. See `strava-proxy/README.md` for deploy steps (register a Strava API app,
+  `wrangler secret put`, `wrangler deploy`).
+- Activity **upload** does NOT go through the worker — `api.strava.com` sends permissive
+  CORS headers, so `src/strava.js` calls it directly from the browser with the bearer
+  access token. Don't add an upload route to the worker; keep its surface to the two
+  token routes only.
+- `VITE_STRAVA_CLIENT_ID` is public (it's part of the authorize URL every browser sends) —
+  fine in a repo Actions variable, not a secret. Set both vars in the deploy workflow's repo
+  Settings → Secrets and variables → Actions → Variables.
+- Registering a Strava API app requires an active Strava subscription, and every new app
+  is capped at 10 connected athletes until Strava approves a review request. Both are
+  Strava-side account/app-settings matters, not WalkFit code — the OAuth flow already
+  supports any number of users up to whatever cap the registered app currently has (each
+  person connects independently, gets their own token pair). See `strava-proxy/README.md`.
 
 ## Treadmill BLE protocol (hard-won — do not "simplify" without device to test)
 

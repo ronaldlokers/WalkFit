@@ -28,6 +28,11 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+        env:
+          # Optional — Strava upload (#25) stays hidden in the built app if unset.
+          # Set as repo Actions variables (Settings > Secrets and variables > Actions).
+          VITE_STRAVA_CLIENT_ID: ${{ vars.VITE_STRAVA_CLIENT_ID }}
+          VITE_STRAVA_PROXY_URL: ${{ vars.VITE_STRAVA_PROXY_URL }}
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist

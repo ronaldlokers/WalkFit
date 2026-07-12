@@ -4,6 +4,7 @@ import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill.js'
 import { useHeartRate } from './heartrate.js'
 import { trainings, trainingStats, timeline, metForSpeed } from './trainings.js'
 import { loadHistory, addSession, weeklyTotals, currentStreak } from './history.js'
+import { useStrava } from './strava.js'
 
 const {
   state,
@@ -17,6 +18,7 @@ const {
   resetStats,
 } = useTreadmill()
 const hr = useHeartRate()
+const strava = useStrava()
 const origin = window.location.origin
 const stats = (t) => trainingStats(t, weightKg.value)
 
@@ -110,6 +112,7 @@ const lapLength = 400 // metres per virtual lap — one athletics-track lap
 onMounted(() => {
   if (trackEl.value) pathLen.value = trackEl.value.getTotalLength()
   state.supported && connectAuto() // silent reconnect to remembered devices
+  strava.handleRedirect() // no-op unless we just came back from Strava's OAuth page
 })
 async function connectAuto() {
   await Promise.allSettled([tmAutoConnect(), hr.autoConnect()])
@@ -174,6 +177,7 @@ const historyOpen = ref(false)
 const weekly = computed(() => weeklyTotals(history.value))
 const streak = computed(() => currentStreak(history.value))
 let sessionStart = null
+let sessionName = 'Free walk'
 let hrSum = 0
 let hrCount = 0
 watch(
@@ -190,22 +194,39 @@ watch(
   (running, was) => {
     if (running && !was) {
       sessionStart = new Date()
+      sessionName = active.value?.name || 'Free walk'
       hrSum = 0
       hrCount = 0
     } else if (!running && was) {
       if (state.distance >= MIN_SESSION_DISTANCE) {
-        history.value = addSession({
+        const session = {
           date: (sessionStart || new Date()).toISOString(),
           distance: Math.round(state.distance),
           duration: Math.round(state.elapsed),
           kcal: liveKcal.value,
           avgHr: hrCount ? Math.round(hrSum / hrCount) : null,
-        })
+        }
+        history.value = addSession(session)
+        if (strava.state.connected) stravaPrompt.value = { session, name: sessionName }
       }
       sessionStart = null
     }
   },
 )
+
+// --- Strava upload prompt ---
+const stravaPrompt = ref(null) // { session, name } while the post-walk popup is open
+async function uploadToStrava() {
+  if (!stravaPrompt.value) return
+  const { session, name } = stravaPrompt.value
+  try {
+    await strava.uploadSession(session, name)
+    stravaPrompt.value = null
+  } catch {
+    // strava.state.error already holds the message; leave the popup open so the
+    // user sees it and can retry or dismiss.
+  }
+}
 
 // --- speed control ---
 const speedInput = ref(state.targetSpeed)
@@ -673,6 +694,45 @@ const pace = computed(() => {
       </div>
     </div>
 
+    <!-- post-walk Strava upload prompt -->
+    <div v-if="stravaPrompt" class="overlay" @click.self="stravaPrompt = null">
+      <div class="sheet strava-sheet">
+        <div class="sheet-head">
+          <h2>Upload to Strava?</h2>
+          <button class="x" @click="stravaPrompt = null">✕</button>
+        </div>
+        <div class="detail-tiles">
+          <div>
+            <span class="v">{{ (stravaPrompt.session.distance / 1000).toFixed(2) }}</span>
+            <span class="k">km</span>
+          </div>
+          <div>
+            <span class="v">{{ mmss(stravaPrompt.session.duration) }}</span>
+            <span class="k">time</span>
+          </div>
+          <div>
+            <span class="v">{{
+              (
+                stravaPrompt.session.distance /
+                1000 /
+                (stravaPrompt.session.duration / 3600)
+              ).toFixed(1)
+            }}</span>
+            <span class="k">km/h avg</span>
+          </div>
+        </div>
+        <p v-if="strava.state.error" class="hint warn-note">{{ strava.state.error }}</p>
+        <div class="detail-actions">
+          <button class="btn ghost" :disabled="strava.state.uploading" @click="stravaPrompt = null">
+            Skip
+          </button>
+          <button class="btn go" :disabled="strava.state.uploading" @click="uploadToStrava">
+            {{ strava.state.uploading ? 'Uploading…' : 'Upload' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- session history -->
     <div v-if="historyOpen" class="overlay" @click.self="historyOpen = false">
       <div class="sheet">
@@ -901,6 +961,28 @@ const pace = computed(() => {
             </span>
           </div>
           <p class="set-note">Used to estimate calories burned.</p>
+
+          <template v-if="strava.state.supported">
+            <h3>Strava</h3>
+            <div class="set-row">
+              <span>{{
+                strava.state.connected ? strava.state.athleteName || 'Connected' : 'Not connected'
+              }}</span>
+              <div class="set-actions">
+                <button
+                  v-if="!strava.state.connected"
+                  class="btn ghost sm"
+                  :disabled="strava.state.connecting"
+                  @click="strava.connect"
+                >
+                  {{ strava.state.connecting ? 'Connecting…' : 'Connect' }}
+                </button>
+                <button v-else class="btn ghost sm" @click="strava.disconnect">Disconnect</button>
+              </div>
+            </div>
+            <p v-if="strava.state.error" class="set-note warn-note">{{ strava.state.error }}</p>
+            <p class="set-note">Prompts to upload each finished walk once connected.</p>
+          </template>
 
           <h3>Sound</h3>
           <label class="set-row toggle">
@@ -1414,6 +1496,15 @@ input[type='range'] {
   font-size: 12.5px;
   color: #8a93a3;
   line-height: 1.5;
+}
+.warn-note {
+  color: #ff7f50;
+}
+.strava-sheet {
+  max-width: 380px;
+}
+.strava-sheet .detail-tiles {
+  margin: 4px 0 16px;
 }
 
 .overlay {

@@ -100,13 +100,25 @@ same transition opens the upload-prompt popup.
 `walkfit.strava` (OAuth tokens), `walkfit.view` (`track` | `scenic`).
 
 The main visual has two modes, toggled above it: the 400 m athletics **track** (default),
-or a side-scrolling **scenic** walk (trees/streetlight/car/bin/bird/dog/grass). Both read
-the same `state.distance`/`state.speed` — no separate tracking. Scenic's prop layout is a
-fixed 200 m tile (hand-placed, not randomized, so the scene never jumps between renders),
+or a side-scrolling **scenic** walk (trees/streetlight/car/bin/dog/bird). Both read the
+same `state.distance`/`state.speed` — no separate tracking. Scenic's prop layout is a
+fixed 30 m tile (hand-placed, not randomized, so the scene never jumps between renders;
+30 m was tuned for a brisk, readable scroll pace — the original 200 m tile felt glacial),
 rendered twice back-to-back and scrolled by distance so it wraps seamlessly; the walker
 emoji is fixed at the tile's x=200 center, so props must leave that x range clear on the
-ground level (see the comment above `sceneProps` in `App.vue`). Lap count/lap-times carry
-over into scenic mode as a corner badge instead of the track's big centered number.
+ground level (see the comment above `sceneProps` in `App.vue`). It's mirrored via
+`transform: scaleX(-1)` (with `transform-box: fill-box`) — the 🚶 glyph faces left by
+default, same direction the scenery scrolls, which reads as walking backward otherwise.
+Lap count/lap-times carry over into scenic mode as a corner badge instead of the track's
+big centered number.
+
+The track `<svg>` only exists in the DOM while that view is active (`v-if`), so its path
+geometry (`pathLen`, read via `getTotalLength()` for the runner marker + progress ring)
+has to be recomputed on _every_ mount, not just once in `onMounted` — the `watch(viewMode)`
+handler does this. Skipping it means loading straight into a persisted `scenic` preference
+leaves `pathLen` stuck at 0 forever, even after switching back to Track: marker frozen at
+the SVG origin, progress ring invisible. Easy to reintroduce if this gets refactored —
+verified by mounting the app with `localStorage['walkfit.view'] = 'scenic'` pre-set.
 
 ## Strava upload
 

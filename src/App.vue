@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill.js'
 import { useHeartRate } from './heartrate.js'
 import { trainings, trainingStats, timeline, metForSpeed } from './trainings.js'
@@ -107,14 +107,25 @@ const hrSpark = computed(() => {
 
 // --- view mode: athletics track loop, or a side-scrolling scenic walk ---
 const viewMode = ref(localStorage.getItem('walkfit.view') === 'scenic' ? 'scenic' : 'track')
-watch(viewMode, (v) => localStorage.setItem('walkfit.view', v))
+watch(viewMode, async (v) => {
+  localStorage.setItem('walkfit.view', v)
+  if (v === 'track') {
+    // The track <svg> only exists in the DOM while this view is active (v-if), so its
+    // path geometry — needed for the runner marker + progress ring — has to be (re)read
+    // whenever it (re)mounts, not just once in onMounted. Without this, loading straight
+    // into a persisted "scenic" preference leaves pathLen stuck at 0 forever, even after
+    // switching to Track: marker frozen at (0,0), progress ring invisible.
+    await nextTick()
+    if (trackEl.value) pathLen.value = trackEl.value.getTotalLength()
+  }
+})
 
 // Scenic view scrolls a fixed prop layout (trees/streetlight/car/bin/bird/dog/grass) that
 // repeats every SCENE_REPEAT metres — deterministic from distance, not randomized, so the
 // scene never jumps or differs between renders. Two copies of the layout sit side by side
 // in the SVG and slide left together; since the offset wraps exactly at one tile width, the
 // second copy is always sliding into the position the first just vacated — seamless loop.
-const SCENE_REPEAT = 200 // metres per scenic tile
+const SCENE_REPEAT = 30 // metres per scenic tile — tuned for a brisk, readable scroll pace
 const SCENE_TILE_PX = 400 // svg units per tile (matches the track viewBox width)
 const sceneOffset = computed(
   () => -((state.distance % SCENE_REPEAT) / SCENE_REPEAT) * SCENE_TILE_PX,
@@ -129,7 +140,6 @@ const sceneProps = [
   { type: 'bin', emoji: '🗑️', x: 335, y: 194, size: 18 },
   { type: 'tree', emoji: '🌳', x: 375, y: 182, size: 28 },
 ]
-const grassTufts = [15, 45, 70, 110, 135, 178, 220, 240, 275, 320, 345, 385]
 
 const trackEl = ref(null)
 const pathLen = ref(0)
@@ -570,15 +580,6 @@ const pace = computed(() => {
 
         <g :style="{ transform: `translateX(${sceneOffset}px)` }" class="scene-scroll">
           <template v-for="tile in [0, 1]" :key="tile">
-            <text
-              v-for="(gx, i) in grassTufts"
-              :key="`g${tile}-${i}`"
-              class="scene-tuft"
-              :x="gx + tile * SCENE_TILE_PX"
-              y="212"
-            >
-              🌿
-            </text>
             <g v-for="(p, i) in sceneProps" :key="`p${tile}-${i}`">
               <g
                 v-if="p.type === 'light'"
@@ -1282,10 +1283,6 @@ code {
 .scene-scroll {
   transition: transform 0.25s linear;
 }
-.scene-tuft {
-  font-size: 13px;
-  text-anchor: middle;
-}
 .scene-prop {
   text-anchor: middle;
   dominant-baseline: text-after-edge;
@@ -1304,6 +1301,12 @@ code {
   dominant-baseline: text-after-edge;
   font-size: 30px;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
+  /* The 🚶 glyph faces left by default; the scenery scrolls left too (walking forward
+     slides the world backward past you), so mirror the walker to face the direction
+     of travel instead of reversing every prop's scroll direction. */
+  transform: scaleX(-1);
+  transform-box: fill-box;
+  transform-origin: center;
 }
 .scene-badge rect {
   fill: rgba(10, 12, 16, 0.72);

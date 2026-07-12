@@ -3,6 +3,18 @@
   "build": { "dockerfile": "Dockerfile" },
   "remoteUser": "dev",
   "updateRemoteUserUID": true,
+  // Same pattern the base-debian image uses to create its user: common-utils sets up
+  // the account, sudoers entry, and zsh — no manual usermod hacks in the Dockerfile.
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "username": "dev",
+      "userUid": "1000",
+      "userGid": "1000",
+      "installZsh": true,
+      "configureZshAsDefaultShell": true,
+      "upgradePackages": true
+    }
+  },
   // Web Bluetooth in Chromium talks to the host's BlueZ daemon over the D-Bus system
   // bus — mounting the socket is all the "passthrough" needed (Linux hosts only).
   "mounts": ["source=/run/dbus/system_bus_socket,target=/run/dbus/system_bus_socket,type=bind"],

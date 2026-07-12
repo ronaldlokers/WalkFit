@@ -17,13 +17,22 @@ Requires a Chromium browser (Web Bluetooth). `localhost` is a secure context (no
 `chrome://flags/#enable-experimental-web-platform-features` and relaunch, or `navigator.bluetooth`
 is `undefined`.
 
-`.devcontainer/` (devpod/neovim) builds on `mcr.microsoft.com/devcontainers/base:debian` with
-Node 22 + neovim features; Playwright browsers install via postCreate. The Dockerfile renames
-the stock `vscode` user to `dev` (uid 1000) so container-written files stay owned by the host
-user. The host's BlueZ D-Bus socket is bind-mounted (Linux hosts only), so a Chromium inside
-the container can use Web Bluetooth against real hardware. **Screenshot baselines must NOT be
+`.devcontainer/` (devpod/neovim) uses plain `debian:trixie` plus features: common-utils
+creates the `dev` user (uid 1000, sudo, zsh) the same way the upstream base-debian image
+creates `vscode` — don't switch to a prebuilt devcontainer image and rename its user, that
+breaks feature `_REMOTE_USER` resolution and sudoers. Git and mise come from features; node
+comes from mise (repo `mise.toml` is the single version pin, container and host); neovim
+comes from mise via the dotfiles. `post-create.sh` installs deps, Playwright's
+chromium (for e2e, matching CI), and Chrome for Testing (`chrome` on PATH) for interactive
+Web Bluetooth debugging — the host's BlueZ D-Bus socket is bind-mounted (Linux hosts only),
+so Chrome inside the container reaches real hardware. **Screenshot baselines must NOT be
 regenerated inside the devcontainer** — Debian fonts differ from the CI image; use the docker
 command below.
+
+Every new interactive shell in the container auto-attaches to a `walkfit` tmux session
+(`scripts/tmux-dev.sh`, wired in via a block `post-create.sh` appends to `~/.zshrc`): left
+pane runs `claude --dangerously-skip-permissions --continue`, right pane runs `npm run dev`.
+Guarded by `$TMUX` so panes opened from inside that session don't recurse.
 
 ```bash
 npm test           # Vitest (run once)

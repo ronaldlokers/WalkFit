@@ -1,16 +1,27 @@
 {
   "name": "WalkFit",
-  "build": { "dockerfile": "Dockerfile" },
+  "image": "debian:trixie",
+  "runArgs": ["--hostname=walkfit"],
   "remoteUser": "dev",
   "updateRemoteUserUID": true,
+  // Same pattern the upstream base-debian image uses to create its user: common-utils
+  // sets up the account, sudoers entry, and zsh — no manual usermod hacks.
   "features": {
-    "ghcr.io/devcontainers/features/node:1": { "version": "22" },
-    "ghcr.io/devcontainers-extra/features/neovim-homebrew:1": {}
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "username": "dev",
+      "userUid": "1000",
+      "userGid": "1000",
+      "installZsh": true,
+      "configureZshAsDefaultShell": true,
+      "upgradePackages": true
+    },
+    "ghcr.io/devcontainers/features/git:1": { "version": "os-provided" },
+    "ghcr.io/devcontainers-extra/features/mise:1": {}
   },
   // Web Bluetooth in Chromium talks to the host's BlueZ daemon over the D-Bus system
   // bus — mounting the socket is all the "passthrough" needed (Linux hosts only).
   "mounts": ["source=/run/dbus/system_bus_socket,target=/run/dbus/system_bus_socket,type=bind"],
-  "postCreateCommand": "npm ci && npx playwright install --with-deps chromium",
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
   "forwardPorts": [5173],
   "portsAttributes": {
     "5173": {

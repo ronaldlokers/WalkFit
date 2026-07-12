@@ -15,3 +15,6 @@ dist/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# devpod runtime files
+.devcontainer/.devpod-internal/

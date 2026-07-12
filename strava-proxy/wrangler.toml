@@ -1,0 +1,12 @@
+name = "walkfit-strava-proxy"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Comma-separated exact origins allowed to call this worker, e.g.
+# "http://localhost:5173,https://ronaldlokers.github.io"
+[vars]
+ALLOWED_ORIGIN = ""
+
+# Set with:
+#   wrangler secret put STRAVA_CLIENT_ID
+#   wrangler secret put STRAVA_CLIENT_SECRET

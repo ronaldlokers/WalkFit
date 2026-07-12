@@ -30,8 +30,16 @@ Note the deployed `*.workers.dev` URL — it's `VITE_STRAVA_PROXY_URL` (see repo
 
 ## Register the Strava API app
 
-<https://www.strava.com/settings/api> → create an app. "Authorization Callback Domain"
-must match the app's deployed host (e.g. `ronaldlokers.github.io`) — Strava checks this
-against the `redirect_uri` sent in the authorize request. Copy the Client ID (public,
-goes in `VITE_STRAVA_CLIENT_ID`) and Client Secret (goes only into
-`wrangler secret put`, never into the app repo or its env files).
+<https://www.strava.com/settings/api> → create an app. Requires an active Strava
+subscription to register. "Authorization Callback Domain" must match the app's deployed
+host (e.g. `ronaldlokers.github.io`) — Strava checks this against the `redirect_uri` sent
+in the authorize request. Copy the Client ID (public, goes in `VITE_STRAVA_CLIENT_ID`) and
+Client Secret (goes only into `wrangler secret put`, never into the app repo or its env
+files).
+
+**Athlete cap:** every new app starts in "single-player mode" — up to **10** connected
+Strava accounts, 200 req/15min, no extra approval needed. WalkFit's OAuth flow (each
+person does their own connect, gets their own token pair in their own browser storage)
+already works for all 10 without any code change — this is a Strava-side app-settings
+upgrade, not a WalkFit change. Past 10 athletes, Strava requires submitting the app for
+review from the API Settings dashboard before more people can connect.

@@ -119,6 +119,11 @@ browser bundle.
 - `VITE_STRAVA_CLIENT_ID` is public (it's part of the authorize URL every browser sends) —
   fine in a repo Actions variable, not a secret. Set both vars in the deploy workflow's repo
   Settings → Secrets and variables → Actions → Variables.
+- Registering a Strava API app requires an active Strava subscription, and every new app
+  is capped at 10 connected athletes until Strava approves a review request. Both are
+  Strava-side account/app-settings matters, not WalkFit code — the OAuth flow already
+  supports any number of users up to whatever cap the registered app currently has (each
+  person connects independently, gets their own token pair). See `strava-proxy/README.md`.
 
 ## Treadmill BLE protocol (hard-won — do not "simplify" without device to test)
 

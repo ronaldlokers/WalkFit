@@ -31,8 +31,9 @@ command below.
 
 Every new interactive shell in the container auto-attaches to a `walkfit` tmux session
 (`scripts/tmux-dev.sh`, wired in via a block `post-create.sh` appends to `~/.zshrc`): left
-pane runs `claude --dangerously-skip-permissions --continue`, right pane runs `npm run dev`.
-Guarded by `$TMUX` so panes opened from inside that session don't recurse.
+pane runs `claude --dangerously-skip-permissions --continue`, top-right pane runs
+`npm run dev`, bottom-right pane runs `lazygit`. Guarded by `$TMUX` so panes opened from
+inside that session don't recurse.
 
 ```bash
 npm test           # Vitest (run once)

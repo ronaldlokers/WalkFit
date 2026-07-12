@@ -18,7 +18,9 @@ Requires a Chromium browser (Web Bluetooth). `localhost` is a secure context (no
 is `undefined`.
 
 `.devcontainer/` (devpod/neovim) builds on `mcr.microsoft.com/devcontainers/base:debian` with
-Node 22 + neovim features; Playwright browsers install via postCreate. The Dockerfile renames
+the Node 22 feature; neovim comes from the official release tarball in the Dockerfile (the
+neovim-homebrew feature breaks with a zsh login shell and drags in Homebrew). Playwright
+browsers install via postCreate. The Dockerfile renames
 the stock `vscode` user to `dev` (uid 1000) so container-written files stay owned by the host
 user. The host's BlueZ D-Bus socket is bind-mounted (Linux hosts only), so a Chromium inside
 the container can use Web Bluetooth against real hardware. **Screenshot baselines must NOT be

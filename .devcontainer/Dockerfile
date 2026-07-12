@@ -5,3 +5,10 @@ FROM mcr.microsoft.com/devcontainers/base:debian
 RUN usermod -l dev -d /home/dev -m vscode \
   && groupmod -n dev vscode \
   && chsh -s /usr/bin/zsh dev
+
+# Neovim from the official release tarball — the neovim-homebrew feature pulls in a
+# full Homebrew install (1+ GiB clone) and breaks when the remote user's shell is zsh.
+ARG NVIM_VERSION=v0.12.4
+RUN curl -fsSL "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-x86_64.tar.gz" \
+  | tar -xz -C /opt \
+  && ln -s /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim

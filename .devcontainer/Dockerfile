@@ -4,7 +4,9 @@ FROM mcr.microsoft.com/devcontainers/base:debian
 # files stay owned by the host user. zsh ships with the base image.
 RUN usermod -l dev -d /home/dev -m vscode \
   && groupmod -n dev vscode \
-  && chsh -s /usr/bin/zsh dev
+  && chsh -s /usr/bin/zsh dev \
+  && echo 'dev ALL=(root) NOPASSWD:ALL' > /etc/sudoers.d/dev \
+  && rm /etc/sudoers.d/vscode
 
 # Neovim from the official release tarball — the neovim-homebrew feature pulls in a
 # full Homebrew install (1+ GiB clone) and breaks when the remote user's shell is zsh.

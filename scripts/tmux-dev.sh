@@ -22,12 +22,15 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
   exec tmux attach-session -t "$SESSION"
 fi
 
+# Address panes by id, not index — the dotfiles set pane-base-index 1, so
+# hardcoded .0/.1 targets don't exist.
 tmux new-session -d -s "$SESSION" -n dev -c "$REPO_DIR"
-tmux send-keys -t "$SESSION:dev.0" 'claude --dangerously-skip-permissions --continue' C-m
+left=$(tmux display-message -p -t "$SESSION:dev" '#{pane_id}')
+tmux send-keys -t "$left" 'claude --dangerously-skip-permissions --continue' C-m
 
-tmux split-window -h -t "$SESSION:dev" -c "$REPO_DIR"
-tmux send-keys -t "$SESSION:dev.1" 'npm run dev' C-m
+right=$(tmux split-window -h -P -F '#{pane_id}' -t "$SESSION:dev" -c "$REPO_DIR")
+tmux send-keys -t "$right" 'npm run dev' C-m
 
-tmux select-pane -t "$SESSION:dev.0"
+tmux select-pane -t "$left"
 
 exec tmux attach-session -t "$SESSION"

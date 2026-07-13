@@ -5,9 +5,12 @@ import {
   LAP_M,
   STRAIGHT_M,
   BEND_R,
+  LANE_W,
   TRACK_OUT,
   SCENERY_CLEAR_M,
   surroundings,
+  distanceSigns,
+  laneStaggers,
   dayPhase,
   skyAt,
   DAY_LENGTH_M,
@@ -98,6 +101,30 @@ describe('surroundings', () => {
   it('places four floodlights evenly around the loop', () => {
     const floods = surroundings().filter((p) => p.type === 'flood')
     expect(floods.map((f) => f.s)).toEqual([50, 150, 250, 350])
+  })
+})
+
+describe('track markings', () => {
+  it('distance signs at 100/200/300 m', () => {
+    expect(distanceSigns()).toEqual([
+      { s: 100, label: '100 m' },
+      { s: 200, label: '200 m' },
+      { s: 300, label: '300 m' },
+    ])
+  })
+
+  it('staggers make every lane lap exactly 400 m to the common finish', () => {
+    const staggers = laneStaggers()
+    expect(staggers.map((st) => st.lane)).toEqual([2, 3, 4, 5, 6])
+    for (const st of staggers) {
+      const k = st.lane - 1
+      const centre = (st.o0 + st.o1) / 2
+      expect(centre).toBeCloseTo(k * LANE_W, 10) // lane centreline offset
+      // lane lap = 400 + 2π·o(centre); stagger equals the surplus, so lap-to-finish = 400
+      expect(st.s).toBeCloseTo(2 * Math.PI * centre, 10)
+      // and every stagger sits on the home straight (constant-s strip is perpendicular)
+      expect(st.s).toBeLessThan(STRAIGHT_M)
+    }
   })
 })
 

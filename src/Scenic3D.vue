@@ -16,6 +16,8 @@ import {
   TRACK_IN,
   TRACK_OUT,
   surroundings,
+  distanceSigns,
+  laneStaggers,
   dayPhase,
   skyAt,
 } from './scenic'
@@ -194,12 +196,19 @@ onMounted(() => {
     return new THREE.Mesh(g, m)
   }
 
-  // Short strip across the track at arc position s (start/finish line).
-  function buildCrossStrip(s: number, widthM: number, y: number, m: THREE.Material): THREE.Mesh {
-    const a0 = trackPoint(s, TRACK_IN)
-    const a1 = trackPoint(s, TRACK_OUT)
-    const b0 = trackPoint(s + widthM, TRACK_IN)
-    const b1 = trackPoint(s + widthM, TRACK_OUT)
+  // Short strip across the track at arc position s (finish line, lane staggers).
+  function buildCrossStrip(
+    s: number,
+    widthM: number,
+    y: number,
+    m: THREE.Material,
+    o0 = TRACK_IN,
+    o1 = TRACK_OUT,
+  ): THREE.Mesh {
+    const a0 = trackPoint(s, o0)
+    const a1 = trackPoint(s, o1)
+    const b0 = trackPoint(s + widthM, o0)
+    const b1 = trackPoint(s + widthM, o1)
     const g = new THREE.BufferGeometry()
     g.setAttribute(
       'position',
@@ -238,8 +247,45 @@ onMounted(() => {
     const o = TRACK_IN + lane * LANE_W
     track(buildLoopRibbon(o - 0.03, o + 0.03, 0.06, mat.laneLine))
   }
-  // start/finish line at s = 0
+  // common finish line at s = 0, plus the classic staggered start line per lane —
+  // each lane's lap to the shared finish then measures exactly 400 m
   track(buildCrossStrip(0, 0.5, 0.07, mat.finish))
+  for (const st of laneStaggers()) {
+    track(buildCrossStrip(st.s, 0.4, 0.07, mat.finish, st.o0 + 0.06, st.o1 - 0.06))
+  }
+
+  // distance signposts beside the track every 100 m (the finish line is the 400 m mark)
+  function signTexture(label: string): THREE.CanvasTexture {
+    const c = document.createElement('canvas')
+    c.width = 128
+    c.height = 64
+    const ctx = c.getContext('2d')!
+    ctx.fillStyle = '#efe7d5'
+    ctx.fillRect(0, 0, 128, 64)
+    ctx.fillStyle = '#1c222b'
+    ctx.font = 'bold 30px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(label, 64, 34)
+    return new THREE.CanvasTexture(c)
+  }
+  const signMats: THREE.MeshBasicMaterial[] = []
+  for (const sign of distanceSigns()) {
+    const at = trackPoint(sign.s, TRACK_OUT + 1.6)
+    const post = new THREE.Mesh(geo.pole, mat.pole)
+    post.scale.set(0.6, 2.4, 0.6)
+    post.position.set(at.x, 1.2, at.z)
+    scene.add(post)
+    const boardMat = new THREE.MeshBasicMaterial({ map: signTexture(sign.label) })
+    signMats.push(boardMat)
+    const board = new THREE.Mesh(geo.head, boardMat)
+    board.scale.set(0.9, 1.5, 0.5)
+    board.position.set(at.x, 2.5, at.z)
+    // face the walker approaching from lower s (board's +z looks at that point)
+    const facing = trackPoint(sign.s - 10, TRACK_OUT + 1.6)
+    board.lookAt(facing.x, 2.5, facing.z)
+    scene.add(board)
+  }
 
   for (const p of surroundings()) scene.add(buildProp(p))
 
@@ -323,6 +369,10 @@ onMounted(() => {
     ro.disconnect()
     scene.clear()
     disposables.forEach((g) => g.dispose())
+    signMats.forEach((m) => {
+      m.map?.dispose()
+      m.dispose()
+    })
     domeGeo.dispose()
     dome.material.dispose()
     Object.values(geo).forEach((g) => g.dispose())

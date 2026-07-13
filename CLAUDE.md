@@ -210,10 +210,14 @@ derived so the lane-1 line measures exactly 400 m; `o` is lateral offset, positi
 outward), `surroundings()` places a deterministic trees/bushes/rocks ring plus 4
 floodlight masts via `worldHash`, and `dayPhase`/`skyAt` drive dawn→night keyframes over
 `DAY_LENGTH_M` = 3200 m of _walked distance_ — every walk starts at dawn; floodlights
-read as lit at night because their heads are unlit MeshBasic. `src/Scenic3D.vue` turns
-that into three.js meshes, all **built once** (a loop world needs no streaming): the red
-track band, lane lines and start/finish line are closed loop-ribbons sampled every 2 m
-at lateral offsets — their materials are `DoubleSide` because travel direction reverses
+read as lit at night because their heads are unlit MeshBasic. `distanceSigns()` places
+"100 m/200 m/300 m" signposts beside the track, and `laneStaggers()` computes the classic
+staggered start line per lane (lane k+1's lap is 2π·k·LANE_W longer, so its mark sits
+that far past the common finish — every lane's lap to the finish then measures exactly
+400 m; all staggers land on the home straight). `src/Scenic3D.vue` turns that into
+three.js meshes, all **built once** (a loop world needs no streaming): the red track
+band, lane lines and start/finish line are closed loop-ribbons sampled every 2 m at
+lateral offsets — their materials are `DoubleSide` because travel direction reverses
 halfway around the loop, so any fixed triangle winding backface-culls one straight. Lane
 lines sit 4 cm above the track surface (less separation z-fights into shimmer on the far
 side of the loop). A vertex-gradient sky dome (fog color at horizon → sky color
@@ -226,6 +230,10 @@ runtime dependency**, and only the scenic view pays for it: `Scenic3D.vue` is a
 downloads on first open — the main bundle stays three-free. No WebGL (probed before any
 three setup) → the component emits `unsupported`, the app falls back to the 2D track
 view and disables the Scenic toggle.
+
+In the 2D track view, the runner marker, progress ring, and start/finish line all live
+in **lane 1** (the innermost band, 48.5–57 in viewBox units → centreline y 52.75, arc
+radius 77.25) — matching the 3D view's lane-1 camera.
 
 The track `<svg>` only exists in the DOM while that view is active (`v-if`), so its path
 geometry (`pathLen`, read via `getTotalLength()` for the runner marker + progress ring)

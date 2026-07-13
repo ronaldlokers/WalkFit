@@ -107,6 +107,41 @@ export function surroundings(): Prop[] {
   return props
 }
 
+// --- track markings ---
+// Distance signposts beside the track every 100 m of the lap (the 400 m point is the
+// finish line itself, so three signs).
+export interface DistanceSign {
+  s: number
+  label: string
+}
+export function distanceSigns(): DistanceSign[] {
+  return [100, 200, 300].map((m) => ({ s: m, label: `${m} m` }))
+}
+
+// Staggered start lines, one per lane beyond lane 1: lane k+1's centreline sits at
+// radius R + k·LANE_W, so its lap is 2π·k·LANE_W longer than lane 1's 400 m. Placing
+// its start mark that far past the common finish makes every lane's lap to the finish
+// line measure exactly 400 m — the classic athletics stagger. All staggers land on the
+// home straight (2π·5·LANE_W ≈ 38 m < STRAIGHT_M).
+export interface LaneStagger {
+  lane: number // 2..LANES
+  s: number
+  o0: number // lateral span of just that lane
+  o1: number
+}
+export function laneStaggers(): LaneStagger[] {
+  const out: LaneStagger[] = []
+  for (let k = 1; k < LANES; k++) {
+    out.push({
+      lane: k + 1,
+      s: 2 * Math.PI * k * LANE_W,
+      o0: TRACK_IN + k * LANE_W,
+      o1: TRACK_IN + (k + 1) * LANE_W,
+    })
+  }
+  return out
+}
+
 // --- day/night from walked distance ---
 // Every walk gets its own sky: phase 0 (session start) is dawn; a full cycle takes
 // DAY_LENGTH_M, so a typical 2–3 km walk sees dawn → noon → golden hour → dusk.

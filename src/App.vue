@@ -855,18 +855,20 @@ const pace = computed(() => {
           class="track-lane"
           d="M110,48.5 L290,48.5 A81.5,81.5 0 0 1 290,211.5 L110,211.5 A81.5,81.5 0 0 1 110,48.5 Z"
         />
+        <!-- runner + progress ride the lane-1 centreline (innermost lane, 48.5–57 band →
+             y 52.75, arc r 77.25); the start/finish line likewise spans just lane 1 -->
         <path
           ref="trackEl"
           class="track-line"
-          d="M110,40 L290,40 A90,90 0 0 1 290,220 L110,220 A90,90 0 0 1 110,40 Z"
+          d="M110,52.75 L290,52.75 A77.25,77.25 0 0 1 290,207.25 L110,207.25 A77.25,77.25 0 0 1 110,52.75 Z"
         />
         <path
           class="track-progress"
-          d="M110,40 L290,40 A90,90 0 0 1 290,220 L110,220 A90,90 0 0 1 110,40 Z"
+          d="M110,52.75 L290,52.75 A77.25,77.25 0 0 1 290,207.25 L110,207.25 A77.25,77.25 0 0 1 110,52.75 Z"
           :stroke-dasharray="pathLen"
           :stroke-dashoffset="dashOffset"
         />
-        <line class="startline" x1="110" y1="23" x2="110" y2="57" />
+        <line class="startline" x1="110" y1="48.5" x2="110" y2="57" />
         <g :transform="`translate(${marker.x},${marker.y})`" class="runner">
           <circle class="halo" r="16" />
           <circle class="body" r="9" />

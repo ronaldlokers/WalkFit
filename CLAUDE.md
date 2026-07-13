@@ -109,7 +109,10 @@ Keep pinned Playwright version and image tag in sync.
   between the wizard's step 4 and the header's workout menu (see "Workouts" below).
 - `src/App.vue` — the rest of the UI (still mostly one component): loop, chart, controls,
   header live-stat strip (time/distance/kcal/speed/pace — real zeros faded while idle),
-  header overflow menu, statistics view, settings, onboarding wizard.
+  header overflow menu, statistics view, settings, onboarding wizard. Below 900px it's a
+  single 460px column; at ≥900px a pure-CSS two-column grid (visual left, controls +
+  chart right), the stat strip moves inline into the header row, and sheets center as
+  640px dialogs instead of bottom sheets — template order is identical in both layouts.
 - `src/main.ts`, `src/style.css` — bootstrap + global styles/theme vars (`--accent`), plus
   the base `.btn` family — kept unscoped/global (not in `App.vue`'s `<style scoped>`)
   specifically so `WorkoutPicker.vue`'s buttons pick it up too; scoped styles don't cross

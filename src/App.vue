@@ -1696,6 +1696,35 @@ const pace = computed(() => {
   margin: 0 auto;
   padding: 18px 16px 40px;
 }
+/* Desktop (#48): stop rendering a phone column in the middle of a wide screen.
+   Two-column grid — the track/scenic visual keeps roughly its phone-column width on
+   the left; the controls and speed chart move beside it. Pure CSS: template order is
+   unchanged, and below the breakpoint everything stays the single column. */
+@media (min-width: 900px) {
+  .app {
+    max-width: 980px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 28px;
+    align-content: start;
+  }
+  .app > header,
+  .app > .warn,
+  .app > .dbg {
+    grid-column: 1 / -1;
+  }
+  .app > .track-wrap {
+    grid-column: 1;
+    grid-row: span 3; /* action-row + controls + chart on the right */
+    align-self: start;
+  }
+  .app > .action-row,
+  .app > .controls,
+  .app > .chart-wrap {
+    grid-column: 2;
+    align-self: start;
+  }
+}
 header {
   display: flex;
   align-items: center;
@@ -2061,6 +2090,20 @@ code {
 .stat-strip.idle .sstat {
   opacity: 0.45;
 }
+/* Desktop (#48): the wide header has room — chips sit inline between brand and actions. */
+@media (min-width: 900px) {
+  .stat-strip {
+    order: 0; /* DOM order: brand · strip · actions */
+    flex-basis: auto;
+    flex: 1;
+    justify-content: center;
+    margin: 0 10px;
+  }
+  .sstat {
+    flex: 0 1 96px;
+    padding: 5px 10px 4px;
+  }
+}
 
 .hr-spark-area {
   fill-opacity: 0.14;
@@ -2410,6 +2453,22 @@ input[type='range'] {
   max-height: 88vh;
   overflow-y: auto;
   padding: 8px 16px 24px;
+}
+/* Desktop (#48): sheets center as dialogs (instead of bottom-anchored) with more room —
+   the statistics charts benefit most. .strava-sheet keeps its tighter width. */
+@media (min-width: 900px) {
+  .overlay {
+    align-items: center;
+    padding: 24px;
+  }
+  .sheet {
+    max-width: 640px;
+    border-radius: 20px;
+    padding: 8px 24px 24px;
+  }
+  .sheet.strava-sheet {
+    max-width: 380px;
+  }
 }
 .sheet-head {
   display: flex;

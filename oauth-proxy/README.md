@@ -1,4 +1,4 @@
-# strava-proxy (OAuth token proxy)
+# oauth-proxy
 
 Cloudflare Worker holding the OAuth `client_secret`s for the services WalkFit connects
 to (Strava upload, Withings weight sync). WalkFit itself is a static site with no
@@ -9,8 +9,16 @@ passthroughs to the provider's token endpoint. See the comment at the top of
 through here.
 
 Routes: `/{provider}/token` + `/{provider}/refresh` for `strava` and `withings`;
-legacy `/token` + `/refresh` alias to strava, so the originally-deployed URL keeps
-working. A provider's routes 404 until its secrets are set.
+legacy `/token` + `/refresh` alias to strava (they predate the provider routes). A
+provider's routes 404 until its secrets are set.
+
+**Migrating from the old `walkfit-strava-proxy` deployment:** this directory was
+previously `strava-proxy/` with wrangler `name = "walkfit-strava-proxy"`; the name
+determines the `*.workers.dev` URL, so the first deploy after the rename creates a NEW
+worker at a new URL. Re-add the secrets (`wrangler secret put` is per-worker), point
+`VITE_STRAVA_PROXY_URL` (and `VITE_WITHINGS_PROXY_URL`) at the new URL in the repo's
+Actions variables, then delete the old worker in the Cloudflare dashboard. Users'
+tokens are unaffected (they live in each browser's localStorage).
 
 ## Deploy
 
@@ -18,7 +26,7 @@ working. A provider's routes 404 until its secrets are set.
 commands via `mise exec -- wrangler ...`, or `mise x -- wrangler ...` for short:
 
 ```bash
-cd strava-proxy
+cd oauth-proxy
 mise exec -- wrangler login
 # per provider you enable:
 mise exec -- wrangler secret put STRAVA_CLIENT_ID

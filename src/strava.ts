@@ -3,7 +3,7 @@ import type { Session } from './history'
 
 // Strava OAuth2 + activity upload. The client_id below is public (it's part of the
 // authorize URL every user's browser sends), but client_secret is not — token exchange
-// and refresh go through a small proxy worker (see strava-proxy/) that holds it.
+// and refresh go through a small proxy worker (see oauth-proxy/) that holds it.
 // Both env vars are build-time (Vite): unset = feature quietly disabled.
 const CLIENT_ID = import.meta.env.VITE_STRAVA_CLIENT_ID || ''
 const PROXY_URL = import.meta.env.VITE_STRAVA_PROXY_URL || ''

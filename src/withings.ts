@@ -5,7 +5,7 @@ import type { WeightEntry } from './weight'
 
 // Withings weight sync (HealthProvider — see health.ts). OAuth2 like strava.ts: the
 // authorize redirect happens in the browser, but token exchange/refresh need the
-// client_secret and go through the proxy worker's /withings routes (see strava-proxy/).
+// client_secret and go through the proxy worker's /withings routes (see oauth-proxy/).
 // The measures API itself sends permissive CORS headers, so weigh-ins are fetched
 // browser-direct with the bearer token.
 //

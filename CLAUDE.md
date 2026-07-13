@@ -137,7 +137,7 @@ when the returned `state` matches the nonce in its OWN sessionStorage key, and m
 leave the URL untouched otherwise (`handleOAuthRedirects()` probes them in turn). Break
 this rule and providers eat each other's callbacks. Withings specifics (rotated refresh
 tokens, `{status,body}` envelope, redirect_uri echoed on exchange, demo mode) live in
-`withings.ts` and `strava-proxy/README.md`.
+`withings.ts` and `oauth-proxy/README.md`.
 
 **Workouts** — `WorkoutPicker.vue` is the single picker, mounted in two places that must
 stay behaviorally identical:
@@ -230,11 +230,11 @@ because its OAuth token endpoint requires `client_secret` for both the initial e
 every refresh — no PKCE, confirmed against Strava's own docs — and a secret can't live in a
 browser bundle.
 
-- `strava-proxy/` — standalone Cloudflare Worker holding the OAuth secrets for ALL
+- `oauth-proxy/` — standalone Cloudflare Worker holding the OAuth secrets for ALL
   integrations: `/{provider}/token` + `/{provider}/refresh` routes (`strava`,
   `withings`; legacy `/token`/`/refresh` alias to strava), thin passthroughs to each
   provider's token endpoint with the secret injected server-side. See
-  `strava-proxy/README.md` for deploy steps and per-provider app registration.
+  `oauth-proxy/README.md` for deploy steps and per-provider app registration.
 - Data traffic does NOT go through the worker — `api.strava.com` (upload) and
   `wbsapi.withings.net` (measures) both send permissive CORS headers, so the client
   calls them directly with the bearer token. Don't add data routes to the worker; keep
@@ -246,7 +246,7 @@ browser bundle.
   is capped at 10 connected athletes until Strava approves a review request. Both are
   Strava-side account/app-settings matters, not WalkFit code — the OAuth flow already
   supports any number of users up to whatever cap the registered app currently has (each
-  person connects independently, gets their own token pair). See `strava-proxy/README.md`.
+  person connects independently, gets their own token pair). See `oauth-proxy/README.md`.
 
 ## Treadmill BLE protocol (hard-won — do not "simplify" without device to test)
 

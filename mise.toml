@@ -3,5 +3,5 @@ node = "22"
 tmux = "latest"
 # CLI for installing Chrome for Testing (used by .devcontainer/post-create.sh)
 "npm:@puppeteer/browsers" = "latest"
-# Cloudflare Worker CLI (used to deploy strava-proxy/, see strava-proxy/README.md)
+# Cloudflare Worker CLI (used to deploy oauth-proxy/, see oauth-proxy/README.md)
 "npm:wrangler" = "latest"

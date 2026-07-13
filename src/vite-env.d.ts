@@ -1,9 +1,11 @@
 /// <reference types="vite/client" />
 
-// Build-time Strava config (see .env.example) — both unset disables the feature.
+// Build-time integration config (see .env.example) — a feature's vars unset = hidden.
 interface ImportMetaEnv {
   readonly VITE_STRAVA_CLIENT_ID?: string
   readonly VITE_STRAVA_PROXY_URL?: string
+  readonly VITE_WITHINGS_CLIENT_ID?: string
+  readonly VITE_WITHINGS_PROXY_URL?: string
 }
 
 interface ImportMeta {

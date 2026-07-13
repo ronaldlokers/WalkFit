@@ -10,6 +10,7 @@ import { loadWeightLog, addWeighIn } from './weight'
 import type { WeightEntry } from './weight'
 import { syncProvider } from './health'
 import type { HealthProvider } from './health'
+import { useWithings } from './withings'
 import { useStrava } from './strava'
 import WorkoutPicker from './WorkoutPicker.vue'
 
@@ -478,7 +479,7 @@ function weightSettingChanged() {
 }
 
 // --- health services (weigh-in sync providers — see health.ts) ---
-const healthProviders: HealthProvider[] = []
+const healthProviders: HealthProvider[] = [useWithings()]
 async function syncHealth(p: HealthProvider) {
   const updated = await syncProvider(p)
   if (updated) {

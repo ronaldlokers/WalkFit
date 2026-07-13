@@ -17,6 +17,7 @@ const fakeTm = reactive<TreadmillState>({
   speed: 3.0,
   targetSpeed: 3.0,
   distance: 0,
+  steps: 0,
   elapsed: 0,
   error: '',
   history: [],

@@ -4,6 +4,7 @@ import {
   frame,
   setSpeedFrame,
   STATUS_QUERY,
+  SPORT_DATA_QUERY,
   parseTelemetry,
   createSpeedFilter,
   parseHeartRate,
@@ -30,6 +31,10 @@ describe('framing', () => {
   it('status query is a valid framed 02 51 03 00', () => {
     expect(hex(STATUS_QUERY)).toBe('02 51 03 00 52 03')
   })
+
+  it('sport-data query is a valid framed 02 52 00', () => {
+    expect(hex(SPORT_DATA_QUERY)).toBe('02 52 00 52 03')
+  })
 })
 
 describe('parseTelemetry', () => {
@@ -39,11 +44,31 @@ describe('parseTelemetry', () => {
       speed: 2.5,
     })
   })
-  it('decodes the running-data frame variant (02 51 03)', () => {
+  it('decodes the short running-data variant (02 51 03) as speed only, no steps', () => {
     expect(parseTelemetry([0x02, 0x51, 0x03, 0x0a, 0x00, 0x74])).toEqual({
       type: 'speed',
       speed: 1.0,
     })
+  })
+  it('reads steps (uint16 LE @ 5..6) from the 17-byte running frame', () => {
+    // Real on-device capture: the frame logged exactly when the belt display showed 100 steps.
+    expect(
+      // prettier-ignore
+      parseTelemetry([
+        0x02, 0x51, 0x03, 0x0a, 0x00, 0x64, 0x00, 0x14,
+        0x00, 0x13, 0x00, 0x64, 0x00, 0x00, 0x00, 0x5f, 0x03,
+      ]),
+    ).toEqual({ type: 'speed', speed: 1.0, steps: 100 })
+  })
+  it('reads a multi-byte step count via the high byte', () => {
+    // 0x012c = 300 steps (b5=0x2c, b6=0x01)
+    expect(
+      // prettier-ignore
+      parseTelemetry([
+        0x02, 0x51, 0x03, 0x0a, 0x00, 0x2c, 0x01, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
+      ]),
+    ).toEqual({ type: 'speed', speed: 1.0, steps: 300 })
   })
   it('status: 00 = running, 03 = idle (must not be treated as speed)', () => {
     expect(parseTelemetry([0x02, 0x53, 0x01, 0x00, 0x52, 0x03])).toEqual({

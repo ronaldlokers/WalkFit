@@ -391,6 +391,114 @@ const streak = computed(() => currentStreak(sessions.value))
 // Daily activity goals for the rings (#43); edits in Settings persist via the watcher.
 const goals = reactive(loadGoals())
 watch(goals, () => saveGoals({ ...goals }))
+
+// --- daily activity: rings + charts (#43) ---
+// Metric hues reuse the app's established identity colors (HR-zone badge, accent):
+// kcal green / steps blue / time amber / HR red. Validated on the #171a21 card surface —
+// contrast >3:1 and CVD ΔE 81 (target ≥12); they sit above the generic dark lightness
+// band by design, matching the rest of the UI rather than a darker chart-only variant.
+const METRIC_COLORS = { kcal: '#2ed573', steps: '#6ab0ff', time: '#f5a623', hr: '#ff4757' }
+const chartDays = ref(7)
+const daily = computed(() => dailyTotals(sessions.value, chartDays.value))
+const todayTotals = computed(() => dailyTotals(sessions.value, 1)[0]!)
+
+// Activity rings: outer→inner kcal/steps/time, filling toward the daily goals.
+const rings = computed(() => {
+  const t = todayTotals.value
+  return [
+    {
+      id: 'kcal',
+      label: 'Calories',
+      color: METRIC_COLORS.kcal,
+      value: Math.round(t.kcal),
+      goal: goals.kcal,
+      unit: 'kcal',
+    },
+    {
+      id: 'steps',
+      label: 'Steps',
+      color: METRIC_COLORS.steps,
+      value: t.steps,
+      goal: goals.steps,
+      unit: 'steps',
+    },
+    {
+      id: 'time',
+      label: 'Time',
+      color: METRIC_COLORS.time,
+      value: Math.round(t.duration / 60),
+      goal: goals.minutes,
+      unit: 'min',
+    },
+  ].map((r, i) => {
+    const radius = 52 - i * 15
+    const c = 2 * Math.PI * radius
+    const pct = Math.min(r.value / r.goal, 1)
+    return { ...r, radius, pct, dash: `${pct * c} ${c}` }
+  })
+})
+
+const barCharts = computed(() => {
+  const days = daily.value
+  return [
+    {
+      id: 'kcal',
+      label: 'Calories',
+      color: METRIC_COLORS.kcal,
+      unit: 'kcal',
+      values: days.map((d) => Math.round(d.kcal)),
+    },
+    {
+      id: 'steps',
+      label: 'Steps',
+      color: METRIC_COLORS.steps,
+      unit: 'steps',
+      values: days.map((d) => d.steps),
+    },
+    {
+      id: 'time',
+      label: 'Activity time',
+      color: METRIC_COLORS.time,
+      unit: 'min',
+      values: days.map((d) => Math.round(d.duration / 60)),
+    },
+  ].map((m) => ({
+    ...m,
+    max: Math.max(...m.values, 1),
+    total: m.values.reduce((a, b) => a + b, 0),
+  }))
+})
+
+// Daily HR: min–max span bars + an avg tick, on a shared padded bpm scale.
+const hrChart = computed(() => {
+  const days = daily.value
+  const withHr = days.filter((d) => d.hrMin !== null)
+  if (!withHr.length) return null
+  const lo = Math.min(...withHr.map((d) => d.hrMin!)) - 5
+  const hi = Math.max(...withHr.map((d) => d.hrMax!)) + 5
+  const span = hi - lo
+  return {
+    lo,
+    hi,
+    bars: days.map((d) =>
+      d.hrMin === null
+        ? null
+        : {
+            bottom: ((d.hrMin - lo) / span) * 100,
+            height: Math.max(((d.hrMax! - d.hrMin) / span) * 100, 3),
+            avg: d.hrAvg === null ? null : ((d.hrAvg - lo) / span) * 100,
+            title: `${d.date}: ${d.hrMin}–${d.hrMax} bpm · avg ${d.hrAvg}`,
+          },
+    ),
+  }
+})
+
+// Sparse x labels: weekday letters for 7d, day-of-month every 5th for longer ranges.
+function dayLabel(dateKey: string, i: number): string {
+  const d = new Date(dateKey + 'T00:00:00')
+  if (chartDays.value === 7) return 'SMTWTFS'[d.getDay()]!
+  return i % 5 === 0 || i === chartDays.value - 1 ? String(d.getDate()) : ''
+}
 let sessionStart: Date | null = null
 let sessionName = 'Free walk'
 let hrSum = 0
@@ -1110,6 +1218,37 @@ const pace = computed(() => {
         </div>
 
         <div v-else class="hist-body">
+          <div class="hist-section">
+            <h3>Daily activity</h3>
+            <div class="rings-wrap">
+              <svg class="rings" viewBox="0 0 120 120" aria-hidden="true">
+                <g v-for="r in rings" :key="r.id">
+                  <circle class="ring-track" cx="60" cy="60" :r="r.radius" :stroke="r.color" />
+                  <circle
+                    v-if="r.pct > 0"
+                    class="ring-fill"
+                    cx="60"
+                    cy="60"
+                    :r="r.radius"
+                    :stroke="r.color"
+                    :stroke-dasharray="r.dash"
+                    transform="rotate(-90 60 60)"
+                  />
+                </g>
+              </svg>
+              <div class="ring-legend">
+                <div v-for="r in rings" :key="r.id" class="ring-item">
+                  <span class="ring-dot" :style="{ background: r.color }"></span>
+                  <span class="ring-label">{{ r.label }}</span>
+                  <span class="ring-val"
+                    >{{ r.value }}<span class="ring-goal"> / {{ r.goal }} {{ r.unit }}</span
+                    ><span v-if="r.pct >= 1" class="ring-done"> ✓</span></span
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="detail-tiles hist-tiles">
             <div>
               <span class="v">{{ streak }}<span class="unit">🔥</span></span>
@@ -1118,6 +1257,89 @@ const pace = computed(() => {
             <div>
               <span class="v">{{ sessions.length }}</span>
               <span class="k">{{ sessions.length === 1 ? 'walk' : 'walks' }} total</span>
+            </div>
+          </div>
+
+          <div class="hist-section">
+            <div class="daily-head">
+              <h3>Daily detail</h3>
+              <div class="range-chips">
+                <button
+                  v-for="n in [7, 14, 30]"
+                  :key="n"
+                  class="chip"
+                  :class="{ on: chartDays === n }"
+                  @click="chartDays = n"
+                >
+                  {{ n }}d
+                </button>
+              </div>
+            </div>
+
+            <div v-for="m in barCharts" :key="m.id" class="daychart">
+              <div class="daychart-head">
+                <span class="daychart-label"
+                  ><span class="ring-dot" :style="{ background: m.color }"></span
+                  >{{ m.label }}</span
+                >
+                <span class="daychart-total">{{ m.total }} {{ m.unit }}</span>
+              </div>
+              <div class="bars">
+                <div
+                  v-for="(v, i) in m.values"
+                  :key="i"
+                  class="bar-slot"
+                  :title="`${daily[i]!.date}: ${v} ${m.unit}`"
+                >
+                  <div
+                    class="bar"
+                    :style="
+                      v === 0
+                        ? { height: '2px', background: '#252b37' }
+                        : { height: (v / m.max) * 100 + '%', background: m.color }
+                    "
+                  ></div>
+                </div>
+              </div>
+              <div class="bar-labels">
+                <span v-for="(d, i) in daily" :key="d.date">{{ dayLabel(d.date, i) }}</span>
+              </div>
+            </div>
+
+            <div class="daychart">
+              <div class="daychart-head">
+                <span class="daychart-label"
+                  ><span class="ring-dot" :style="{ background: METRIC_COLORS.hr }"></span>Heart
+                  rate</span
+                >
+                <span v-if="hrChart" class="daychart-total"
+                  >{{ hrChart.lo }}–{{ hrChart.hi }} bpm · ─ avg</span
+                >
+              </div>
+              <template v-if="hrChart">
+                <div class="bars hr-bars">
+                  <div
+                    v-for="(b, i) in hrChart.bars"
+                    :key="i"
+                    class="bar-slot"
+                    :title="b ? b.title : ''"
+                  >
+                    <template v-if="b">
+                      <div
+                        class="hr-span"
+                        :style="{ bottom: b.bottom + '%', height: b.height + '%' }"
+                      ></div>
+                      <div v-if="b.avg !== null" class="hr-avg" :style="{ bottom: b.avg + '%' }" />
+                    </template>
+                  </div>
+                </div>
+                <div class="bar-labels">
+                  <span v-for="(d, i) in daily" :key="d.date">{{ dayLabel(d.date, i) }}</span>
+                </div>
+              </template>
+              <p v-else class="hint chart-empty-hint">
+                No heart-rate data in this range — connect a HR sensor during a walk.
+              </p>
             </div>
           </div>
 
@@ -2281,6 +2503,168 @@ input[type='range'] {
   letter-spacing: 0.6px;
   color: #8a93a3;
   margin: 0 0 10px 2px;
+}
+/* --- daily activity rings --- */
+.rings-wrap {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 6px 2px;
+}
+.rings {
+  width: 128px;
+  height: 128px;
+  flex: none;
+}
+.ring-track {
+  fill: none;
+  stroke-width: 10;
+  opacity: 0.16;
+}
+.ring-fill {
+  fill: none;
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.4s ease;
+}
+.ring-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.ring-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+}
+.ring-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  display: inline-block;
+  align-self: center;
+}
+.ring-label {
+  color: #8a93a3;
+  min-width: 62px;
+}
+.ring-val {
+  font-weight: 700;
+}
+.ring-goal {
+  color: #8a93a3;
+  font-weight: 400;
+  font-size: 12px;
+}
+.ring-done {
+  color: var(--accent);
+}
+/* --- daily bar / HR charts --- */
+.daily-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.range-chips {
+  display: flex;
+  gap: 6px;
+}
+.chip {
+  background: #1b1f27;
+  border: 1px solid #232833;
+  color: #cbd3df;
+  border-radius: 999px;
+  padding: 3px 11px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chip.on {
+  background: var(--accent);
+  border-color: transparent;
+  color: #05210f;
+  font-weight: 700;
+}
+.daychart {
+  margin-top: 14px;
+}
+.daychart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.daychart-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #cbd3df;
+  font-weight: 600;
+}
+.daychart-total {
+  color: #8a93a3;
+  font-size: 12px;
+}
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 64px;
+  background: #171a21;
+  border: 1px solid #232833;
+  border-radius: 10px;
+  padding: 6px 6px 0;
+  overflow: hidden;
+}
+.bar-slot {
+  flex: 1;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+}
+.bar {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+}
+.hr-bars {
+  height: 90px;
+  padding: 6px;
+}
+.hr-span {
+  position: absolute;
+  left: 18%;
+  width: 64%;
+  background: rgba(255, 71, 87, 0.4);
+  border: 1px solid #ff4757;
+  border-radius: 4px;
+}
+.hr-avg {
+  position: absolute;
+  left: 10%;
+  width: 80%;
+  height: 2px;
+  border-radius: 1px;
+  background: #e8ecf2;
+}
+.bar-labels {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+  padding: 0 6px;
+}
+.bar-labels span {
+  flex: 1;
+  text-align: center;
+  font-size: 10px;
+  color: #8a93a3;
+}
+.chart-empty-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
 }
 .weeklist {
   list-style: none;

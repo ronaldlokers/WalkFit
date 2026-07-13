@@ -14,6 +14,10 @@ import {
   laneNumbers,
   LANE_NUMBER_S,
   BREAK_LINE_S,
+  relayZoneLines,
+  hurdleTicks,
+  waterfallPoints,
+  WATERFALL_S,
   dayPhase,
   skyAt,
   DAY_LENGTH_M,
@@ -119,6 +123,32 @@ describe('track markings', () => {
 
   it('break line sits at the 200 m point (end of the first bend)', () => {
     expect(BREAK_LINE_S).toBeCloseTo(200, 10)
+  })
+
+  it('relay zones: a line per lane at both limits of the three 30 m zones', () => {
+    const lines = relayZoneLines()
+    expect(lines.length).toBe(3 * 2 * 6)
+    expect([...new Set(lines.map((l) => l.s))].sort((a, b) => a - b)).toEqual([
+      80, 110, 180, 210, 280, 310,
+    ])
+    for (const l of lines) expect(l.o1 - l.o0).toBeCloseTo(LANE_W, 10)
+  })
+
+  it('400 mH: ten flights from 45 m every 35 m, ticks on each lane boundary', () => {
+    const ticks = hurdleTicks()
+    const sVals = [...new Set(ticks.map((t) => t.s))]
+    expect(sVals).toEqual([45, 80, 115, 150, 185, 220, 255, 290, 325, 360])
+    expect(ticks.length).toBe(10 * 7)
+  })
+
+  it('waterfall start: flat at the inner edge, bowing monotonically forward outward', () => {
+    const pts = waterfallPoints()
+    expect(pts[0]!.s).toBeCloseTo(WATERFALL_S, 5)
+    for (let i = 1; i < pts.length; i++) {
+      expect(pts[i]!.s).toBeGreaterThanOrEqual(pts[i - 1]!.s)
+      expect(pts[i]!.o).toBeGreaterThan(pts[i - 1]!.o)
+    }
+    expect(pts[pts.length - 1]!.s - WATERFALL_S).toBeLessThan(6) // gentle bow
   })
 
   it('distance signs at 100/200/300 m', () => {

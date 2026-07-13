@@ -162,6 +162,56 @@ export function laneNumbers(): LaneNumber[] {
 // distance runners may break for the inside on a real track.
 export const BREAK_LINE_S = STRAIGHT_M + Math.PI * BEND_R
 
+// 4×100 relay exchange zones: 30 m (20 m in, 10 m out) around each 100 m mark, marked
+// as a yellow line across each lane at both zone limits. (Real zones stagger per lane
+// on the bends; uniform lane-1 arc positions are close enough at this fidelity.)
+export interface LaneLineMark {
+  s: number
+  o0: number
+  o1: number
+}
+export function relayZoneLines(): LaneLineMark[] {
+  const out: LaneLineMark[] = []
+  for (const centre of [100, 200, 300]) {
+    for (const s of [centre - 20, centre + 10]) {
+      for (let k = 0; k < LANES; k++) {
+        out.push({ s, o0: TRACK_IN + k * LANE_W, o1: TRACK_IN + (k + 1) * LANE_W })
+      }
+    }
+  }
+  return out
+}
+
+// 400 m hurdles: 10 flights, first at 45 m then every 35 m — small green ticks on the
+// lane boundaries (the paint scheme real tracks use for the 400 mH positions).
+export interface TrackTick {
+  s: number
+  o: number
+}
+export function hurdleTicks(): TrackTick[] {
+  const out: TrackTick[] = []
+  for (let h = 0; h < 10; h++) {
+    const s = 45 + h * 35
+    for (let k = 0; k <= LANES; k++) out.push({ s, o: TRACK_IN + k * LANE_W })
+  }
+  return out
+}
+
+// 1500 m waterfall start: a curved line across all lanes at the 100 m arc point
+// (3.75 laps to the finish), bowing forward toward the outer lanes so everyone covers
+// an equal distance while cutting in. The bow is an approximation of the surveyed
+// involute — enough to read as the classic waterfall.
+export const WATERFALL_S = 100
+export function waterfallPoints(samples = 25): TrackTick[] {
+  const out: TrackTick[] = []
+  for (let i = 0; i < samples; i++) {
+    const o = TRACK_IN + (i / (samples - 1)) * (TRACK_OUT - TRACK_IN)
+    const d = Math.max(0, o)
+    out.push({ s: WATERFALL_S + 0.35 * d + 0.05 * d * d, o })
+  }
+  return out
+}
+
 // --- day/night from walked distance ---
 // Every walk gets its own sky: phase 0 (session start) is dawn; a full cycle takes
 // DAY_LENGTH_M, so a typical 2–3 km walk sees dawn → noon → golden hour → dusk.

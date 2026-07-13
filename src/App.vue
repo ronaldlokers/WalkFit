@@ -19,6 +19,9 @@ import {
   laneStaggers,
   laneNumbers,
   BREAK_LINE_S,
+  relayZoneLines,
+  hurdleTicks,
+  waterfallPoints,
   BEND_R,
   STRAIGHT_M,
   LANE_W,
@@ -283,6 +286,16 @@ const track2d = {
   // real track) has them: just past the finish line.
   laneNums: laneNumbers().map((n) => ({ ...svgPt(n.s, n.o), lane: n.lane })),
   breakLine: { a: svgPt(BREAK_LINE_S, TRACK_IN), b: svgPt(BREAK_LINE_S, TRACK_OUT) },
+  // relay exchange-zone limits (yellow, per lane), 400 mH ticks (green, on the lane
+  // boundaries, drawn along the running line), and the curved 1500 m waterfall start
+  relays: relayZoneLines().map((l) => ({ a: svgPt(l.s, l.o0), b: svgPt(l.s, l.o1) })),
+  hurdles: hurdleTicks().map((t) => ({ a: svgPt(t.s - 0.9, t.o), b: svgPt(t.s + 0.9, t.o) })),
+  waterfall: waterfallPoints()
+    .map((p) => {
+      const pt = svgPt(p.s, p.o)
+      return `${pt.x},${pt.y}`
+    })
+    .join(' '),
 }
 
 const trackEl = ref<SVGPathElement | null>(null)
@@ -909,6 +922,25 @@ const pace = computed(() => {
           :x2="track2d.breakLine.b.x"
           :y2="track2d.breakLine.b.y"
         />
+        <line
+          v-for="(r, i) in track2d.relays"
+          :key="`relay-${i}`"
+          class="relay-line"
+          :x1="r.a.x"
+          :y1="r.a.y"
+          :x2="r.b.x"
+          :y2="r.b.y"
+        />
+        <line
+          v-for="(h, i) in track2d.hurdles"
+          :key="`hurdle-${i}`"
+          class="hurdle-tick"
+          :x1="h.a.x"
+          :y1="h.a.y"
+          :x2="h.b.x"
+          :y2="h.b.y"
+        />
+        <polyline class="waterfall" :points="track2d.waterfall" />
         <text
           v-for="n in track2d.laneNums"
           :key="`num-${n.lane}`"
@@ -1791,6 +1823,19 @@ code {
   stroke: #3ba55d;
   stroke-width: 1.2;
   stroke-dasharray: 2.5 2;
+}
+.relay-line {
+  stroke: rgba(216, 182, 56, 0.8);
+  stroke-width: 0.8;
+}
+.hurdle-tick {
+  stroke: rgba(46, 125, 79, 0.8);
+  stroke-width: 0.7;
+}
+.waterfall {
+  fill: none;
+  stroke: rgba(240, 244, 249, 0.85);
+  stroke-width: 0.9;
 }
 .lane-num {
   fill: rgba(240, 244, 249, 0.85);

@@ -107,8 +107,8 @@ Keep pinned Playwright version and image tag in sync.
   "Strava upload" below.
 - `src/WorkoutPicker.vue` — the tabbed weight-loss/HR workout picker, shared verbatim
   between the wizard's step 4 and the header's workout menu (see "Workouts" below).
-- `src/scenic.ts` — **pure, framework-free** world model for the 3D scenic walk (what
-  exists at metre z: path curve, biomes, props, signposts, day/night). Unit-tested in
+- `src/scenic.ts` — **pure, framework-free** world model for the 3D scenic walk (the
+  400 m stadium-loop geometry, surroundings, day/night). Unit-tested in
   `src/scenic.test.ts`. See the scenic paragraph below.
 - `src/Scenic3D.vue` — the three.js first-person scenic renderer; async component, so
   three.js lives in a lazy chunk (see below).
@@ -202,26 +202,30 @@ or a first-person 3D **scenic** walk (#51). Both read the same
 `state.distance`/`state.speed` — no separate tracking. Lap count/lap-times carry over
 into scenic mode as a corner badge overlaid on the canvas.
 
-**Scenic (3D)** splits into two layers. `src/scenic.ts` is the pure world model — it
-answers "what exists at metre z": `worldHash` (deterministic sine hash — metre N always
-renders the same scene), `pathX`/`pathHeading` (gentle S-curve walkway), `biomeAt`
-(5 biomes cycling every 500 m: park → lakeside → forest → town → hills), `chunkProps`
-(40 m chunks; biome resolved per prop so chunks straddling a border don't spawn into the
-lakeside water), `signpostsIn` (km markers), and `dayPhase`/`skyAt` (dawn→night keyframes
-over `DAY_LENGTH_M` = 3200 m of _walked distance_ — every walk starts at dawn).
-`src/Scenic3D.vue` turns that into three.js meshes: chunk streaming (~240 m ahead, fog
-hides the edge; per-chunk geometry disposed behind), low-poly procedural props with
-shared unit geometries, a vertex-gradient sky dome (fog color at horizon → sky color
-overhead; kills the ground/sky seam), and a camera at eye height that interpolates
-toward `state.distance` at belt speed (distance ticks in at ~4 Hz; naive snapping would
-stutter). Ribbon triangle winding matters: faces must point +y or the walkway is
-backface-culled from above. Comfort: fixed horizon, no bob; `prefers-reduced-motion`
-renders discretely per distance tick instead of a continuous rAF loop; rAF pauses when
-the tab is hidden. **three.js is the one runtime dependency**, and only the scenic view
-pays for it: `Scenic3D.vue` is a `defineAsyncComponent` so Vite splits it (+three) into
-a lazy chunk (~520 kB raw) that downloads on first open — the main bundle stays
-three-free. No WebGL (probed before any three setup) → the component emits
-`unsupported`, the app falls back to the track view and disables the Scenic toggle.
+**Scenic (3D)** is a first-person walk around the 400 m athletics track itself, camera
+centred in **lane 1** (infield on the left, counterclockwise like athletics). It splits
+into two layers. `src/scenic.ts` is the pure world model: `trackPoint(s, o)` gives
+position and unit tangent on the stadium loop (IAAF straights 84.39 m, bend radius
+derived so the lane-1 line measures exactly 400 m; `o` is lateral offset, positive
+outward), `surroundings()` places a deterministic trees/bushes/rocks ring plus 4
+floodlight masts via `worldHash`, and `dayPhase`/`skyAt` drive dawn→night keyframes over
+`DAY_LENGTH_M` = 3200 m of _walked distance_ — every walk starts at dawn; floodlights
+read as lit at night because their heads are unlit MeshBasic. `src/Scenic3D.vue` turns
+that into three.js meshes, all **built once** (a loop world needs no streaming): the red
+track band, lane lines and start/finish line are closed loop-ribbons sampled every 2 m
+at lateral offsets — their materials are `DoubleSide` because travel direction reverses
+halfway around the loop, so any fixed triangle winding backface-culls one straight. Lane
+lines sit 4 cm above the track surface (less separation z-fights into shimmer on the far
+side of the loop). A vertex-gradient sky dome (fog color at horizon → sky color
+overhead) kills the ground/sky seam, and the camera interpolates toward `state.distance`
+at belt speed (distance ticks in at ~4 Hz; naive snapping would stutter). Comfort: fixed
+horizon, no bob; `prefers-reduced-motion` renders discretely per distance tick instead
+of a continuous rAF loop; rAF pauses when the tab is hidden. **three.js is the one
+runtime dependency**, and only the scenic view pays for it: `Scenic3D.vue` is a
+`defineAsyncComponent` so Vite splits it (+three) into a lazy chunk (~520 kB raw) that
+downloads on first open — the main bundle stays three-free. No WebGL (probed before any
+three setup) → the component emits `unsupported`, the app falls back to the 2D track
+view and disables the Scenic toggle.
 
 The track `<svg>` only exists in the DOM while that view is active (`v-if`), so its path
 geometry (`pathLen`, read via `getTotalLength()` for the runner marker + progress ring)

@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
   worldHash,
-  pathX,
-  pathHeading,
-  biomeAt,
-  BIOME_LENGTH_M,
-  chunkProps,
-  CHUNK_M,
-  signpostsIn,
+  trackPoint,
+  LAP_M,
+  STRAIGHT_M,
+  BEND_R,
+  TRACK_OUT,
+  SCENERY_CLEAR_M,
+  surroundings,
   dayPhase,
   skyAt,
   DAY_LENGTH_M,
@@ -25,78 +25,79 @@ describe('worldHash', () => {
   })
 })
 
-describe('path', () => {
-  it('curves gently within a bounded lateral corridor', () => {
-    for (let z = 0; z < 5000; z += 13) {
-      expect(Math.abs(pathX(z))).toBeLessThanOrEqual(9) // 6 + 3 amplitude bound
-      expect(Math.abs(pathHeading(z))).toBeLessThan(0.3) // never a sharp turn (~17°)
+describe('trackPoint (400 m loop)', () => {
+  it('wraps every lap: same point at s and s + LAP_M (and negative s)', () => {
+    for (const s of [0, 13.7, STRAIGHT_M + 5, 399.9]) {
+      const a = trackPoint(s)
+      const b = trackPoint(s + LAP_M)
+      expect(b.x).toBeCloseTo(a.x, 10)
+      expect(b.z).toBeCloseTo(a.z, 10)
+    }
+    expect(trackPoint(-10).x).toBeCloseTo(trackPoint(LAP_M - 10).x, 10)
+  })
+
+  it('the lane-1 walking line measures exactly 400 m (numeric integration)', () => {
+    const N = 40000
+    let len = 0
+    let prev = trackPoint(0)
+    for (let i = 1; i <= N; i++) {
+      const p = trackPoint((i / N) * LAP_M)
+      len += Math.hypot(p.x - prev.x, p.z - prev.z)
+      prev = p
+    }
+    expect(len).toBeCloseTo(LAP_M, 1)
+  })
+
+  it('straights are straight and bends sit at the bend radius', () => {
+    // home straight: constant x = BEND_R, heading -z
+    for (const s of [0, 20, STRAIGHT_M - 1]) {
+      const p = trackPoint(s)
+      expect(p.x).toBeCloseTo(BEND_R, 10)
+      expect(p.tx).toBeCloseTo(0, 10)
+      expect(p.tz).toBeCloseTo(-1, 10)
+    }
+    // mid-bend point is BEND_R from the bend centre (0, -STRAIGHT_M/2)
+    const mid = trackPoint(STRAIGHT_M + (Math.PI * BEND_R) / 2)
+    expect(Math.hypot(mid.x, mid.z + STRAIGHT_M / 2)).toBeCloseTo(BEND_R, 8)
+  })
+
+  it('tangent is always unit length and continuous across segment joins', () => {
+    for (let s = 0; s < LAP_M; s += 0.5) {
+      const p = trackPoint(s)
+      expect(Math.hypot(p.tx, p.tz)).toBeCloseTo(1, 8)
+    }
+    for (const joint of [0, STRAIGHT_M, STRAIGHT_M + Math.PI * BEND_R, LAP_M - 0.0001]) {
+      const a = trackPoint(joint - 0.01)
+      const b = trackPoint(joint + 0.01)
+      expect(Math.hypot(a.tx - b.tx, a.tz - b.tz)).toBeLessThan(0.01)
+    }
+  })
+
+  it('lateral offset moves outward: larger o is farther from the loop centre', () => {
+    for (const s of [10, 120, 250, 380]) {
+      const inner = trackPoint(s, 0)
+      const outer = trackPoint(s, 5)
+      // compare distance from the nearest bend centre / spine
+      expect(Math.hypot(outer.x, outer.z) + 0.001).toBeGreaterThan(Math.hypot(inner.x, inner.z))
     }
   })
 })
 
-describe('biomeAt', () => {
-  it('starts in the park and advances every BIOME_LENGTH_M, cycling', () => {
-    expect(biomeAt(0).id).toBe('park')
-    expect(biomeAt(BIOME_LENGTH_M).id).toBe('lakeside')
-    expect(biomeAt(2 * BIOME_LENGTH_M).id).toBe('forest')
-    expect(biomeAt(3 * BIOME_LENGTH_M).id).toBe('town')
-    expect(biomeAt(4 * BIOME_LENGTH_M).id).toBe('hills')
-    expect(biomeAt(5 * BIOME_LENGTH_M).id).toBe('park') // wraps
-    expect(biomeAt(-5).id).toBe('park') // clamped, no negative index
-  })
-})
-
-describe('chunkProps', () => {
-  it('is deterministic per chunk', () => {
-    expect(chunkProps(12)).toEqual(chunkProps(12))
-    expect(chunkProps(3)).not.toEqual(chunkProps(4))
+describe('surroundings', () => {
+  it('is deterministic', () => {
+    expect(surroundings()).toEqual(surroundings())
   })
 
-  it('places props inside the chunk span, clear of the walkway', () => {
-    for (const chunk of [0, 5, 40, 133]) {
-      for (const p of chunkProps(chunk)) {
-        expect(p.z).toBeGreaterThanOrEqual(chunk * CHUNK_M)
-        expect(p.z).toBeLessThan((chunk + 1) * CHUNK_M)
-        expect(Math.abs(p.x - pathX(p.z))).toBeGreaterThanOrEqual(5)
-      }
+  it('keeps all scenery clear of the track band', () => {
+    for (const p of surroundings()) {
+      if (p.type === 'flood') expect(p.o).toBeGreaterThan(TRACK_OUT)
+      else expect(p.o).toBeGreaterThanOrEqual(TRACK_OUT + SCENERY_CLEAR_M)
     }
   })
 
-  it('lakeside spawns everything on the +x shore (water occupies -x)', () => {
-    const lakesideChunk = Math.ceil(BIOME_LENGTH_M / CHUNK_M) // first chunk fully inside
-    for (const p of chunkProps(lakesideChunk)) {
-      expect(p.x - pathX(p.z)).toBeGreaterThan(0)
-    }
-  })
-
-  it('resolves biome per prop on chunks straddling a border', () => {
-    const straddler = Math.floor(BIOME_LENGTH_M / CHUNK_M) // spans park → lakeside
-    for (const p of chunkProps(straddler)) {
-      // props past the border obey lakeside's right-side-only rule
-      if (p.z >= BIOME_LENGTH_M) expect(p.x - pathX(p.z)).toBeGreaterThan(0)
-    }
-  })
-
-  it('only spawns types from the chunk biome mix', () => {
-    const forestChunk = Math.floor((2 * BIOME_LENGTH_M + 10) / CHUNK_M)
-    const allowed = ['pine', 'tree', 'rock', 'bush']
-    for (const p of chunkProps(forestChunk)) expect(allowed).toContain(p.type)
-  })
-
-  it('returns nothing behind the start line', () => {
-    expect(chunkProps(-1)).toEqual([])
-  })
-})
-
-describe('signpostsIn', () => {
-  it('one per km inside the window', () => {
-    expect(signpostsIn(0, 3500)).toEqual([
-      { z: 1000, km: 1 },
-      { z: 2000, km: 2 },
-      { z: 3000, km: 3 },
-    ])
-    expect(signpostsIn(1500, 2500)).toEqual([{ z: 2000, km: 2 }])
-    expect(signpostsIn(0, 900)).toEqual([])
+  it('places four floodlights evenly around the loop', () => {
+    const floods = surroundings().filter((p) => p.type === 'flood')
+    expect(floods.map((f) => f.s)).toEqual([50, 150, 250, 350])
   })
 })
 
@@ -110,7 +111,7 @@ describe('day/night', () => {
   it('skyAt lerps between keyframes and matches endpoints across the wrap', () => {
     const dawn = skyAt(0)
     const wrapped = skyAt(0.999999)
-    expect(wrapped.sky).toBeCloseTo(dawn.sky, -2) // ~same color approaching the wrap
+    expect(wrapped.sky).toBeCloseTo(dawn.sky, -2)
     const day = skyAt(0.45)
     const night = skyAt(0.87)
     expect(day.sunIntensity).toBeGreaterThan(night.sunIntensity)

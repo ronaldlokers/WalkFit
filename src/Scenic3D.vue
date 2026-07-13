@@ -1,21 +1,23 @@
 <script setup lang="ts">
-// First-person 3D scenic walk (#51). Lazy-loaded (this file pulls in three.js, so App.vue
-// imports it with defineAsyncComponent — the chunk only downloads when scenic is opened).
-// All world *decisions* (what exists at metre z) live in scenic.ts; this component only
-// turns them into meshes and moves the camera. Camera z follows the walked distance and
-// interpolates toward it at roughly belt speed, so motion is smooth despite the ~4 Hz
-// distance updates from the treadmill ticker.
+// First-person 3D walk around the 400 m athletics track (#51). Lazy-loaded (this file
+// pulls in three.js, so App.vue imports it with defineAsyncComponent — the chunk only
+// downloads when scenic is opened). All world *decisions* (track geometry, scenery
+// placement, sky cycle) live in scenic.ts; this component only turns them into meshes.
+// The camera walks the lane-1 line (loop world → the whole scene is static, no
+// streaming) and interpolates toward the walked distance at roughly belt speed, so
+// motion stays smooth despite the ~4 Hz distance updates from the treadmill ticker.
 import { onMounted, onBeforeUnmount, watch, ref } from 'vue'
 import * as THREE from 'three'
 import {
-  pathX,
-  biomeAt,
-  chunkProps,
-  CHUNK_M,
-  signpostsIn,
+  trackPoint,
+  LAP_M,
+  LANE_W,
+  LANES,
+  TRACK_IN,
+  TRACK_OUT,
+  surroundings,
   dayPhase,
   skyAt,
-  worldHash,
 } from './scenic'
 import type { Prop } from './scenic'
 
@@ -24,10 +26,8 @@ const emit = defineEmits<{ unsupported: [] }>()
 
 const host = ref<HTMLDivElement | null>(null)
 
-const VIEW_AHEAD_M = 240 // build chunks this far ahead (fog hides the edge)
-const VIEW_BEHIND_M = 40
 const EYE_HEIGHT = 1.6
-const PATH_W = 2.4
+const FOG_FAR = 230
 
 let renderer: THREE.WebGLRenderer | null = null
 let raf = 0
@@ -51,8 +51,8 @@ onMounted(() => {
   }
 
   const scene = new THREE.Scene()
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.3, VIEW_AHEAD_M + 40)
-  scene.fog = new THREE.Fog(0x000000, 35, VIEW_AHEAD_M - 10)
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.3, FOG_FAR + 60)
+  scene.fog = new THREE.Fog(0x000000, 60, FOG_FAR)
 
   renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -64,9 +64,8 @@ onMounted(() => {
   scene.add(hemi, sun)
 
   // Sky dome: vertex-color gradient from fog color at the horizon to sky color overhead,
-  // following the camera. Kills the hard seam where fully-fogged ground meets a
-  // flat-color background.
-  const domeGeo = new THREE.SphereGeometry(260, 24, 12) // inside the camera far plane
+  // following the camera. Kills the hard seam where fogged ground meets a flat background.
+  const domeGeo = new THREE.SphereGeometry(260, 24, 12)
   const domeColors = new THREE.Float32BufferAttribute(
     new Float32Array(domeGeo.attributes.position!.count * 3),
     3,
@@ -92,17 +91,14 @@ onMounted(() => {
     domeColors.needsUpdate = true
   }
 
-  // --- shared geometries/materials (unit-size; per-mesh scale) ---
+  // --- shared geometries/materials ---
   const geo = {
     trunk: new THREE.CylinderGeometry(0.12, 0.18, 1, 5),
     crown: new THREE.IcosahedronGeometry(0.9, 0),
     cone: new THREE.ConeGeometry(0.8, 1.4, 6),
     rock: new THREE.IcosahedronGeometry(0.5, 0),
-    box: new THREE.BoxGeometry(1, 1, 1),
-    roof: new THREE.ConeGeometry(0.95, 0.7, 4),
-    pole: new THREE.CylinderGeometry(0.05, 0.05, 1, 5),
-    bulb: new THREE.SphereGeometry(0.14, 6, 5),
-    reed: new THREE.CylinderGeometry(0.02, 0.04, 1, 4),
+    pole: new THREE.CylinderGeometry(0.09, 0.12, 1, 6),
+    head: new THREE.BoxGeometry(1.6, 0.5, 0.25),
   }
   const flat = (color: number) => new THREE.MeshLambertMaterial({ color, flatShading: true })
   const mat = {
@@ -111,24 +107,16 @@ onMounted(() => {
     crown2: flat(0x59923e),
     pine: flat(0x2c5d33),
     rock: flat(0x777d87),
-    wall: flat(0xb8a98c),
-    roof: flat(0x8c4f3f),
     pole: flat(0x4a505b),
-    bulb: new THREE.MeshBasicMaterial({ color: 0xffd98a }), // glows at night (unlit)
-    reed: flat(0xb0a35e),
-    edge: new THREE.MeshBasicMaterial({ color: 0x2ed573 }), // accent path edges, unlit
-    water: new THREE.MeshLambertMaterial({ color: 0x2b5e8a }),
-    sign: flat(0x9a8a6a),
-  }
-  const groundMats = new Map<number, THREE.MeshLambertMaterial>()
-  const pathMats = new Map<number, THREE.MeshLambertMaterial>()
-  const cached = (map: Map<number, THREE.MeshLambertMaterial>, color: number) => {
-    let m = map.get(color)
-    if (!m) {
-      m = new THREE.MeshLambertMaterial({ color })
-      map.set(color, m)
-    }
-    return m
+    floodOn: new THREE.MeshBasicMaterial({ color: 0xfff2c8 }), // unlit — reads as lit at night
+    grass: new THREE.MeshLambertMaterial({ color: 0x2f4a2b }),
+    // The loop ribbons reverse travel direction halfway around, so a fixed triangle
+    // winding faces down on one straight and up on the other — DoubleSide instead of
+    // per-segment winding gymnastics (they're flat strips only ever seen from above).
+    infield: new THREE.MeshLambertMaterial({ color: 0x355530, side: THREE.DoubleSide }),
+    track: new THREE.MeshLambertMaterial({ color: 0x9c4238, side: THREE.DoubleSide }), // red tartan
+    laneLine: new THREE.MeshBasicMaterial({ color: 0xdfe4ea, side: THREE.DoubleSide }),
+    finish: new THREE.MeshBasicMaterial({ color: 0xf2f5f9, side: THREE.DoubleSide }),
   }
 
   function buildProp(p: Prop): THREE.Object3D {
@@ -145,13 +133,13 @@ onMounted(() => {
       const trunk = new THREE.Mesh(geo.trunk, mat.trunk)
       trunk.scale.set(1, 1.6, 1)
       trunk.position.y = 0.8
+      g.add(trunk)
       for (let i = 0; i < 3; i++) {
         const layer = new THREE.Mesh(geo.cone, mat.pine)
         layer.scale.setScalar(1.5 - i * 0.35)
         layer.position.y = 1.6 + i * 1.0
         g.add(layer)
       }
-      g.add(trunk)
     } else if (p.type === 'bush') {
       const b = new THREE.Mesh(geo.crown, mat.crown2)
       b.scale.set(0.9, 0.55, 0.9)
@@ -162,70 +150,42 @@ onMounted(() => {
       r.position.y = 0.25
       r.rotation.y = p.seed * Math.PI * 2
       g.add(r)
-    } else if (p.type === 'reed') {
-      for (let i = 0; i < 3; i++) {
-        const r = new THREE.Mesh(geo.reed, mat.reed)
-        r.scale.y = 1.1 + worldHash(p.seed * 97 + i) * 0.6
-        r.position.set((i - 1) * 0.18, r.scale.y / 2, worldHash(p.seed * 31 + i) * 0.3)
-        r.rotation.z = (worldHash(p.seed * 53 + i) - 0.5) * 0.25
-        g.add(r)
-      }
-    } else if (p.type === 'lamp') {
-      const pole = new THREE.Mesh(geo.pole, mat.pole)
-      pole.scale.y = 3.4
-      pole.position.y = 1.7
-      const bulb = new THREE.Mesh(geo.bulb, mat.bulb)
-      bulb.position.y = 3.5
-      g.add(pole, bulb)
     } else {
-      // house
-      const w = 3 + p.seed * 2.5
-      const body = new THREE.Mesh(geo.box, mat.wall)
-      body.scale.set(w, 2.6, w * 0.8)
-      body.position.y = 1.3
-      const roof = new THREE.Mesh(geo.roof, mat.roof)
-      roof.scale.set(w * 0.85, 1.6, w * 0.7)
-      roof.position.y = 3.4
-      roof.rotation.y = Math.PI / 4
-      g.add(body, roof)
-      g.rotation.y = (p.seed - 0.5) * 0.6
+      // floodlight mast: tall pole + light head, angled toward the track
+      const pole = new THREE.Mesh(geo.pole, mat.pole)
+      pole.scale.y = 12
+      pole.position.y = 6
+      const head = new THREE.Mesh(geo.head, mat.floodOn)
+      head.position.y = 12.1
+      g.add(pole, head)
     }
-    g.position.set(p.x, 0, p.z)
-    if (p.type !== 'house') g.scale.setScalar(p.scale)
+    const pt = trackPoint(p.s, p.o)
+    g.position.set(pt.x, 0, pt.z)
+    if (p.type === 'flood') {
+      g.lookAt(0, 0, 0) // heads face the infield
+    } else {
+      g.rotation.y = p.seed * Math.PI * 2
+      g.scale.setScalar(p.scale)
+    }
     return g
   }
 
-  function signTexture(km: number): THREE.CanvasTexture {
-    const c = document.createElement('canvas')
-    c.width = 128
-    c.height = 64
-    const ctx = c.getContext('2d')!
-    ctx.fillStyle = '#efe7d5'
-    ctx.fillRect(0, 0, 128, 64)
-    ctx.fillStyle = '#1c222b'
-    ctx.font = 'bold 34px system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(`${km} km`, 64, 34)
-    return new THREE.CanvasTexture(c)
-  }
-
-  // Path ribbon + accent edges for one chunk: quad strips following pathX, sampled
-  // every 4 m. Built per chunk (geometry disposed with it).
-  function buildRibbon(z0: number, z1: number, width: number, y: number, m: THREE.Material) {
-    const step = 4
+  // Closed ribbon around the whole loop between lateral offsets [o0, o1], sampled every
+  // 2 m. Winding chosen so face normals point +y (visible from above; FrontSide culling).
+  function buildLoopRibbon(o0: number, o1: number, y: number, m: THREE.Material): THREE.Mesh {
+    const step = 2
+    const n = Math.ceil(LAP_M / step)
     const pts: number[] = []
     const idx: number[] = []
-    let n = 0
-    for (let z = z0; z <= z1 + 0.01; z += step) {
-      const x = pathX(z)
-      pts.push(x - width / 2, y, z, x + width / 2, y, z)
-      if (n > 0) {
-        const a = (n - 1) * 2
-        // winding chosen so face normals point +y (visible from above; FrontSide culling)
-        idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3)
+    for (let i = 0; i <= n; i++) {
+      const s = (i / n) * LAP_M
+      const a = trackPoint(s, o0)
+      const b = trackPoint(s, o1)
+      pts.push(a.x, y, a.z, b.x, y, b.z)
+      if (i > 0) {
+        const k = (i - 1) * 2
+        idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3)
       }
-      n++
     }
     const g = new THREE.BufferGeometry()
     g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3))
@@ -234,84 +194,62 @@ onMounted(() => {
     return new THREE.Mesh(g, m)
   }
 
-  function buildChunk(ci: number): THREE.Group {
-    const g = new THREE.Group()
-    const z0 = ci * CHUNK_M
-    const z1 = z0 + CHUNK_M
-    const biome = biomeAt(z0)
-
-    const ground = new THREE.Mesh(geo.box, cached(groundMats, biome.ground))
-    ground.scale.set(420, 0.1, CHUNK_M) // wide enough that its side edges stay past the fog
-    ground.position.set(pathX(z0 + CHUNK_M / 2), -0.06, z0 + CHUNK_M / 2)
-    g.add(ground)
-
-    if (biome.water) {
-      const water = new THREE.Mesh(geo.box, mat.water)
-      water.scale.set(70, 0.06, CHUNK_M)
-      water.position.set(pathX(z0 + CHUNK_M / 2) - 40, -0.02, z0 + CHUNK_M / 2)
-      g.add(water)
-    }
-
-    g.add(buildRibbon(z0, z1, PATH_W, 0.02, cached(pathMats, biome.path)))
-    // accent-green edge lines along both sides of the walkway
-    const left = buildRibbon(z0, z1, 0.12, 0.03, mat.edge)
-    left.position.x = -PATH_W / 2
-    const right = buildRibbon(z0, z1, 0.12, 0.03, mat.edge)
-    right.position.x = PATH_W / 2
-    g.add(left, right)
-
-    for (const p of chunkProps(ci)) g.add(buildProp(p))
-
-    for (const s of signpostsIn(z0, z1)) {
-      const post = new THREE.Mesh(geo.pole, mat.sign)
-      post.scale.y = 2.2
-      post.position.set(pathX(s.z) + 2.2, 1.1, s.z)
-      const board = new THREE.Mesh(geo.box, new THREE.MeshBasicMaterial({ map: signTexture(s.km) }))
-      board.scale.set(1.5, 0.75, 0.08)
-      board.position.set(pathX(s.z) + 2.2, 2.1, s.z)
-      board.rotation.y = Math.PI // face the walker approaching from -z
-      g.add(post, board)
-    }
-    return g
+  // Short strip across the track at arc position s (start/finish line).
+  function buildCrossStrip(s: number, widthM: number, y: number, m: THREE.Material): THREE.Mesh {
+    const a0 = trackPoint(s, TRACK_IN)
+    const a1 = trackPoint(s, TRACK_OUT)
+    const b0 = trackPoint(s + widthM, TRACK_IN)
+    const b1 = trackPoint(s + widthM, TRACK_OUT)
+    const g = new THREE.BufferGeometry()
+    g.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(
+        [a0.x, y, a0.z, a1.x, y, a1.z, b0.x, y, b0.z, b1.x, y, b1.z],
+        3,
+      ),
+    )
+    g.setIndex([0, 2, 1, 1, 2, 3])
+    g.computeVertexNormals()
+    return new THREE.Mesh(g, m)
   }
 
-  const chunks = new Map<number, THREE.Group>()
-  function syncChunks(d: number) {
-    const lo = Math.max(0, Math.floor((d - VIEW_BEHIND_M) / CHUNK_M))
-    const hi = Math.floor((d + VIEW_AHEAD_M) / CHUNK_M)
-    for (let i = lo; i <= hi; i++) {
-      if (!chunks.has(i)) {
-        const c = buildChunk(i)
-        chunks.set(i, c)
-        scene.add(c)
-      }
-    }
-    for (const [i, c] of chunks) {
-      if (i < lo || i > hi) {
-        scene.remove(c)
-        // dispose per-chunk geometry (ribbons, sign textures); shared geos/mats stay
-        c.traverse((o) => {
-          if (o instanceof THREE.Mesh) {
-            if (!Object.values(geo).includes(o.geometry as never)) o.geometry.dispose()
-            const m = o.material as THREE.Material & { map?: THREE.Texture }
-            if (m.map) {
-              m.map.dispose()
-              m.dispose()
-            }
-          }
-        })
-        chunks.delete(i)
-      }
-    }
+  // --- static world, built once ---
+  const disposables: THREE.BufferGeometry[] = []
+  const track = (mesh: THREE.Mesh) => {
+    disposables.push(mesh.geometry as THREE.BufferGeometry)
+    scene.add(mesh)
+    return mesh
   }
+
+  // grass everywhere (single big plane), slightly below the track surface
+  const groundGeo = new THREE.PlaneGeometry(700, 700)
+  const ground = new THREE.Mesh(groundGeo, mat.grass)
+  ground.rotation.x = -Math.PI / 2
+  ground.position.y = -0.02
+  scene.add(ground)
+  disposables.push(groundGeo)
+
+  // infield: a slightly lighter green fill inside the inner kerb
+  track(buildLoopRibbon(TRACK_IN - 30, TRACK_IN, 0.0, mat.infield))
+  // the red track band with white lane lines (lines sit 4 cm above the surface —
+  // less separation z-fights into shimmer on the far side of the loop)
+  track(buildLoopRibbon(TRACK_IN, TRACK_OUT, 0.02, mat.track))
+  for (let lane = 0; lane <= LANES; lane++) {
+    const o = TRACK_IN + lane * LANE_W
+    track(buildLoopRibbon(o - 0.03, o + 0.03, 0.06, mat.laneLine))
+  }
+  // start/finish line at s = 0
+  track(buildCrossStrip(0, 0.5, 0.07, mat.finish))
+
+  for (const p of surroundings()) scene.add(buildProp(p))
 
   // --- camera + sky per frame ---
   let display = props.distance // smoothed distance the camera actually sits at
   function update(d: number) {
-    syncChunks(d)
-    camera.position.set(pathX(d), EYE_HEIGHT, d)
-    const ahead = d + 14
-    camera.lookAt(pathX(ahead), EYE_HEIGHT - 0.25, ahead)
+    const p = trackPoint(d)
+    camera.position.set(p.x, EYE_HEIGHT, p.z)
+    const ahead = trackPoint(d + 10)
+    camera.lookAt(ahead.x, EYE_HEIGHT - 0.2, ahead.z)
     const sky = skyAt(dayPhase(d))
     scene.fog!.color.setHex(sky.fog)
     paintDome(sky.sky, sky.fog)
@@ -329,7 +267,7 @@ onMounted(() => {
     const dt = Math.min(0.1, (now - last) / 1000)
     last = now
     const target = props.distance
-    if (Math.abs(target - display) > 30) display = target // view (re)opened — snap
+    if (Math.abs(target - display) > LAP_M / 4) display = target // view (re)opened — snap
     // advance at belt speed, gently corrected toward the true integrated distance
     display += ((props.speed * 1000) / 3600) * dt + (target - display) * dt * 1.5
     update(display)
@@ -383,19 +321,12 @@ onMounted(() => {
     stopDistanceWatch?.()
     document.removeEventListener('visibilitychange', onVisibility)
     ro.disconnect()
-    for (const c of chunks.values()) {
-      scene.remove(c)
-      c.traverse((o) => {
-        if (o instanceof THREE.Mesh) o.geometry.dispose()
-      })
-    }
-    scene.remove(dome)
+    scene.clear()
+    disposables.forEach((g) => g.dispose())
     domeGeo.dispose()
     dome.material.dispose()
     Object.values(geo).forEach((g) => g.dispose())
     Object.values(mat).forEach((m) => m.dispose())
-    groundMats.forEach((m) => m.dispose())
-    pathMats.forEach((m) => m.dispose())
     renderer?.dispose()
     renderer?.domElement.remove()
     renderer = null

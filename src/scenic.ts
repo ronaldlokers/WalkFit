@@ -1,8 +1,8 @@
-// Pure, framework-free world model for the 3D scenic walk (#51). No three.js here:
-// this module answers "what exists at metre z" so it stays unit-testable, and the
-// Scenic3D component only turns the answers into meshes. Everything derives from the
-// walked distance through a deterministic hash — metre N always looks the same across
-// re-renders, reloads, and re-walks (same property the old 2D bucket system had).
+// Pure, framework-free world model for the 3D scenic walk (#51): a 400 m athletics
+// track walked first-person from lane 1. No three.js here — this module answers "where
+// is the walker at distance s, and what surrounds the track", so it stays unit-testable;
+// the Scenic3D component only turns the answers into meshes. Everything is deterministic
+// (same distance → same view, across re-renders and reloads).
 
 // Cheap deterministic pseudo-random in [0,1) — the same sine trick the 2D scenic used.
 export function worldHash(seed: number): number {
@@ -10,144 +10,101 @@ export function worldHash(seed: number): number {
   return x - Math.floor(x)
 }
 
-// --- path ---
-// The walkway curves gently: two overlapping sine waves in the lateral (x) axis as a
-// function of forward metres (z). Amplitudes/periods chosen for calm, wide S-curves —
-// comfort first, this is a treadmill companion, not a racing game.
-export function pathX(z: number): number {
-  return 6 * Math.sin(z / 90) + 3 * Math.sin(z / 37)
-}
-// Path heading (radians, 0 = straight ahead) from the analytic derivative of pathX.
-export function pathHeading(z: number): number {
-  const dxdz = (6 / 90) * Math.cos(z / 90) + (3 / 37) * Math.cos(z / 37)
-  return Math.atan(dxdz)
-}
+// --- 400 m track geometry ---
+// Standard stadium shape: two straights + two semicircular bends, sized so the lane-1
+// walking line measures exactly 400 m (IAAF straights, bend radius derived from that).
+export const LAP_M = 400
+export const STRAIGHT_M = 84.39
+export const BEND_R = (LAP_M - 2 * STRAIGHT_M) / (2 * Math.PI) // ≈ 36.8 m
+export const LANE_W = 1.22
+export const LANES = 6
+// track band, as lateral offsets from the lane-1 walking line (positive = outward,
+// away from the infield): inner edge half a lane in, outer edge LANES out.
+export const TRACK_IN = -LANE_W / 2
+export const TRACK_OUT = TRACK_IN + LANES * LANE_W
 
-// --- biomes ---
-export type BiomeId = 'park' | 'lakeside' | 'forest' | 'town' | 'hills'
-export interface Biome {
-  id: BiomeId
-  ground: number // ground plane color (hex)
-  path: number // walkway color
-  propsPerChunk: number
-  // relative weights for prop types spawned in this biome
-  mix: Partial<Record<PropType, number>>
-  water: boolean // lakeside: water plane on the -x side of the path, props on the shore side
+export interface TrackPoint {
+  x: number
+  z: number
+  // unit tangent (direction of travel) — the camera looks along the loop
+  tx: number
+  tz: number
 }
 
-export const BIOME_LENGTH_M = 500
-
-const BIOMES: Biome[] = [
-  {
-    id: 'park',
-    ground: 0x2f4a2b,
-    path: 0x3a3f4a,
-    propsPerChunk: 7,
-    mix: { tree: 5, bush: 3, lamp: 1 },
-    water: false,
-  },
-  {
-    id: 'lakeside',
-    ground: 0x35503c,
-    path: 0x3a3f4a,
-    propsPerChunk: 5,
-    mix: { reed: 4, tree: 2, rock: 2 },
-    water: true,
-  },
-  {
-    id: 'forest',
-    ground: 0x24361f,
-    path: 0x38352e,
-    propsPerChunk: 12,
-    mix: { pine: 8, tree: 2, rock: 2, bush: 2 },
-    water: false,
-  },
-  {
-    id: 'town',
-    ground: 0x3c3a36,
-    path: 0x44424b,
-    propsPerChunk: 5,
-    mix: { house: 3, lamp: 2, tree: 2 },
-    water: false,
-  },
-  {
-    id: 'hills',
-    ground: 0x46523a,
-    path: 0x3a3f4a,
-    propsPerChunk: 4,
-    mix: { rock: 3, bush: 3, tree: 1 },
-    water: false,
-  },
-]
-
-export function biomeAt(z: number): Biome {
-  const i = Math.floor(Math.max(0, z) / BIOME_LENGTH_M) % BIOMES.length
-  return BIOMES[i]!
+// Position on the loop at arc distance s (metres, wraps every LAP_M) and lateral
+// offset o (metres from the lane-1 line, positive outward). Walking direction is
+// counterclockwise seen from above — infield on the walker's left, like athletics.
+export function trackPoint(s: number, o = 0): TrackPoint {
+  s = ((s % LAP_M) + LAP_M) % LAP_M
+  const R = BEND_R
+  const half = STRAIGHT_M / 2
+  const bendLen = Math.PI * R
+  if (s < STRAIGHT_M) {
+    // home straight: x = +R side, walking -z
+    return { x: R + o, z: half - s, tx: 0, tz: -1 }
+  }
+  s -= STRAIGHT_M
+  if (s < bendLen) {
+    // first bend, centered (0, -half)
+    const a = s / R
+    return {
+      x: (R + o) * Math.cos(a),
+      z: -half - (R + o) * Math.sin(a),
+      tx: -Math.sin(a),
+      tz: -Math.cos(a),
+    }
+  }
+  s -= bendLen
+  if (s < STRAIGHT_M) {
+    // back straight: x = -R side, walking +z
+    return { x: -(R + o), z: -half + s, tx: 0, tz: 1 }
+  }
+  s -= STRAIGHT_M
+  // second bend, centered (0, +half)
+  const a = s / R
+  return {
+    x: -(R + o) * Math.cos(a),
+    z: half + (R + o) * Math.sin(a),
+    tx: Math.sin(a),
+    tz: Math.cos(a),
+  }
 }
 
-// --- props ---
-export type PropType = 'tree' | 'pine' | 'bush' | 'rock' | 'reed' | 'lamp' | 'house'
+// --- surroundings ---
+// Deterministic scenery outside the track: trees/bushes/rocks scattered around the
+// perimeter, plus floodlight poles. Static — a loop world needs no streaming.
+export type PropType = 'tree' | 'pine' | 'bush' | 'rock' | 'flood'
 export interface Prop {
   type: PropType
-  z: number // forward metres
-  x: number // lateral metres (absolute, already offset from the path curve)
+  s: number // arc position along the loop
+  o: number // lateral offset (positive = outside the track)
   scale: number
-  seed: number // extra per-prop hash source for the mesh builder (tint, rotation)
+  seed: number
 }
 
-export const CHUNK_M = 40
+const SCENERY_TYPES: PropType[] = ['tree', 'tree', 'pine', 'bush', 'rock']
+export const SCENERY_CLEAR_M = 4 // clearance beyond the track's outer edge
 
-function pickType(biome: Biome, r: number): PropType {
-  const entries = Object.entries(biome.mix) as [PropType, number][]
-  const total = entries.reduce((a, [, w]) => a + w, 0)
-  let acc = 0
-  for (const [type, w] of entries) {
-    acc += w
-    if (r < acc / total) return type
-  }
-  return entries[entries.length - 1]![0]
-}
-
-// All props for one chunk (chunk i covers [i*CHUNK_M, (i+1)*CHUNK_M)). Deterministic:
-// the same chunk index always yields the same props. A chunk can straddle a biome
-// border, so type/side resolve from the biome at each prop's own z — otherwise a
-// "park" tree could land in the lakeside's water strip.
-export function chunkProps(chunk: number): Prop[] {
-  if (chunk < 0) return []
-  const base = chunk * CHUNK_M
-  const count = biomeAt(base).propsPerChunk
+export function surroundings(): Prop[] {
   const props: Prop[] = []
-  for (let i = 0; i < count; i++) {
-    const s = chunk * 131 + i * 7
-    const z = base + worldHash(s) * CHUNK_M
-    const biome = biomeAt(z)
-    const side = worldHash(s + 1) < 0.5 ? -1 : 1
-    // keep clear of the walkway: 5–28 m out from the path centre line.
-    // lakeside: the -x side is water, so everything spawns on the +x shore.
-    const finalSide = biome.water ? 1 : side
-    const lateral = 5 + worldHash(s + 2) * 23
+  // greenery ring outside the track
+  for (let i = 0; i < 48; i++) {
+    const seed = i * 17
+    const s = i * (LAP_M / 48) + worldHash(seed) * 6
+    const o = TRACK_OUT + SCENERY_CLEAR_M + worldHash(seed + 1) * 26
     props.push({
-      type: pickType(biome, worldHash(s + 3)),
-      z,
-      x: pathX(z) + finalSide * lateral,
-      scale: 0.7 + worldHash(s + 4) * 0.8,
-      seed: worldHash(s + 5),
+      type: SCENERY_TYPES[Math.floor(worldHash(seed + 2) * SCENERY_TYPES.length)]!,
+      s,
+      o,
+      scale: 0.8 + worldHash(seed + 3) * 0.7,
+      seed: worldHash(seed + 4),
     })
   }
-  return props
-}
-
-// Km signposts beside the path (right-hand side), one per 1000 m walked.
-export interface Signpost {
-  z: number
-  km: number
-}
-export function signpostsIn(fromZ: number, toZ: number): Signpost[] {
-  const out: Signpost[] = []
-  for (let km = Math.max(1, Math.ceil(fromZ / 1000)); km * 1000 < toZ; km++) {
-    out.push({ z: km * 1000, km })
+  // four floodlight masts, evenly spaced, just past the outer edge (lit at night)
+  for (let i = 0; i < 4; i++) {
+    props.push({ type: 'flood', s: 50 + i * 100, o: TRACK_OUT + 2.5, scale: 1, seed: i / 4 })
   }
-  return out
+  return props
 }
 
 // --- day/night from walked distance ---
@@ -156,16 +113,15 @@ export function signpostsIn(fromZ: number, toZ: number): Signpost[] {
 export const DAY_LENGTH_M = 3200
 
 export function dayPhase(z: number): number {
-  const p = (Math.max(0, z) % DAY_LENGTH_M) / DAY_LENGTH_M
-  return p
+  return (Math.max(0, z) % DAY_LENGTH_M) / DAY_LENGTH_M
 }
 
 export interface SkyState {
-  sky: number // background / clear color
-  fog: number
+  sky: number // upper sky color
+  fog: number // horizon / fog color
   sunIntensity: number // directional light
   sunColor: number
-  ambient: number // hemisphere/ambient intensity
+  ambient: number // hemisphere intensity
 }
 
 interface SkyKey extends SkyState {

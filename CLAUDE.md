@@ -38,15 +38,21 @@ inside that session don't recurse.
 ```bash
 npm test           # Vitest (run once)
 npm run test:watch
-npm run lint       # ESLint (flat config, Vue-aware)
+npm run typecheck  # vue-tsc --build (project references; checks .ts + .vue)
+npm run lint       # ESLint (flat config, Vue + typescript-eslint)
 npm run format     # Prettier --write   (format:check in CI)
 ```
 
-CI (`.github/workflows/ci.yml`) runs lint → format:check → test → build on PRs; deploy
-workflow gates on tests too. Tests: `src/protocol.test.js` (framing/checksum, phantom-2x speed
-filter, telemetry + HR parsing), `src/trainings.test.js`, `src/history.test.js`,
-`src/App.happy.test.js` (jsdom + @vue/test-utils happy-path: wizard → walk/workout flows),
-and `src/App.hrWorkout.test.js` (mocks both `treadmill.js`/`heartrate.js` composables to
+Codebase is TypeScript (strict, via `@vue/tsconfig`): `tsconfig.app.json` covers `src/`
+(types `vite/client` + `@types/web-bluetooth`), `tsconfig.node.json` the config files and
+`e2e/`. Extensionless relative imports (`from './protocol'`) — `vi.mock` specifiers must
+match. `src/vite-env.d.ts` declares the `VITE_STRAVA_*` env vars and `webkitAudioContext`.
+
+CI (`.github/workflows/ci.yml`) runs lint → format:check → typecheck → test → build on
+PRs; deploy workflow gates on tests too. Tests: `src/protocol.test.ts` (framing/checksum,
+phantom-2x speed filter, telemetry + HR parsing), `src/workouts.test.ts`, `src/history.test.ts`,
+`src/App.happy.test.ts` (jsdom + @vue/test-utils happy-path: wizard → walk/workout flows),
+and `src/App.hrWorkout.test.ts` (mocks both `treadmill.ts`/`heartrate.ts` composables to
 drive `state.elapsed`/`bpm` directly — verifies nudge direction, the 20s rate limit, that it
 stays silent while the belt isn't running, that it ends itself on HR disconnect, the
 Light target's 90–113 bpm range, and that the header button opens the weight-loss tab).
@@ -57,7 +63,7 @@ Formatting Prettier (no semicolons, single quotes, width 100). Note: Prettier sp
 inline template handlers across lines, breaks multi-statement `@click="a; b"` — use
 method instead of inline multi-statement handlers.
 
-**E2E / visual (Playwright):** `npm run e2e` (spec in `e2e/`, config `playwright.config.js`).
+**E2E / visual (Playwright):** `npm run e2e` (spec in `e2e/`, config `playwright.config.ts`).
 One smoke spec: loads app, asserts wizard + walk flow, and `toHaveScreenshot`
 baseline. Baselines (`e2e/*-snapshots/*.png`) committed, MUST get generated in same
 container CI uses, else font differences fail diff:
@@ -73,24 +79,25 @@ Keep pinned Playwright version and image tag in sync.
 
 ## Layout
 
-- `src/protocol.js` — **pure, framework-free** protocol logic (framing/checksum, set-speed frame,
-  telemetry parse, phantom-2x speed filter, HR parse). Unit-tested in `src/protocol.test.js`.
-- `src/treadmill.js` — `useTreadmill()` composable: Web Bluetooth connection wiring around
-  `protocol.js` (connect, start/stop, set speed, distance/time integration, auto-reconnect).
-- `src/heartrate.js` — `useHeartRate()` composable: standard BLE Heart Rate Service (`0x180D`).
-- `src/workouts.js` — weight-loss workout presets (segments of `{speed, minutes}`),
+- `src/protocol.ts` — **pure, framework-free** protocol logic (framing/checksum, set-speed frame,
+  telemetry parse, phantom-2x speed filter, HR parse). Unit-tested in `src/protocol.test.ts`.
+- `src/treadmill.ts` — `useTreadmill()` composable: Web Bluetooth connection wiring around
+  `protocol.ts` (connect, start/stop, set speed, distance/time integration, auto-reconnect).
+- `src/heartrate.ts` — `useHeartRate()` composable: standard BLE Heart Rate Service (`0x180D`).
+- `src/workouts.ts` — weight-loss workout presets (segments of `{speed, minutes}`),
   `workoutStats`, `timeline`, `metForSpeed` (MET-based kcal estimate, also used for live
-  session kcal).
-- `src/history.js` — completed-session log persisted to `localStorage` (`walkfit.history`):
-  `addSession`, `weeklyTotals` (ISO-week rollups), `currentStreak`. Unit-tested in
-  `src/history.test.js`.
-- `src/strava.js` — `useStrava()` composable: OAuth2 connect + per-session upload. See
+  session kcal), and the shared `Workout`/`Segment`/`HrTarget` types (SFCs can't export
+  types, so App.vue's HR_TARGETS shape lives here).
+- `src/history.ts` — completed-session log persisted to `localStorage` (`walkfit.history`):
+  `Session` type, `addSession`, `weeklyTotals` (ISO-week rollups), `currentStreak`.
+  Unit-tested in `src/history.test.ts`.
+- `src/strava.ts` — `useStrava()` composable: OAuth2 connect + per-session upload. See
   "Strava upload" below.
 - `src/WorkoutPicker.vue` — the tabbed weight-loss/HR workout picker, shared verbatim
   between the wizard's step 4 and the header's workout menu (see "Workouts" below).
 - `src/App.vue` — the rest of the UI (still mostly one component): loop, chart, controls,
   stats, header overflow menu, history view, settings, onboarding wizard.
-- `src/main.js`, `src/style.css` — bootstrap + global styles/theme vars (`--accent`), plus
+- `src/main.ts`, `src/style.css` — bootstrap + global styles/theme vars (`--accent`), plus
   the base `.btn` family — kept unscoped/global (not in `App.vue`'s `<style scoped>`)
   specifically so `WorkoutPicker.vue`'s buttons pick it up too; scoped styles don't cross
   component boundaries.
@@ -127,7 +134,7 @@ without the wizard needing that concept at all.
 
 Inside the picker, two tabs:
 
-- **Weight loss** (default): the fixed-segment presets from `workouts.js`, unchanged —
+- **Weight loss** (default): the fixed-segment presets from `workouts.ts`, unchanged —
   pick one, belt follows its `{speed, minutes}` timeline.
 - **Heart rate**: pick a target — Light / Fat burn / Cardio / Hard — and belt speed
   nudges ±`HR_NUDGE_STEP` every `HR_ADJUST_INTERVAL` (20s, in `App.vue`) to hold bpm
@@ -136,7 +143,7 @@ Inside the picker, two tabs:
   (47.5–60% of max HR — 90–113 bpm at the default 190) that the badge's zones don't
   have, and the badge's top "Max" zone isn't a sane steer target. Deliberately simple
   and safe: nudges only fire while `state.running` is true and no more often than the
-  20s interval, so it can never race `treadmill.js`'s own ~8s countdown-window
+  20s interval, so it can never race `treadmill.ts`'s own ~8s countdown-window
   speed-enforcement retry (20s always exceeds that window). `setSpeed()` already clamps
   to `SPEED_MIN..SPEED_MAX` and snaps to the step grid, and `state.speed` is already the
   phantom-2x-filtered reading — the workout mode adds no protocol-level logic of its
@@ -205,7 +212,7 @@ browser bundle.
   server-side. See `strava-proxy/README.md` for deploy steps (register a Strava API app,
   `wrangler secret put`, `wrangler deploy`).
 - Activity **upload** does NOT go through the worker — `api.strava.com` sends permissive
-  CORS headers, so `src/strava.js` calls it directly from the browser with the bearer
+  CORS headers, so `src/strava.ts` calls it directly from the browser with the bearer
   access token. Don't add an upload route to the worker; keep its surface to the two
   token routes only.
 - `VITE_STRAVA_CLIENT_ID` is public (it's part of the authorize URL every browser sends) —
@@ -227,7 +234,7 @@ Bluetooth pairing only exposes audio profiles — dead end.
 - **Set speed** via vendor write char `0xfff2` (FTMS set-speed ignored by this firmware). Frame:
   `02 53 02 <speed> <xor> 03`, `speed` = km/h × 10, checksum = XOR of opcode..last payload byte.
   Range 1.0–6.0 km/h.
-- **Telemetry** on vendor notify `0xfff1`. Three gotchas, all handled in `treadmill.js`:
+- **Telemetry** on vendor notify `0xfff1`. Three gotchas, all handled in `treadmill.ts`:
   1. **Speed writes ignored during 3-2-1 countdown** → enforce/retry target for
      bounded ~8s window (unbounded retry spams writes forever).
   2. FW **interleaves phantom `02 53 02` frame at exactly 2× real speed** (0.05 km/h
@@ -237,11 +244,12 @@ Bluetooth pairing only exposes audio profiles — dead end.
      while running. So: **poll** `02 51 03 00` to `0xfff2` at ~1 Hz to elicit data, derive stopped
      from ~3s speed-frame staleness timeout (not from status frames).
 
-`src/treadmill.js` keeps small `state.log` debug ring (toggle via ⚙ settings "Debug panel").
+`src/treadmill.ts` keeps small `state.log` debug ring (toggle via ⚙ settings "Debug panel").
 
 ## Conventions
 
-- Vue 3 `<script setup>`, Composition API, composables return `reactive` `state` + methods.
+- Vue 3 `<script setup lang="ts">`, Composition API, composables return typed `reactive`
+  `state` + methods. TypeScript strict; keep conversions of protocol/BLE code types-only.
 - No component library; hand-rolled CSS in `App.vue` (scoped) + `style.css`. Dark theme,
   `--accent` green. Prefer editing single `App.vue` over splitting components unless it grows.
 - Speed always km/h; distances metres internally, formatted for display.

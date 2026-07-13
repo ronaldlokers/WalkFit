@@ -179,9 +179,12 @@ describe('App happy path', () => {
     // let the defineAsyncComponent import (three.js chunk) + mount + emit settle
     await vi.waitFor(() => expect(w.find('.track').exists()).toBe(true), { timeout: 5000 })
     expect(w.find('.scene3d-wrap').exists()).toBe(false)
-    const scenicBtn = w.findAll('.view-btn').find((b) => b.text().includes('Scenic'))!
-    expect(scenicBtn.attributes('disabled')).toBeDefined()
-    expect(scenicBtn.attributes('title')).toBe('Needs WebGL')
+    // the Settings view toggle disables the 3D option
+    await clickButton(w, '☰')
+    await clickButton(w, 'Settings')
+    const btn3d = w.findAll('button').find((b) => b.text() === '3D')!
+    expect(btn3d.attributes('disabled')).toBeDefined()
+    expect(btn3d.attributes('title')).toBe('Needs WebGL')
   })
 
   it('wizard step 4 embeds the same tabbed WorkoutPicker as the header menu, including HR targets', async () => {

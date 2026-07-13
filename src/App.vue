@@ -17,7 +17,6 @@ import type { Session } from './statistics'
 import {
   trackPoint,
   laneStaggers,
-  distanceSigns,
   BEND_R,
   STRAIGHT_M,
   LANE_W,
@@ -275,9 +274,9 @@ const track2d = {
   laneW: LANE_W * TE * TK, // one lane in px — sizes the progress stroke
   laneLines: Array.from({ length: LANES + 1 }, (_, i) => loopPath(TRACK_IN + i * LANE_W)),
   lane1: loopPath(0), // the runner's guide path — lane-1 centreline, same as the 3D camera
-  start: { a: svgPt(0, TRACK_IN), b: svgPt(0, TRACK_IN + LANE_W) },
+  // common finish line across all lanes at s = 0, same as the 3D view
+  finish: { a: svgPt(0, TRACK_IN), b: svgPt(0, TRACK_OUT) },
   staggers: laneStaggers().map((st) => ({ a: svgPt(st.s, st.o0), b: svgPt(st.s, st.o1) })),
-  signs: distanceSigns().map((sg) => ({ ...svgPt(sg.s, TRACK_OUT + 2), label: String(sg.s) })),
 }
 
 const trackEl = ref<SVGPathElement | null>(null)
@@ -863,32 +862,18 @@ const pace = computed(() => {
 
     <!-- virtual loop / scenic walk -->
     <section class="track-wrap">
-      <div class="view-toggle">
-        <button class="view-btn" :class="{ on: viewMode === 'track' }" @click="viewMode = 'track'">
-          🏟️ Track
-        </button>
-        <button
-          class="view-btn"
-          :class="{ on: viewMode === 'scenic' }"
-          :disabled="!scenicSupported"
-          :title="scenicSupported ? undefined : 'Needs WebGL'"
-          @click="viewMode = 'scenic'"
-        >
-          🌳 Scenic
-        </button>
-      </div>
-
       <svg v-if="viewMode === 'track'" viewBox="0 0 400 260" class="track">
         <!-- top-down render of the same 400 m track model the 3D view walks (scenic.ts):
-             six lanes, lane-1 start/finish, staggered starts, 100 m marks -->
+             six lanes, common finish line, staggered starts -->
+
         <path class="track-band" :d="track2d.band" :stroke-width="track2d.bandW" />
         <path v-for="(d, i) in track2d.laneLines" :key="`lane-${i}`" class="track-lane" :d="d" />
         <line
           class="startline"
-          :x1="track2d.start.a.x"
-          :y1="track2d.start.a.y"
-          :x2="track2d.start.b.x"
-          :y2="track2d.start.b.y"
+          :x1="track2d.finish.a.x"
+          :y1="track2d.finish.a.y"
+          :x2="track2d.finish.b.x"
+          :y2="track2d.finish.b.y"
         />
         <line
           v-for="(st, i) in track2d.staggers"
@@ -899,15 +884,6 @@ const pace = computed(() => {
           :x2="st.b.x"
           :y2="st.b.y"
         />
-        <text
-          v-for="(sg, i) in track2d.signs"
-          :key="`sign-${i}`"
-          class="track-sign"
-          :x="sg.x"
-          :y="sg.y"
-        >
-          {{ sg.label }}
-        </text>
         <!-- invisible guide path: the lane-1 centreline the marker + progress follow -->
         <path ref="trackEl" class="track-line" :d="track2d.lane1" />
         <path
@@ -920,7 +896,6 @@ const pace = computed(() => {
         <g :transform="`translate(${marker.x},${marker.y})`" class="runner">
           <circle class="halo" r="12" />
           <circle class="body" r="7" />
-          <text y="1">🏃</text>
         </g>
         <text class="lap-num" x="200" y="120">{{ laps }}</text>
         <text class="lap-label" x="200" y="150">
@@ -1523,6 +1498,27 @@ const pace = computed(() => {
           </div>
           <p class="set-note">The activity rings in Statistics fill toward these.</p>
 
+          <h3>Display</h3>
+          <div class="set-row">
+            <span>Track view</span>
+            <div class="set-actions">
+              <button
+                :class="viewMode === 'track' ? 'btn primary sm' : 'btn ghost sm'"
+                @click="viewMode = 'track'"
+              >
+                2D
+              </button>
+              <button
+                :class="viewMode === 'scenic' ? 'btn primary sm' : 'btn ghost sm'"
+                :disabled="!scenicSupported"
+                :title="scenicSupported ? undefined : 'Needs WebGL'"
+                @click="viewMode = 'scenic'"
+              >
+                3D
+              </button>
+            </div>
+          </div>
+
           <template v-if="strava.state.supported">
             <h3>Strava</h3>
             <div class="set-row">
@@ -1726,16 +1722,6 @@ code {
   stroke: rgba(255, 255, 255, 0.8);
   stroke-width: 1.2;
 }
-.track-sign {
-  fill: #8a93a3;
-  font-size: 9px;
-  font-weight: 600;
-  text-anchor: middle;
-}
-.runner text {
-  text-anchor: middle;
-  font-size: 10px;
-}
 .runner .halo {
   fill: rgba(46, 213, 115, 0.18);
 }
@@ -1762,28 +1748,6 @@ code {
   font-size: 11px;
   fill: #8a93a3;
   font-variant-numeric: tabular-nums;
-}
-
-.view-toggle {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-.view-btn {
-  flex: 1;
-  background: #171a21;
-  border: 1px solid #232833;
-  color: #8a93a3;
-  border-radius: 10px;
-  padding: 7px;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.view-btn.on {
-  color: #e8ecf2;
-  border-color: var(--accent);
-  background: #1a2420;
 }
 
 /* --- 3D scenic (#51): canvas wrapper + overlaid lap badge --- */

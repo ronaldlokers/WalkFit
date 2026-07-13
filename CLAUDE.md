@@ -197,10 +197,10 @@ buttons, to keep the header from crowding on narrow screens. The Connect button 
 not connected) and the HR badge (when a sensor is connected) stay directly in the
 header — both are primary, frequently-tapped actions, unlike the four menu items.
 
-The main visual has two modes, toggled above it: the 400 m athletics **track** (default),
-or a first-person 3D **scenic** walk (#51). Both read the same
-`state.distance`/`state.speed` — no separate tracking. Lap count/lap-times carry over
-into scenic mode as a corner badge overlaid on the canvas.
+The main visual has two modes, toggled in **Settings → Display** (2D / 3D): the
+top-down 2D **track** (default), or the first-person 3D **scenic** walk (#51). Both
+read the same `state.distance`/`state.speed` — no separate tracking. Lap
+count/lap-times carry over into the 3D mode as a corner badge overlaid on the canvas.
 
 **Scenic (3D)** is a first-person walk around the 400 m athletics track itself, camera
 centred in **lane 1** (infield on the left, counterclockwise like athletics). It splits
@@ -233,11 +233,12 @@ view and disables the Scenic toggle.
 
 The 2D track view is **generated from the same scenic.ts model** the 3D view walks —
 not hand-drawn SVG: `track2d` in App.vue maps 3D `(x, z)` → SVG `(cx + z·k, cy + x·k)`
-(k = 2.2 px/m) and builds the band, all seven lane lines, the lane-1 start/finish line,
-the staggered starts, and the 100/200/300 m labels from `trackPoint`/`laneStaggers`/
-`distanceSigns`. Loop paths use exact circular arcs, so `getTotalLength` maps linearly
-to walked metres; the runner marker and progress ring follow the invisible lane-1
-guide path (`.track-line`, `stroke: none` — geometry only).
+(k = 2 px/m, with lateral offsets exaggerated ×2.5 transit-map style so the six lanes
+stay readable) and builds the band, all seven lane lines, the full-width finish line,
+and the staggered starts from `trackPoint`/`laneStaggers`. Loop paths use exact
+circular arcs, and lane 1's guide path is at offset 0 (unaffected by the exaggeration),
+so `getTotalLength` maps linearly to walked metres; the runner marker and progress
+ring follow that invisible guide (`.track-line`, `stroke: none` — geometry only).
 
 The track `<svg>` only exists in the DOM while that view is active (`v-if`), so its path
 geometry (`pathLen`, read via `getTotalLength()` for the runner marker + progress ring)

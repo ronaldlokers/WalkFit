@@ -8,7 +8,7 @@ export default defineConfig({
   server: { host: true },
   test: {
     // Vitest owns unit/component tests in src/; Playwright owns e2e/*.spec.js.
-    include: ['src/**/*.test.{js,ts}'],
+    include: ['src/**/*.test.ts'],
     // env is node by default; component tests opt into jsdom via a file docblock
     setupFiles: ['./test/setup.js'],
   },

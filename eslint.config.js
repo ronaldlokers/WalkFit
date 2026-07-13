@@ -19,9 +19,6 @@ export default defineConfigWithVueTs(
     rules: {
       'vue/multi-word-component-names': 'off',
       'no-empty': ['error', { allowEmptyCatch: true }],
-      // TEMP during the #28 JS->TS migration: SFC script blocks convert to lang="ts"
-      // in their own steps; drop allowNoLang once App.vue and WorkoutPicker.vue are TS.
-      'vue/block-lang': ['error', { script: { lang: 'ts', allowNoLang: true } }],
     },
   },
 )

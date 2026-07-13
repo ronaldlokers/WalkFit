@@ -22,6 +22,12 @@
   // bus — mounting the socket is all the "passthrough" needed (Linux hosts only).
   "mounts": ["source=/run/dbus/system_bus_socket,target=/run/dbus/system_bus_socket,type=bind"],
   "postCreateCommand": "bash .devcontainer/post-create.sh",
+  // Node 17+ uses verbatim DNS order, and glibc resolves `localhost` to ::1 before
+  // 127.0.0.1 — so `wrangler login` (which listens on localhost:8976) binds IPv6 loopback
+  // only, while DevPod forwards the host's localhost:8976 to the container's IPv4
+  // 127.0.0.1 → connection refused. ipv4first makes wrangler bind 127.0.0.1 to match the
+  // forward. Harmless elsewhere (Node's pre-17 default; vite binds 0.0.0.0 regardless).
+  "containerEnv": { "NODE_OPTIONS": "--dns-result-order=ipv4first" },
   "forwardPorts": [5173, 8976],
   "portsAttributes": {
     "5173": {

@@ -11,6 +11,14 @@ import {
   surroundings,
   distanceSigns,
   laneStaggers,
+  laneNumbers,
+  LANE_NUMBER_S,
+  BREAK_LINE_S,
+  relayZoneLines,
+  hurdleTicks,
+  waterfallPoints,
+  laneDistanceToS,
+  WATERFALL_S,
   dayPhase,
   skyAt,
   DAY_LENGTH_M,
@@ -105,6 +113,75 @@ describe('surroundings', () => {
 })
 
 describe('track markings', () => {
+  it('one painted number per lane, centred on each lane, just past the finish', () => {
+    const nums = laneNumbers()
+    expect(nums.map((n) => n.lane)).toEqual([1, 2, 3, 4, 5, 6])
+    for (const n of nums) {
+      expect(n.o).toBeCloseTo((n.lane - 1) * LANE_W, 10) // lane centreline
+      expect(n.s).toBe(LANE_NUMBER_S)
+    }
+  })
+
+  it('break line sits at the 200 m point (end of the first bend)', () => {
+    expect(BREAK_LINE_S).toBeCloseTo(200, 10)
+  })
+
+  it('laneDistanceToS: identity in lane 1, and every lane finishes its 400 m at the line', () => {
+    for (const d of [0, 45, 100, 250, 399]) expect(laneDistanceToS(0, d)).toBeCloseTo(d, 8)
+    for (let k = 0; k < 6; k++) {
+      expect(laneDistanceToS(k * LANE_W, 400) % 400).toBeCloseTo(0, 6)
+    }
+  })
+
+  it('relay zones: per-lane exact positions, fanning forward on the bends', () => {
+    const lines = relayZoneLines()
+    expect(lines.length).toBe(6 * 3 * 2)
+    // lane 1 limits are the plain arc positions
+    const lane1 = lines.filter((l) => l.o0 < 0).map((l) => l.s)
+    expect(lane1.map((s) => Math.round(s * 100) / 100)).toEqual([80, 110, 180, 210, 280, 310])
+    // outer lanes' first-zone entry (80 lane-metres in) sits past the bend start, so
+    // its lane-1 arc position is beyond 80 — the marks fan forward like the staggers
+    const lane6entry = lines.filter((l) => l.o1 > 6.5).map((l) => l.s)[0]!
+    expect(lane6entry).toBeGreaterThan(80)
+  })
+
+  it('400 mH: 10 flights per lane measured along that lane, ticks on both lane lines', () => {
+    const ticks = hurdleTicks()
+    expect(ticks.length).toBe(6 * 10 * 2)
+    // lane 1: first flight exactly at 45 m, last at 360 m
+    const lane1S = [...new Set(ticks.filter((t) => t.o < 0).map((t) => t.s))]
+    expect(lane1S[0]).toBeCloseTo(45, 8)
+    expect(lane1S[9]).toBeCloseTo(360, 8)
+    // edge lines carry one lane's marks; interior lines are shared, so they carry the
+    // marks of BOTH adjacent lanes (at that lane's own positions) — like a real track
+    const onLine = (o: number) => ticks.filter((t) => Math.abs(t.o - o) < 1e-9).length
+    expect(onLine(-LANE_W / 2)).toBe(10) // inner edge: lane 1 only
+    expect(onLine(-LANE_W / 2 + 6 * LANE_W)).toBe(10) // outer edge: lane 6 only
+    expect(onLine(LANE_W / 2)).toBe(20) // lane1/lane2 shared line
+  })
+
+  it('waterfall start: the tangent path from every point measures exactly 300 m home', () => {
+    const R = BEND_R
+    for (const p of waterfallPoints(9)) {
+      if (p.o <= 0) {
+        expect(p.s).toBeCloseTo(WATERFALL_S, 8)
+        continue
+      }
+      // reconstruct the runner's path: tangent chord to the lane-1 circle, remaining
+      // bend arc, then bend exit → finish (200 m) — must equal 300 m
+      const r = R + p.o
+      const alpha = (p.s - STRAIGHT_M) / R
+      const tangent = Math.sqrt(r * r - R * R)
+      const phi = Math.acos(R / r)
+      const arc = R * (Math.PI - alpha - phi)
+      expect(tangent + arc + 200).toBeCloseTo(300, 8)
+      expect(alpha).toBeGreaterThan(0) // still on the first bend
+    }
+    // monotone forward bow
+    const pts = waterfallPoints()
+    for (let i = 1; i < pts.length; i++) expect(pts[i]!.s).toBeGreaterThanOrEqual(pts[i - 1]!.s)
+  })
+
   it('distance signs at 100/200/300 m', () => {
     expect(distanceSigns()).toEqual([
       { s: 100, label: '100 m' },

@@ -142,6 +142,125 @@ export function laneStaggers(): LaneStagger[] {
   return out
 }
 
+// Painted lane numbers just past the finish line, one per lane, like a real track.
+// Lane k's centreline sits at offset (k-1)·LANE_W (lane 1 = the walking line at 0).
+export interface LaneNumber {
+  lane: number
+  s: number
+  o: number
+}
+export const LANE_NUMBER_S = 3 // metres past the finish line
+export function laneNumbers(): LaneNumber[] {
+  return Array.from({ length: LANES }, (_, k) => ({
+    lane: k + 1,
+    s: LANE_NUMBER_S,
+    o: k * LANE_W,
+  }))
+}
+
+// The green break line at the end of the first bend (the 200 m point) — where middle-
+// distance runners may break for the inside on a real track.
+export const BREAK_LINE_S = STRAIGHT_M + Math.PI * BEND_R
+
+// Convert a distance walked along lane k's own line (centreline offset o) into the
+// lane-1 arc parameter s. d = 0 is that lane's staggered 400 m start (2π·o past the
+// finish), straights advance 1:1, and bend arcs scale by R/(R+o) — the exact geometry
+// real tracks are surveyed with, so per-lane marks land where they do in the real
+// world (fanning forward on the bends).
+export function laneDistanceToS(o: number, d: number): number {
+  const bendFactor = (BEND_R + o) / BEND_R // lane-metres per lane-1 arc metre on bends
+  let s = 2 * Math.PI * o // the lane's staggered start
+  let left = d
+  const segments = [
+    { end: STRAIGHT_M, factor: 1 },
+    { end: STRAIGHT_M + Math.PI * BEND_R, factor: bendFactor },
+    { end: 2 * STRAIGHT_M + Math.PI * BEND_R, factor: 1 },
+    { end: LAP_M, factor: bendFactor },
+  ]
+  while (left > 1e-9) {
+    const sMod = s % LAP_M
+    const seg = segments.find((g) => sMod < g.end - 1e-9) ?? segments[0]!
+    const laneLen = (seg.end - sMod) * seg.factor
+    if (left <= laneLen) {
+      s += left / seg.factor
+      break
+    }
+    left -= laneLen
+    s += seg.end - sMod
+  }
+  return s % LAP_M
+}
+
+// 4×100 relay exchange zones: 30 m (20 m in, 10 m out) around each leg's 100 m point,
+// marked as a yellow line across each lane at both zone limits. Positions are measured
+// along each lane's own line from its staggered start — exact, like a real survey.
+export interface LaneLineMark {
+  s: number
+  o0: number
+  o1: number
+}
+export function relayZoneLines(): LaneLineMark[] {
+  const out: LaneLineMark[] = []
+  for (let k = 0; k < LANES; k++) {
+    const oCentre = k * LANE_W
+    for (const leg of [100, 200, 300]) {
+      for (const d of [leg - 20, leg + 10]) {
+        out.push({
+          s: laneDistanceToS(oCentre, d),
+          o0: TRACK_IN + k * LANE_W,
+          o1: TRACK_IN + (k + 1) * LANE_W,
+        })
+      }
+    }
+  }
+  return out
+}
+
+// 400 m hurdles: 10 flights per lane, the first 45 m from that lane's staggered start
+// then every 35 m, measured along the lane's own line — small green ticks on both
+// boundary lines of each lane, the paint scheme real tracks use.
+export interface TrackTick {
+  s: number
+  o: number
+}
+export function hurdleTicks(): TrackTick[] {
+  const out: TrackTick[] = []
+  for (let k = 0; k < LANES; k++) {
+    const oCentre = k * LANE_W
+    for (let h = 0; h < 10; h++) {
+      const s = laneDistanceToS(oCentre, 45 + h * 35)
+      out.push({ s, o: TRACK_IN + k * LANE_W }, { s, o: TRACK_IN + (k + 1) * LANE_W })
+    }
+  }
+  return out
+}
+
+// 1500 m waterfall start at the 100 m arc point (300 m to the finish along lane 1).
+// The exact equal-distance curve: a runner starting at lateral offset o runs the
+// tangent line to the lane-1 circle, then follows it home — the start point is
+// advanced along the bend so that tangent + remaining arc + 200 m (bend exit to
+// finish) equals 300 m. This is the tangent-path construction real curved start
+// lines are surveyed from.
+export const WATERFALL_S = 100
+export function waterfallPoints(samples = 25): TrackTick[] {
+  const out: TrackTick[] = []
+  const R = BEND_R
+  for (let i = 0; i < samples; i++) {
+    const o = TRACK_IN + (i / (samples - 1)) * (TRACK_OUT - TRACK_IN)
+    if (o <= 0) {
+      // at or inside the measurement line the start is the plain 100 m point
+      out.push({ s: WATERFALL_S, o })
+      continue
+    }
+    const r = R + o
+    const tangent = Math.sqrt(r * r - R * R)
+    const phi = Math.acos(R / r) // bend angle consumed by the tangent chord
+    const alpha = Math.PI - (100 - tangent) / R - phi // start angle into the first bend
+    out.push({ s: STRAIGHT_M + alpha * R, o })
+  }
+  return out
+}
+
 // --- day/night from walked distance ---
 // Every walk gets its own sky: phase 0 (session start) is dawn; a full cycle takes
 // DAY_LENGTH_M, so a typical 2–3 km walk sees dawn → noon → golden hour → dusk.

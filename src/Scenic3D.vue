@@ -18,6 +18,11 @@ import {
   surroundings,
   distanceSigns,
   laneStaggers,
+  laneNumbers,
+  BREAK_LINE_S,
+  relayZoneLines,
+  hurdleTicks,
+  waterfallPoints,
   dayPhase,
   skyAt,
 } from './scenic'
@@ -111,6 +116,10 @@ onMounted(() => {
     rock: flat(0x777d87),
     pole: flat(0x4a505b),
     floodOn: new THREE.MeshBasicMaterial({ color: 0xfff2c8 }), // unlit — reads as lit at night
+    kerb: new THREE.MeshLambertMaterial({ color: 0xe8ecf2, side: THREE.DoubleSide }),
+    breakLine: new THREE.MeshBasicMaterial({ color: 0x3ba55d, side: THREE.DoubleSide }),
+    relay: new THREE.MeshBasicMaterial({ color: 0xd8b638, side: THREE.DoubleSide }),
+    hurdle: new THREE.MeshBasicMaterial({ color: 0x2e7d4f, side: THREE.DoubleSide }),
     grass: new THREE.MeshLambertMaterial({ color: 0x2f4a2b }),
     // The loop ribbons reverse travel direction halfway around, so a fixed triangle
     // winding faces down on one straight and up on the other — DoubleSide instead of
@@ -253,6 +262,79 @@ onMounted(() => {
   for (const st of laneStaggers()) {
     track(buildCrossStrip(st.s, 0.4, 0.07, mat.finish, st.o0 + 0.06, st.o1 - 0.06))
   }
+  // raised white kerb on the inside edge, like a real track's inner rail
+  track(buildLoopRibbon(TRACK_IN - 0.2, TRACK_IN - 0.02, 0.08, mat.kerb))
+  // relay exchange-zone limits: a yellow line across each lane at both ends of the
+  // three 30 m zones around the 100/200/300 m marks
+  for (const l of relayZoneLines()) {
+    track(buildCrossStrip(l.s, 0.15, 0.06, mat.relay, l.o0 + 0.06, l.o1 - 0.06))
+  }
+  // 400 mH hurdle positions: small green ticks on the lane boundaries
+  for (const t of hurdleTicks()) {
+    track(buildCrossStrip(t.s, 0.28, 0.055, mat.hurdle, t.o - 0.14, t.o + 0.14))
+  }
+  // 1500 m waterfall start: curved white line across all lanes at the 100 m point,
+  // bowing forward toward the outer lanes
+  {
+    const pts = waterfallPoints()
+    const w = 0.14
+    const v: number[] = []
+    const idx: number[] = []
+    pts.forEach((p, i) => {
+      const a = trackPoint(p.s - w, p.o)
+      const b = trackPoint(p.s + w, p.o)
+      v.push(a.x, 0.065, a.z, b.x, 0.065, b.z)
+      if (i > 0) {
+        const k = (i - 1) * 2
+        idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3)
+      }
+    })
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3))
+    g.setIndex(idx)
+    g.computeVertexNormals()
+    track(new THREE.Mesh(g, mat.finish))
+  }
+  // dashed green break line at the 200 m point (end of the first bend)
+  {
+    const dashes = 9
+    const span = TRACK_OUT - TRACK_IN
+    for (let i = 0; i < dashes; i += 2) {
+      const o0 = TRACK_IN + (i / dashes) * span
+      const o1 = TRACK_IN + ((i + 1) / dashes) * span
+      track(buildCrossStrip(BREAK_LINE_S, 0.3, 0.065, mat.breakLine, o0, o1))
+    }
+  }
+
+  // painted lane numbers just past the finish line — white digits on the tartan,
+  // glyph top pointing along the walking direction so they read upright on approach
+  function digitTexture(n: number): THREE.CanvasTexture {
+    const c = document.createElement('canvas')
+    c.width = 64
+    c.height = 96
+    const ctx = c.getContext('2d')!
+    ctx.clearRect(0, 0, 64, 96)
+    ctx.fillStyle = 'rgba(240, 244, 249, 0.92)'
+    ctx.font = 'bold 78px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(String(n), 32, 52)
+    return new THREE.CanvasTexture(c)
+  }
+  const numberGeo = new THREE.PlaneGeometry(0.8, 1.2)
+  const numberMats: THREE.MeshBasicMaterial[] = []
+  for (const ln of laneNumbers()) {
+    const p = trackPoint(ln.s, ln.o)
+    const m = new THREE.MeshBasicMaterial({ map: digitTexture(ln.lane), transparent: true })
+    numberMats.push(m)
+    const digit = new THREE.Mesh(numberGeo, m)
+    digit.rotation.x = -Math.PI / 2 // lie flat on the track, texture-up toward -z
+    const wrap = new THREE.Group()
+    wrap.add(digit)
+    wrap.position.set(p.x, 0.045, p.z)
+    wrap.rotation.y = Math.atan2(-p.tx, -p.tz) // align texture-up with walking direction
+    scene.add(wrap)
+  }
 
   // distance signposts beside the track every 100 m (the finish line is the 400 m mark)
   function signTexture(label: string): THREE.CanvasTexture {
@@ -370,6 +452,11 @@ onMounted(() => {
     scene.clear()
     disposables.forEach((g) => g.dispose())
     signMats.forEach((m) => {
+      m.map?.dispose()
+      m.dispose()
+    })
+    numberGeo.dispose()
+    numberMats.forEach((m) => {
       m.map?.dispose()
       m.dispose()
     })

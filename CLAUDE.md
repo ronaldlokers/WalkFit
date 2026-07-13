@@ -236,7 +236,8 @@ The 2D track view is **generated from the same scenic.ts model** the 3D view wal
 not hand-drawn SVG: `track2d` in App.vue maps 3D `(x, z)` → SVG `(cx + z·k, cy + x·k)`
 (k = 2 px/m, with lateral offsets exaggerated ×2.5 transit-map style so the six lanes
 stay readable) and builds the band, all seven lane lines, the full-width finish line,
-and the staggered starts from `trackPoint`/`laneStaggers`. Loop paths use exact
+the staggered starts, tiny painted lane numbers, and the green break line from
+`trackPoint`/`laneStaggers`/`laneNumbers`/`BREAK_LINE_S`. Loop paths use exact
 circular arcs, and lane 1's guide path is at offset 0 (unaffected by the exaggeration),
 so `getTotalLength` maps linearly to walked metres; the runner marker and progress
 ring follow that invisible guide (`.track-line`, `stroke: none` — geometry only).

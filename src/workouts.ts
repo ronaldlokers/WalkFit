@@ -2,7 +2,46 @@
 // sustained fat-burn zones plus intervals that raise calorie burn.
 // A workout is a list of segments { speed (km/h), minutes }.
 
-export const workouts = [
+export interface Segment {
+  speed: number // km/h
+  minutes: number
+}
+
+export interface Workout {
+  id: string
+  name: string
+  focus: string
+  segments: Segment[]
+}
+
+export interface TimelineSegment {
+  speed: number // km/h
+  start: number // seconds
+  end: number // seconds
+}
+
+export interface Timeline {
+  segs: TimelineSegment[]
+  total: number // seconds
+}
+
+export interface WorkoutStats {
+  minutes: number
+  distanceKm: number
+  kcal: number
+}
+
+// A steer target for the HR-steered workout mode: hold bpm inside lo..hi % of max HR.
+// Rows live in App.vue's HR_TARGETS; the shape is shared with WorkoutPicker's HR tab.
+export interface HrTarget {
+  id: string
+  name: string
+  color: string
+  loPct: number
+  hiPct: number
+}
+
+export const workouts: Workout[] = [
   {
     id: 'fatburn30',
     name: 'Fat Burn 30',
@@ -69,11 +108,11 @@ export const workouts = [
 ]
 
 // Every workout ends with a fixed 1:45 (1.75 min) cooldown at 1 km/h.
-const COOLDOWN = { speed: 1.0, minutes: 1.75 }
+const COOLDOWN: Segment = { speed: 1.0, minutes: 1.75 }
 for (const w of workouts) w.segments.push({ ...COOLDOWN })
 
 // Approx metabolic equivalent for a walking speed (km/h).
-export function metForSpeed(kmh) {
+export function metForSpeed(kmh: number): number {
   if (kmh < 3) return 2.0
   if (kmh < 4) return 3.0
   if (kmh < 4.5) return 3.5
@@ -83,7 +122,7 @@ export function metForSpeed(kmh) {
 }
 
 // Rolled-up stats for a workout. weightKg used for the calorie estimate.
-export function workoutStats(w, weightKg = 70) {
+export function workoutStats(w: Pick<Workout, 'segments'>, weightKg = 70): WorkoutStats {
   let minutes = 0,
     distanceKm = 0,
     kcal = 0
@@ -96,8 +135,8 @@ export function workoutStats(w, weightKg = 70) {
 }
 
 // Segment boundaries in seconds, plus total, for driving playback.
-export function timeline(w) {
-  const segs = []
+export function timeline(w: Pick<Workout, 'segments'>): Timeline {
+  const segs: TimelineSegment[] = []
   let cum = 0
   for (const s of w.segments) {
     const start = cum

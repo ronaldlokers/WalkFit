@@ -7,9 +7,9 @@ import {
   parseTelemetry,
   createSpeedFilter,
   parseHeartRate,
-} from './protocol.js'
+} from './protocol'
 
-const hex = (a) => Array.from(a, (x) => x.toString(16).padStart(2, '0')).join(' ')
+const hex = (a: Uint8Array) => Array.from(a, (x) => x.toString(16).padStart(2, '0')).join(' ')
 
 describe('framing', () => {
   it('xor checksum over the inner bytes', () => {

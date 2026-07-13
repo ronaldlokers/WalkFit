@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
+import type { TreadmillState } from './treadmill'
+import type { HeartRateState } from './heartrate'
 
-const fakeTm = reactive({
+const fakeTm = reactive<TreadmillState>({
+  secure: true,
   supported: true,
   hasApi: true,
   connecting: false,
@@ -19,7 +22,7 @@ const fakeTm = reactive({
   history: [],
   log: [],
 })
-const fakeHr = reactive({
+const fakeHr = reactive<HeartRateState>({
   supported: true,
   connecting: false,
   connected: true,
@@ -29,9 +32,9 @@ const fakeHr = reactive({
   history: [],
   error: '',
 })
-const setSpeedCalls = []
+const setSpeedCalls: number[] = []
 
-vi.mock('./treadmill.js', () => ({
+vi.mock('./treadmill', () => ({
   useTreadmill: () => ({
     state: fakeTm,
     connect: vi.fn(),
@@ -44,7 +47,7 @@ vi.mock('./treadmill.js', () => ({
     stop: vi.fn(async () => {
       fakeTm.running = false
     }),
-    setSpeed: vi.fn(async (kmh) => {
+    setSpeed: vi.fn(async (kmh: number) => {
       const clamped = Math.min(6.0, Math.max(1.0, Math.round(kmh / 0.1) * 0.1))
       setSpeedCalls.push(clamped)
       fakeTm.targetSpeed = clamped
@@ -55,7 +58,7 @@ vi.mock('./treadmill.js', () => ({
   SPEED_MAX: 6.0,
   SPEED_STEP: 0.1,
 }))
-vi.mock('./heartrate.js', () => ({
+vi.mock('./heartrate', () => ({
   useHeartRate: () => ({
     state: fakeHr,
     connect: vi.fn(),
@@ -65,9 +68,11 @@ vi.mock('./heartrate.js', () => ({
   }),
 }))
 
+type SvgGeometryStub = { getTotalLength(): number; getPointAtLength(d: number): DOMPoint }
 beforeAll(() => {
-  SVGElement.prototype.getTotalLength = () => 800
-  SVGElement.prototype.getPointAtLength = () => ({ x: 0, y: 0 })
+  const proto = SVGElement.prototype as unknown as SvgGeometryStub
+  proto.getTotalLength = () => 800
+  proto.getPointAtLength = () => ({ x: 0, y: 0 }) as DOMPoint
 })
 beforeEach(() => {
   localStorage.clear()
@@ -79,18 +84,18 @@ beforeEach(() => {
   setSpeedCalls.length = 0
 })
 
-async function toMain(w) {
+async function toMain(w: VueWrapper) {
   await w
     .findAll('button')
-    .find((b) => b.text().includes('Skip') || b.text().includes('Next'))
+    .find((b) => b.text().includes('Skip') || b.text().includes('Next'))!
     .trigger('click')
   await w
     .findAll('button')
-    .find((b) => b.text().includes('Skip') || b.text().includes('Next'))
+    .find((b) => b.text().includes('Skip') || b.text().includes('Next'))!
     .trigger('click')
   await w
     .findAll('button')
-    .find((b) => b.text().includes('Free walk'))
+    .find((b) => b.text().includes('Free walk'))!
     .trigger('click')
 }
 
@@ -103,11 +108,11 @@ describe('HR workout', () => {
     // open picker via the HR badge, start Cardio (zone 3)
     await w
       .findAll('button')
-      .find((b) => b.attributes('title')?.includes('tap for HR workout'))
+      .find((b) => b.attributes('title')?.includes('tap for HR workout'))!
       .trigger('click')
     await w
       .findAll('.hr-zone-opt')
-      .find((b) => b.text().includes('Cardio'))
+      .find((b) => b.text().includes('Cardio'))!
       .trigger('click')
 
     fakeHr.bpm = 90 // well below a Cardio target (maxHr default 190 -> 70-80% = 133-152 bpm)
@@ -135,11 +140,11 @@ describe('HR workout', () => {
     await toMain(w)
     await w
       .findAll('button')
-      .find((b) => b.attributes('title')?.includes('tap for HR workout'))
+      .find((b) => b.attributes('title')?.includes('tap for HR workout'))!
       .trigger('click')
     await w
       .findAll('.hr-zone-opt')
-      .find((b) => b.text().includes('Cardio'))
+      .find((b) => b.text().includes('Cardio'))!
       .trigger('click')
 
     fakeHr.bpm = 180 // well above Cardio's ~133-152 bpm target
@@ -157,11 +162,11 @@ describe('HR workout', () => {
     await toMain(w)
     await w
       .findAll('button')
-      .find((b) => b.attributes('title')?.includes('tap for HR workout'))
+      .find((b) => b.attributes('title')?.includes('tap for HR workout'))!
       .trigger('click')
     await w
       .findAll('.hr-zone-opt')
-      .find((b) => b.text().includes('Cardio'))
+      .find((b) => b.text().includes('Cardio'))!
       .trigger('click')
 
     fakeTm.running = false // still in the belt's start countdown
@@ -179,11 +184,11 @@ describe('HR workout', () => {
     await toMain(w)
     await w
       .findAll('button')
-      .find((b) => b.attributes('title')?.includes('tap for HR workout'))
+      .find((b) => b.attributes('title')?.includes('tap for HR workout'))!
       .trigger('click')
     await w
       .findAll('.hr-zone-opt')
-      .find((b) => b.text().includes('Fat burn'))
+      .find((b) => b.text().includes('Fat burn'))!
       .trigger('click')
     expect(w.find('.workout-banner').exists()).toBe(true)
 
@@ -199,9 +204,9 @@ describe('HR workout', () => {
     await toMain(w)
     await w
       .findAll('button')
-      .find((b) => b.attributes('title')?.includes('tap for HR workout'))
+      .find((b) => b.attributes('title')?.includes('tap for HR workout'))!
       .trigger('click')
-    const light = w.findAll('.hr-zone-opt').find((b) => b.text().includes('Light'))
+    const light = w.findAll('.hr-zone-opt').find((b) => b.text().includes('Light'))!
     expect(light.text()).toContain('90')
     expect(light.text()).toContain('113')
   })
@@ -212,11 +217,11 @@ describe('HR workout', () => {
     await toMain(w)
     await w
       .findAll('button')
-      .find((b) => b.text() === '☰')
+      .find((b) => b.text() === '☰')!
       .trigger('click')
     await w
       .findAll('button')
-      .find((b) => b.text().includes('Workout'))
+      .find((b) => b.text().includes('Workout'))!
       .trigger('click')
     expect(w.find('.tlist').exists()).toBe(true)
     expect(w.find('.hr-workout-pane').exists()).toBe(false)

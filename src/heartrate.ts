@@ -1,29 +1,41 @@
 import { reactive } from 'vue'
-import { parseHeartRate } from './protocol.js'
+import { parseHeartRate } from './protocol'
 
 // Standard Bluetooth Heart Rate Service (works with Garmin "Broadcast Heart Rate",
 // chest straps, etc.) — separate GATT device from the treadmill.
 const HR_SERVICE = 0x180d
 const HR_MEASUREMENT = 0x2a37
 
+export interface HeartRateState {
+  supported: boolean
+  connecting: boolean
+  connected: boolean
+  remembered: boolean
+  deviceName: string
+  bpm: number
+  history: number[] // recent bpm samples for the sparkline
+  error: string
+}
+
 export function useHeartRate() {
-  const state = reactive({
+  const state = reactive<HeartRateState>({
     supported: 'bluetooth' in navigator && window.isSecureContext,
     connecting: false,
     connected: false,
     remembered: !!localStorage.getItem('walkfit.hr.id'),
     deviceName: '',
     bpm: 0,
-    history: [], // recent bpm samples for the sparkline
+    history: [],
     error: '',
   })
   const MAX_SAMPLES = 120
 
-  let device = null
-  let char = null
+  let device: BluetoothDevice | null = null
+  let char: BluetoothRemoteGATTCharacteristic | null = null
 
-  function onMeasurement(event) {
-    const dv = event.target.value
+  function onMeasurement(event: Event) {
+    const dv = (event.target as BluetoothRemoteGATTCharacteristic).value
+    if (!dv) return
     state.bpm = parseHeartRate(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength))
     if (state.bpm > 0) {
       state.history.push(state.bpm)
@@ -31,11 +43,11 @@ export function useHeartRate() {
     }
   }
 
-  async function attach(dev) {
+  async function attach(dev: BluetoothDevice) {
     device = dev
     device.addEventListener('gattserverdisconnected', onDisconnected)
     state.history = []
-    const gatt = await device.gatt.connect()
+    const gatt = await device.gatt!.connect()
     const svc = await gatt.getPrimaryService(HR_SERVICE)
     char = await svc.getCharacteristic(HR_MEASUREMENT)
     await char.startNotifications()
@@ -60,7 +72,7 @@ export function useHeartRate() {
       })
       await attach(dev)
     } catch (e) {
-      state.error = e.message || String(e)
+      state.error = (e as Error).message || String(e)
     } finally {
       state.connecting = false
     }
@@ -107,7 +119,7 @@ export function useHeartRate() {
     try {
       let d = device
       if (!d && navigator.bluetooth.getDevices)
-        d = (await navigator.bluetooth.getDevices()).find((x) => x.id === id)
+        d = (await navigator.bluetooth.getDevices()).find((x) => x.id === id) ?? null
       if (d?.gatt?.connected) d.gatt.disconnect()
       if (d?.forget) await d.forget()
     } catch {}

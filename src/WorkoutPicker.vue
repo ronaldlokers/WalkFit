@@ -1,30 +1,39 @@
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
-import { SPEED_MAX } from './treadmill.js'
-import { workoutStats, timeline } from './workouts.js'
+import { SPEED_MAX } from './treadmill'
+import { workoutStats, timeline } from './workouts'
+import type { Workout, Segment, HrTarget } from './workouts'
 
 // Shared by the wizard's "pick a workout" step and the header/HR-badge menu — same
 // tabs, same lists, same start/stop behavior, so the two entry points can't drift apart.
-const props = defineProps({
-  workouts: { type: Array, required: true },
-  weightKg: { type: Number, required: true },
-  maxHr: { type: Number, required: true },
-  connected: { type: Boolean, default: false },
-  hrTargets: { type: Array, required: true },
-  activeHrTarget: { type: Object, default: null },
-  adjustInterval: { type: Number, required: true },
-  startTab: { type: String, default: 'plans' }, // 'plans' (weight loss) | 'hr' (heart rate)
-  closable: { type: Boolean, default: true },
-})
-const emit = defineEmits(['start-plan', 'start-hr', 'stop-hr', 'close'])
+const props = withDefaults(
+  defineProps<{
+    workouts: Workout[]
+    weightKg: number
+    maxHr: number
+    connected?: boolean
+    hrTargets: HrTarget[]
+    activeHrTarget?: HrTarget | null
+    adjustInterval: number
+    startTab?: 'plans' | 'hr' // 'plans' (weight loss) | 'hr' (heart rate)
+    closable?: boolean
+  }>(),
+  { connected: false, activeHrTarget: null, startTab: 'plans', closable: true },
+)
+const emit = defineEmits<{
+  'start-plan': [w: Workout]
+  'start-hr': [t: HrTarget]
+  'stop-hr': []
+  close: []
+}>()
 
-const tab = ref(props.startTab)
-const preview = ref(null) // weight-loss workout shown in the detail view
+const tab = ref<'plans' | 'hr'>(props.startTab)
+const preview = ref<Workout | null>(null) // weight-loss workout shown in the detail view
 
-function stats(w) {
+function stats(w: Workout) {
   return workoutStats(w, props.weightKg)
 }
-function hrTargetRange(t) {
+function hrTargetRange(t: HrTarget) {
   return {
     lo: Math.round((t.loPct / 100) * props.maxHr),
     hi: Math.round((t.hiPct / 100) * props.maxHr) - 1,
@@ -36,9 +45,9 @@ function hrTargetRange(t) {
 const CH_W = 320,
   CH_H = 120
 const gridLines = [2, 4, 6].map((s) => ({ s, y: CH_H - (s / SPEED_MAX) * CH_H }))
-function planPath(w) {
+function planPath(w: { segments: Segment[] }) {
   const { segs, total } = timeline(w)
-  const pts = []
+  const pts: string[] = []
   for (const s of segs) {
     const x0 = (s.start / total) * CH_W,
       x1 = (s.end / total) * CH_W
@@ -47,11 +56,11 @@ function planPath(w) {
   }
   return { line: pts.join(' '), area: `M0,${CH_H} L${pts.join(' L')} L${CH_W},${CH_H} Z` }
 }
-function miniPath(w) {
+function miniPath(w: { segments: Segment[] }) {
   const W = 100,
     H = 34
   const { segs, total } = timeline(w)
-  const pts = []
+  const pts: string[] = []
   for (const s of segs) {
     const x0 = (s.start / total) * W,
       x1 = (s.end / total) * W
@@ -61,11 +70,11 @@ function miniPath(w) {
   return `M0,${H} L${pts.join(' L')} L${W},${H} Z`
 }
 
-function mmss(sec) {
+function mmss(sec: number) {
   sec = Math.max(0, Math.floor(sec))
   return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`
 }
-function segDur(min) {
+function segDur(min: number) {
   const sec = Math.round(min * 60)
   return sec % 60 === 0
     ? `${sec / 60} min`

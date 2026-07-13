@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import App from './App.vue'
 
 // jsdom doesn't implement SVG geometry; stub what the loop/marker code calls.
+type SvgGeometryStub = { getTotalLength(): number; getPointAtLength(d: number): DOMPoint }
 beforeAll(() => {
-  SVGElement.prototype.getTotalLength = () => 100
-  SVGElement.prototype.getPointAtLength = () => ({ x: 0, y: 0 })
+  const proto = SVGElement.prototype as unknown as SvgGeometryStub
+  proto.getTotalLength = () => 100
+  proto.getPointAtLength = () => ({ x: 0, y: 0 }) as DOMPoint
 })
 beforeEach(() => localStorage.clear())
 
 // Click the first <button> whose text contains `label`.
-async function clickButton(wrapper, label) {
+async function clickButton(wrapper: VueWrapper, label: string) {
   const btn = wrapper.findAll('button').find((b) => b.text().includes(label))
   if (!btn) throw new Error(`no button matching "${label}"`)
   await btn.trigger('click')
@@ -42,14 +44,14 @@ describe('App happy path', () => {
     // separate "Start workout" button actually activates it.
     await w
       .findAll('.mode-card')
-      .find((c) => c.text().includes('Workout'))
+      .find((c) => c.text().includes('Workout'))!
       .trigger('click')
     const cards = w.findAll('.tcard')
     expect(cards.length).toBeGreaterThan(0)
-    await cards[0].trigger('click')
+    await cards[0]!.trigger('click')
     await w
       .findAll('button')
-      .find((b) => b.text().includes('Start workout'))
+      .find((b) => b.text().includes('Start workout'))!
       .trigger('click')
     // overlay closed, a workout is now active
     expect(w.find('.workout-banner').exists()).toBe(true)
@@ -66,8 +68,8 @@ describe('App happy path', () => {
     await clickButton(w, 'Workout') // opens the workout menu overlay (weight-loss tab default)
     const cards = w.findAll('.tcard')
     expect(cards.length).toBe(5)
-    expect(cards[0].text()).toMatch(/km/)
-    expect(cards[0].text()).toMatch(/kcal/)
+    expect(cards[0]!.text()).toMatch(/km/)
+    expect(cards[0]!.text()).toMatch(/kcal/)
   })
 
   it('wizard step 4 embeds the same tabbed WorkoutPicker as the header menu, including HR targets', async () => {
@@ -76,7 +78,7 @@ describe('App happy path', () => {
     await clickButton(w, 'Skip')
     await w
       .findAll('.mode-card')
-      .find((c) => c.text().includes('Workout'))
+      .find((c) => c.text().includes('Workout'))!
       .trigger('click')
     // still inside the wizard (step 4), not the header's separate overlay
     expect(w.text()).toContain('current speed')
@@ -86,13 +88,13 @@ describe('App happy path', () => {
     // switching tabs from here reaches the same HR targets the header menu has
     await w
       .findAll('.workout-tab')
-      .find((b) => b.text().includes('Heart rate'))
+      .find((b) => b.text().includes('Heart rate'))!
       .trigger('click')
     expect(w.findAll('.hr-zone-opt').length).toBe(4)
     // wizard's own Back nav still works to leave the picker
     await w
       .findAll('.wiz-nav button')
-      .find((b) => b.text().includes('Back'))
+      .find((b) => b.text().includes('Back'))!
       .trigger('click')
     expect(w.find('.mode-grid').exists()).toBe(true)
   })

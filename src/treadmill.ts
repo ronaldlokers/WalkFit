@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { setSpeedFrame, STATUS_QUERY, parseTelemetry, createSpeedFilter } from './protocol.js'
+import { setSpeedFrame, STATUS_QUERY, parseTelemetry, createSpeedFilter } from './protocol'
 
 // --- Dreaver Motion One (FitShow FS-BT-T4) BLE identifiers ---
 const FTMS_SERVICE = 0x1826 // Fitness Machine Service
@@ -12,37 +12,55 @@ export const SPEED_MIN = 1.0 // km/h  (from FTMS supported-speed range 2ad4)
 export const SPEED_MAX = 6.0 // km/h
 export const SPEED_STEP = 0.1
 
+export interface TreadmillState {
+  secure: boolean
+  hasApi: boolean
+  supported: boolean
+  connecting: boolean
+  connected: boolean
+  remembered: boolean
+  running: boolean // belt actually moving (from telemetry)
+  deviceName: string
+  speed: number // live speed reported by device (km/h)
+  targetSpeed: number // last speed we asked for (km/h)
+  distance: number // metres, integrated client-side from live speed
+  elapsed: number // seconds the belt has been moving
+  error: string
+  history: number[] // speed (km/h) sampled once per second since connect
+  log: string[] // TEMP debug: recent speed-write / speed-rx events
+}
+
 export function useTreadmill() {
-  const state = reactive({
+  const state = reactive<TreadmillState>({
     secure: window.isSecureContext,
     hasApi: 'bluetooth' in navigator,
     supported: window.isSecureContext && 'bluetooth' in navigator,
     connecting: false,
     connected: false,
     remembered: !!localStorage.getItem('walkfit.treadmill.id'),
-    running: false, // belt actually moving (from telemetry)
+    running: false,
     deviceName: '',
-    speed: 0, // live speed reported by device (km/h)
-    targetSpeed: SPEED_MIN, // last speed we asked for (km/h)
-    distance: 0, // metres, integrated client-side from live speed
-    elapsed: 0, // seconds the belt has been moving
+    speed: 0,
+    targetSpeed: SPEED_MIN,
+    distance: 0,
+    elapsed: 0,
     error: '',
-    history: [], // speed (km/h) sampled once per second since connect
-    log: [], // TEMP debug: recent speed-write / speed-rx events
+    history: [],
+    log: [],
   })
-  function dbg(ev, val) {
+  function dbg(ev: string, val: number) {
     state.log.push(`${(performance.now() / 1000).toFixed(1)} ${ev} ${val}`)
     if (state.log.length > 16) state.log.shift()
   }
   const MAX_SAMPLES = 1800 // ~30 min of history
 
-  let device = null
-  let control = null // FTMS control point characteristic
-  let vendorWrite = null // fff2
-  let vendorNotify = null // fff1
-  let ticker = null // distance/time integrator
-  let sampler = null // 1 Hz speed-history sampler
-  let poller = null // 1 Hz status query — the FW doesn't stream running data
+  let device: BluetoothDevice | null = null
+  let control: BluetoothRemoteGATTCharacteristic | null = null // FTMS control point characteristic
+  let vendorWrite: BluetoothRemoteGATTCharacteristic | null = null // fff2
+  let vendorNotify: BluetoothRemoteGATTCharacteristic | null = null // fff1
+  let ticker: ReturnType<typeof setInterval> | null = null // distance/time integrator
+  let sampler: ReturnType<typeof setInterval> | null = null // 1 Hz speed-history sampler
+  let poller: ReturnType<typeof setInterval> | null = null // 1 Hz status query — the FW doesn't stream running data
   // unprompted; writing 02 51 03 elicits a running-data frame
   let lastTick = 0
   let lastEnforce = 0 // throttle for target-speed enforcement
@@ -55,7 +73,7 @@ export function useTreadmill() {
   // short window and report the minimum. No dependence on the commanded target, so it
   // tracks ramps and remote-driven changes correctly.
   const speedFilter = createSpeedFilter(1600)
-  function onSpeedReading(v) {
+  function onSpeedReading(v: number) {
     lastSpeedRx = performance.now()
     if (v === 0) {
       speedFilter.reset()
@@ -70,8 +88,9 @@ export function useTreadmill() {
     dbg(v === min ? 'rx' : 'x2', v) // 'x2' = discarded phantom 2x frame
   }
 
-  function onTelemetry(event) {
-    const dv = event.target.value
+  function onTelemetry(event: Event) {
+    const dv = (event.target as BluetoothRemoteGATTCharacteristic).value
+    if (!dv) return
     const b = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)
     const ev = parseTelemetry(b)
     if (!ev) return
@@ -137,10 +156,10 @@ export function useTreadmill() {
   }
 
   // Wire up a chosen device: connect GATT, resolve characteristics, subscribe, start loops.
-  async function attach(dev) {
+  async function attach(dev: BluetoothDevice) {
     device = dev
     device.addEventListener('gattserverdisconnected', onDisconnected)
-    const gatt = await device.gatt.connect()
+    const gatt = await device.gatt!.connect()
 
     const ftms = await gatt.getPrimaryService(FTMS_SERVICE)
     control = await ftms.getCharacteristic(FTMS_CONTROL)
@@ -173,7 +192,7 @@ export function useTreadmill() {
       })
       await attach(dev)
     } catch (e) {
-      state.error = e.message || String(e)
+      state.error = (e as Error).message || String(e)
     } finally {
       state.connecting = false
     }
@@ -226,7 +245,7 @@ export function useTreadmill() {
     try {
       let d = device
       if (!d && navigator.bluetooth.getDevices)
-        d = (await navigator.bluetooth.getDevices()).find((x) => x.id === id)
+        d = (await navigator.bluetooth.getDevices()).find((x) => x.id === id) ?? null
       if (d?.gatt?.connected) d.gatt.disconnect()
       if (d?.forget) await d.forget()
     } catch {}
@@ -253,11 +272,11 @@ export function useTreadmill() {
   }
 
   // Speed control goes through the vendor channel (FTMS set-speed is ignored by this FW).
-  function writeSpeed(kmh) {
+  function writeSpeed(kmh: number) {
     if (!vendorWrite) return
     return vendorWrite.writeValueWithoutResponse(setSpeedFrame(kmh))
   }
-  async function setSpeed(kmh) {
+  async function setSpeed(kmh: number) {
     kmh = Math.min(SPEED_MAX, Math.max(SPEED_MIN, Math.round(kmh / SPEED_STEP) * SPEED_STEP))
     state.targetSpeed = Math.round(kmh * 10) / 10
     lastEnforce = performance.now()

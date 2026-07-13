@@ -2,11 +2,13 @@ import js from '@eslint/js'
 import vue from 'eslint-plugin-vue'
 import globals from 'globals'
 import prettier from 'eslint-config-prettier'
+import { defineConfigWithVueTs, vueTsConfigs } from '@vue/eslint-config-typescript'
 
-export default [
+export default defineConfigWithVueTs(
   { ignores: ['dist/', 'node_modules/'] },
   js.configs.recommended,
-  ...vue.configs['flat/recommended'],
+  vue.configs['flat/recommended'],
+  vueTsConfigs.recommended,
   prettier,
   {
     languageOptions: {
@@ -19,4 +21,4 @@ export default [
       'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
-]
+)

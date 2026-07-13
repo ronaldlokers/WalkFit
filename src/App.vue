@@ -619,21 +619,24 @@ const pace = computed(() => {
         >
           {{ state.connecting ? 'Connecting…' : 'Connect' }}
         </button>
-        <button class="cog" aria-label="Menu" @click="moreMenuOpen = true">☰</button>
+        <!-- anchor wrapper: the dropdown panel positions itself relative to this,
+             directly under the ☰ button, instead of guessing header height in CSS -->
+        <div class="menu-anchor">
+          <button class="cog" aria-label="Menu" @click="moreMenuOpen = true">☰</button>
+
+          <!-- click-outside-to-close backdrop, invisible, full-screen, below the panel -->
+          <div v-if="moreMenuOpen" class="menu-backdrop" @click="moreMenuOpen = false"></div>
+          <div v-if="moreMenuOpen" class="menu-panel">
+            <button class="menu-item" @click="menuOpenWorkouts">📋 Workout</button>
+            <button class="menu-item" @click="menuOpenHistory">📈 History</button>
+            <button v-if="state.connected" class="menu-item" @click="menuDisconnect">
+              🔌 Disconnect
+            </button>
+            <button class="menu-item" @click="menuOpenSettings">⚙ Settings</button>
+          </div>
+        </div>
       </div>
     </header>
-
-    <!-- header overflow menu: keeps Workout/History/Disconnect/Settings off the header row -->
-    <div v-if="moreMenuOpen" class="overlay menu-overlay" @click.self="moreMenuOpen = false">
-      <div class="menu-panel">
-        <button class="menu-item" @click="menuOpenWorkouts">📋 Workout</button>
-        <button class="menu-item" @click="menuOpenHistory">📈 History</button>
-        <button v-if="state.connected" class="menu-item" @click="menuDisconnect">
-          🔌 Disconnect
-        </button>
-        <button class="menu-item" @click="menuOpenSettings">⚙ Settings</button>
-      </div>
-    </div>
 
     <p v-if="!state.secure" class="warn">
       <b>Insecure context.</b> Web Bluetooth needs <code>https://</code> or <code>localhost</code>.
@@ -1810,13 +1813,19 @@ input[type='range'] {
   background: #0b0d12;
   padding: 16px;
 }
-.menu-overlay {
-  align-items: flex-start;
-  justify-content: flex-end;
-  background: transparent;
-  padding: 64px 16px 0 0;
+.menu-anchor {
+  position: relative;
+}
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
 }
 .menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 21;
   background: #12151b;
   border: 1px solid #232833;
   border-radius: 14px;

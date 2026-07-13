@@ -7,6 +7,8 @@ compatibility_date = "2026-01-01"
 [vars]
 ALLOWED_ORIGIN = ""
 
-# Set with:
+# Set per provider you enable (a provider's routes 404 until both are set):
 #   wrangler secret put STRAVA_CLIENT_ID
 #   wrangler secret put STRAVA_CLIENT_SECRET
+#   wrangler secret put WITHINGS_CLIENT_ID
+#   wrangler secret put WITHINGS_CLIENT_SECRET

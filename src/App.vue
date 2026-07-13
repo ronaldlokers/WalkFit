@@ -17,6 +17,8 @@ import type { Session } from './statistics'
 import {
   trackPoint,
   laneStaggers,
+  laneNumbers,
+  BREAK_LINE_S,
   BEND_R,
   STRAIGHT_M,
   LANE_W,
@@ -277,6 +279,10 @@ const track2d = {
   // common finish line across all lanes at s = 0, same as the 3D view
   finish: { a: svgPt(0, TRACK_IN), b: svgPt(0, TRACK_OUT) },
   staggers: laneStaggers().map((st) => ({ a: svgPt(st.s, st.o0), b: svgPt(st.s, st.o1) })),
+  // painted lane numbers + the green 200 m break line, like the 3D view. The numbers sit
+  // just before the finish here — past it they'd crowd the stagger staircase at map scale.
+  laneNums: laneNumbers().map((n) => ({ ...svgPt(-5, n.o), lane: n.lane })),
+  breakLine: { a: svgPt(BREAK_LINE_S, TRACK_IN), b: svgPt(BREAK_LINE_S, TRACK_OUT) },
 }
 
 const trackEl = ref<SVGPathElement | null>(null)
@@ -896,6 +902,22 @@ const pace = computed(() => {
           :x2="st.b.x"
           :y2="st.b.y"
         />
+        <line
+          class="breakline"
+          :x1="track2d.breakLine.a.x"
+          :y1="track2d.breakLine.a.y"
+          :x2="track2d.breakLine.b.x"
+          :y2="track2d.breakLine.b.y"
+        />
+        <text
+          v-for="n in track2d.laneNums"
+          :key="`num-${n.lane}`"
+          class="lane-num"
+          :x="n.x"
+          :y="n.y"
+        >
+          {{ n.lane }}
+        </text>
         <!-- invisible guide path: the lane-1 centreline the marker + progress follow -->
         <path ref="trackEl" class="track-line" :d="track2d.lane1" />
         <path
@@ -1764,6 +1786,18 @@ code {
 .stagger {
   stroke: rgba(255, 255, 255, 0.8);
   stroke-width: 1.2;
+}
+.breakline {
+  stroke: #3ba55d;
+  stroke-width: 1.2;
+  stroke-dasharray: 2.5 2;
+}
+.lane-num {
+  fill: rgba(240, 244, 249, 0.85);
+  font-size: 6px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
 }
 .runner .halo {
   fill: rgba(46, 213, 115, 0.18);

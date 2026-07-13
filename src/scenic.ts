@@ -142,6 +142,26 @@ export function laneStaggers(): LaneStagger[] {
   return out
 }
 
+// Painted lane numbers just past the finish line, one per lane, like a real track.
+// Lane k's centreline sits at offset (k-1)·LANE_W (lane 1 = the walking line at 0).
+export interface LaneNumber {
+  lane: number
+  s: number
+  o: number
+}
+export const LANE_NUMBER_S = 3 // metres past the finish line
+export function laneNumbers(): LaneNumber[] {
+  return Array.from({ length: LANES }, (_, k) => ({
+    lane: k + 1,
+    s: LANE_NUMBER_S,
+    o: k * LANE_W,
+  }))
+}
+
+// The green break line at the end of the first bend (the 200 m point) — where middle-
+// distance runners may break for the inside on a real track.
+export const BREAK_LINE_S = STRAIGHT_M + Math.PI * BEND_R
+
 // --- day/night from walked distance ---
 // Every walk gets its own sky: phase 0 (session start) is dawn; a full cycle takes
 // DAY_LENGTH_M, so a typical 2–3 km walk sees dawn → noon → golden hour → dusk.

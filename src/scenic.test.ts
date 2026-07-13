@@ -11,6 +11,9 @@ import {
   surroundings,
   distanceSigns,
   laneStaggers,
+  laneNumbers,
+  LANE_NUMBER_S,
+  BREAK_LINE_S,
   dayPhase,
   skyAt,
   DAY_LENGTH_M,
@@ -105,6 +108,19 @@ describe('surroundings', () => {
 })
 
 describe('track markings', () => {
+  it('one painted number per lane, centred on each lane, just past the finish', () => {
+    const nums = laneNumbers()
+    expect(nums.map((n) => n.lane)).toEqual([1, 2, 3, 4, 5, 6])
+    for (const n of nums) {
+      expect(n.o).toBeCloseTo((n.lane - 1) * LANE_W, 10) // lane centreline
+      expect(n.s).toBe(LANE_NUMBER_S)
+    }
+  })
+
+  it('break line sits at the 200 m point (end of the first bend)', () => {
+    expect(BREAK_LINE_S).toBeCloseTo(200, 10)
+  })
+
   it('distance signs at 100/200/300 m', () => {
     expect(distanceSigns()).toEqual([
       { s: 100, label: '100 m' },

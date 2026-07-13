@@ -94,7 +94,7 @@ async function toMain(w) {
     .trigger('click')
 }
 
-describe('HR-steered autopilot', () => {
+describe('HR workout', () => {
   it('nudges speed up when bpm is below the target zone, rate-limited to HR_ADJUST_INTERVAL', async () => {
     const App = (await import('./App.vue')).default
     const w = mount(App)
@@ -103,7 +103,7 @@ describe('HR-steered autopilot', () => {
     // open picker via the HR badge, start Cardio (zone 3)
     await w
       .findAll('button')
-      .find((b) => b.attributes('title')?.includes('tap for HR autopilot'))
+      .find((b) => b.attributes('title')?.includes('tap for HR workout'))
       .trigger('click')
     await w
       .findAll('.hr-zone-opt')
@@ -135,7 +135,7 @@ describe('HR-steered autopilot', () => {
     await toMain(w)
     await w
       .findAll('button')
-      .find((b) => b.attributes('title')?.includes('tap for HR autopilot'))
+      .find((b) => b.attributes('title')?.includes('tap for HR workout'))
       .trigger('click')
     await w
       .findAll('.hr-zone-opt')
@@ -157,7 +157,7 @@ describe('HR-steered autopilot', () => {
     await toMain(w)
     await w
       .findAll('button')
-      .find((b) => b.attributes('title')?.includes('tap for HR autopilot'))
+      .find((b) => b.attributes('title')?.includes('tap for HR workout'))
       .trigger('click')
     await w
       .findAll('.hr-zone-opt')
@@ -179,7 +179,7 @@ describe('HR-steered autopilot', () => {
     await toMain(w)
     await w
       .findAll('button')
-      .find((b) => b.attributes('title')?.includes('tap for HR autopilot'))
+      .find((b) => b.attributes('title')?.includes('tap for HR workout'))
       .trigger('click')
     await w
       .findAll('.hr-zone-opt')
@@ -191,5 +191,30 @@ describe('HR-steered autopilot', () => {
     await w.vm.$nextTick()
     expect(w.find('.train-banner').exists()).toBe(false)
     fakeHr.connected = true // reset for other tests sharing the mocked reactive object
+  })
+
+  it('offers a Light target at 90–113 bpm (default 190 max HR)', async () => {
+    const App = (await import('./App.vue')).default
+    const w = mount(App)
+    await toMain(w)
+    await w
+      .findAll('button')
+      .find((b) => b.attributes('title')?.includes('tap for HR workout'))
+      .trigger('click')
+    const light = w.findAll('.hr-zone-opt').find((b) => b.text().includes('Light'))
+    expect(light.text()).toContain('90')
+    expect(light.text()).toContain('113')
+  })
+
+  it('the header Workout button opens the weight-loss tab, not the HR tab', async () => {
+    const App = (await import('./App.vue')).default
+    const w = mount(App)
+    await toMain(w)
+    await w
+      .findAll('button')
+      .find((b) => b.text() === 'Workout')
+      .trigger('click')
+    expect(w.find('.tlist').exists()).toBe(true)
+    expect(w.find('.hr-workout-pane').exists()).toBe(false)
   })
 })

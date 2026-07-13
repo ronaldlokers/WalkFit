@@ -33,30 +33,30 @@ describe('App happy path', () => {
     expect(w.find('.train-banner').exists()).toBe(false)
   })
 
-  it('wizard → Training → pick a session activates it and hides manual speed', async () => {
+  it('wizard → Workout → pick a session activates it and hides manual speed', async () => {
     const w = mount(App)
     await clickButton(w, 'Skip')
     await clickButton(w, 'Skip')
-    // choose Training mode (the wizard card, not the header button of the same text)
+    // choose Workout mode (the wizard card, not the header button of the same text)
     await w
       .findAll('.mode-card')
-      .find((c) => c.text().includes('Training'))
+      .find((c) => c.text().includes('Workout'))
       .trigger('click')
     const cards = w.findAll('.tcard')
     expect(cards.length).toBeGreaterThan(0)
     await cards[0].trigger('click')
-    // wizard closed, a training is now active
+    // wizard closed, a workout is now active
     expect(w.find('.train-banner').exists()).toBe(true)
-    // manual speed control is hidden while a training drives the belt
+    // manual speed control is hidden while a workout drives the belt
     expect(w.find('.speed-row').exists()).toBe(false)
   })
 
-  it('lists every preset training in the menu with time/distance/kcal', async () => {
+  it('lists every preset workout in the menu with time/distance/kcal', async () => {
     const w = mount(App)
     await clickButton(w, 'Skip')
     await clickButton(w, 'Skip')
     await clickButton(w, 'Free walk')
-    await clickButton(w, 'Training') // opens the trainings menu overlay
+    await clickButton(w, 'Workout') // opens the workout menu overlay (weight-loss tab default)
     const cards = w.findAll('.tcard')
     expect(cards.length).toBe(5)
     expect(cards[0].text()).toMatch(/km/)

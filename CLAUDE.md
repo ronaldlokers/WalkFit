@@ -2,7 +2,7 @@
 
 Vue 3 + Vite web app control **Dreaver Motion One** walking treadmill (FitShow
 `FS-BT-T4` OEM controller) from browser over **Web Bluetooth**, virtual 400 m athletics-track
-loop, guided weight-loss trainings, optional heart-rate display.
+loop, guided weight-loss and HR-steered workouts, optional heart-rate display.
 
 ## Run
 
@@ -45,10 +45,11 @@ npm run format     # Prettier --write   (format:check in CI)
 CI (`.github/workflows/ci.yml`) runs lint → format:check → test → build on PRs; deploy
 workflow gates on tests too. Tests: `src/protocol.test.js` (framing/checksum, phantom-2x speed
 filter, telemetry + HR parsing), `src/trainings.test.js`, `src/history.test.js`,
-`src/App.happy.test.js` (jsdom + @vue/test-utils happy-path: wizard → walk/training flows),
-and `src/App.hrAutopilot.test.js` (mocks both `treadmill.js`/`heartrate.js` composables to
+`src/App.happy.test.js` (jsdom + @vue/test-utils happy-path: wizard → walk/workout flows),
+and `src/App.hrWorkout.test.js` (mocks both `treadmill.js`/`heartrate.js` composables to
 drive `state.elapsed`/`bpm` directly — verifies nudge direction, the 20s rate limit, that it
-stays silent while the belt isn't running, and that it ends itself on HR disconnect).
+stays silent while the belt isn't running, that it ends itself on HR disconnect, the
+Light target's 90–113 bpm range, and that the header button opens the weight-loss tab).
 `test/setup.js` polyfills `localStorage`; component test files opt into jsdom with a
 `// @vitest-environment jsdom` docblock.
 
@@ -84,7 +85,7 @@ Keep pinned Playwright version and image tag in sync.
   `src/history.test.js`.
 - `src/strava.js` — `useStrava()` composable: OAuth2 connect + per-session upload. See
   "Strava upload" below.
-- `src/App.vue` — whole UI (single component): loop, chart, controls, stats, trainings menu,
+- `src/App.vue` — whole UI (single component): loop, chart, controls, stats, workout menu,
   history view, settings, onboarding wizard.
 - `src/main.js`, `src/style.css` — bootstrap + global styles/theme vars (`--accent`).
 
@@ -102,18 +103,27 @@ same transition opens the upload-prompt popup.
 `walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.history`,
 `walkfit.strava` (OAuth tokens), `walkfit.view` (`track` | `scenic`).
 
-**HR-steered autopilot** — tap the HR badge (header, only visible once a sensor is
-connected) to pick a target zone (Fat burn / Cardio / Hard); belt speed then nudges
-±`HR_NUDGE_STEP` every `HR_ADJUST_INTERVAL` (20s) to hold bpm inside that zone's range.
-Mutually exclusive with a preset training (`active`) — starting one clears the other.
-Deliberately simple and safe: nudges only fire while `state.running` is true and no more
-often than the 20s interval, so it can never race `treadmill.js`'s own ~8s
-countdown-window speed-enforcement retry (20s always exceeds that window). `setSpeed()`
-already clamps to `SPEED_MIN..SPEED_MAX` and snaps to the step grid, and `state.speed`
-is already the phantom-2x-filtered reading — the autopilot adds no protocol-level logic
-of its own, just decides _when_ to call `setSpeed()`. Ends itself if the HR sensor
-disconnects mid-session (nothing left to steer by). `HR_ZONES` (zone names/colors/bpm%
-thresholds) is shared between the live HR badge and this picker so they can't drift apart.
+**Workouts** — the header "Workout" button and the HR badge both open the same menu
+overlay (`menuOpen`), tabbed via `workoutTab` (`plans` | `hr`):
+
+- **Weight loss** (`plans` tab, default): the original fixed-segment presets from
+  `trainings.js`, unchanged — pick one, belt follows its `{speed, minutes}` timeline.
+- **Heart rate** (`hr` tab, opened directly when the HR badge is tapped): pick a target —
+  Light / Fat burn / Cardio / Hard — and belt speed nudges ±`HR_NUDGE_STEP` every
+  `HR_ADJUST_INTERVAL` (20s) to hold bpm inside that target's range. `HR_TARGETS` is its
+  own table (not the display-only `HR_ZONES` used by the live badge) because the steer
+  targets need a "Light" range (47.5–60% of max HR — 90–113 bpm at the default 190) that
+  the badge's zones don't have, and the badge's top "Max" zone isn't a sane steer target.
+  Deliberately simple and safe: nudges only fire while `state.running` is true and no more
+  often than the 20s interval, so it can never race `treadmill.js`'s own ~8s
+  countdown-window speed-enforcement retry (20s always exceeds that window). `setSpeed()`
+  already clamps to `SPEED_MIN..SPEED_MAX` and snaps to the step grid, and `state.speed`
+  is already the phantom-2x-filtered reading — the workout mode adds no protocol-level
+  logic of its own, just decides _when_ to call `setSpeed()`. Ends itself if the HR sensor
+  disconnects mid-session (nothing left to steer by).
+
+The two workout modes are mutually exclusive (`active` for weight-loss, `hrTarget` for
+HR) — starting one clears the other.
 
 The main visual has two modes, toggled above it: the 400 m athletics **track** (default),
 or a side-scrolling **scenic** walk. Both read the same `state.distance`/`state.speed` —

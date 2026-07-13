@@ -247,18 +247,21 @@ watch(viewMode, async (v) => {
 })
 
 // --- 2D track view: the same 400 m track model as the 3D walk (scenic.ts), top-down ---
-// Mapping: 3D (x, z) → SVG (cx + z·k, cy + x·k). Loop paths use exact circular arcs, so
+// Mapping: 3D (x, z) → SVG (cx + z·k, cy + x·k). Lateral offsets are exaggerated ×TE
+// (transit-map style) so the six lanes stay readable at map scale — at true proportion
+// the whole band is ~16 px and the lanes vanish. Loop paths use exact circular arcs, so
 // getTotalLength maps linearly to walked metres and the marker/progress stay true.
-const TK = 2.2 // px per metre — fits the 400×260 viewBox
+const TK = 2.0 // px per metre along the loop
+const TE = 2.5 // lateral lane-width exaggeration
 const TCX = 200
 const TCY = 130
 function svgPt(s: number, o: number) {
-  const p = trackPoint(s, o)
+  const p = trackPoint(s, o * TE)
   return { x: TCX + p.z * TK, y: TCY + p.x * TK }
 }
-// closed loop at lateral offset o, starting at s = 0 and following the walking direction
+// closed loop at (exaggerated) lateral offset o, starting at s = 0, walking direction
 function loopPath(o: number): string {
-  const r = (BEND_R + o) * TK
+  const r = (BEND_R + o * TE) * TK
   const hs = (STRAIGHT_M / 2) * TK
   return (
     `M ${TCX + hs} ${TCY + r} L ${TCX - hs} ${TCY + r} ` +
@@ -268,12 +271,13 @@ function loopPath(o: number): string {
 }
 const track2d = {
   band: loopPath((TRACK_IN + TRACK_OUT) / 2),
-  bandW: (TRACK_OUT - TRACK_IN) * TK,
+  bandW: (TRACK_OUT - TRACK_IN) * TE * TK,
+  laneW: LANE_W * TE * TK, // one lane in px — sizes the progress stroke
   laneLines: Array.from({ length: LANES + 1 }, (_, i) => loopPath(TRACK_IN + i * LANE_W)),
   lane1: loopPath(0), // the runner's guide path — lane-1 centreline, same as the 3D camera
   start: { a: svgPt(0, TRACK_IN), b: svgPt(0, TRACK_IN + LANE_W) },
   staggers: laneStaggers().map((st) => ({ a: svgPt(st.s, st.o0), b: svgPt(st.s, st.o1) })),
-  signs: distanceSigns().map((sg) => ({ ...svgPt(sg.s, TRACK_OUT + 4.5), label: String(sg.s) })),
+  signs: distanceSigns().map((sg) => ({ ...svgPt(sg.s, TRACK_OUT + 2), label: String(sg.s) })),
 }
 
 const trackEl = ref<SVGPathElement | null>(null)
@@ -909,12 +913,13 @@ const pace = computed(() => {
         <path
           class="track-progress"
           :d="track2d.lane1"
+          :stroke-width="track2d.laneW - 1.6"
           :stroke-dasharray="pathLen"
           :stroke-dashoffset="dashOffset"
         />
         <g :transform="`translate(${marker.x},${marker.y})`" class="runner">
-          <circle class="halo" r="10" />
-          <circle class="body" r="6" />
+          <circle class="halo" r="12" />
+          <circle class="body" r="7" />
           <text y="1">🏃</text>
         </g>
         <text class="lap-num" x="200" y="120">{{ laps }}</text>
@@ -1696,8 +1701,8 @@ code {
 }
 .track-lane {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.25);
-  stroke-width: 0.5;
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-width: 0.8;
 }
 /* geometry guide only — the runner marker and progress ring follow it via
    getTotalLength/getPointAtLength, so it never needs to be painted */
@@ -1708,7 +1713,7 @@ code {
 .track-progress {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 2.2; /* stays inside lane 1 (one lane ≈ 2.7 px at this scale) */
+  /* stroke-width bound in the template: one exaggerated lane minus a margin */
   stroke-linecap: round;
   transition: stroke-dashoffset 0.25s linear;
   filter: drop-shadow(0 0 6px rgba(46, 213, 115, 0.5));
@@ -1729,7 +1734,7 @@ code {
 }
 .runner text {
   text-anchor: middle;
-  font-size: 9px;
+  font-size: 10px;
 }
 .runner .halo {
   fill: rgba(46, 213, 115, 0.18);

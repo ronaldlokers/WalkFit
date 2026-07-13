@@ -803,7 +803,7 @@ const fmtDist = computed(() =>
 const pace = computed(() => {
   if (state.speed <= 0) return '—'
   const s = 3600 / state.speed
-  return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')} /km`
+  return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
 })
 </script>
 
@@ -813,6 +813,29 @@ const pace = computed(() => {
       <div class="brand">
         <span class="dot" :class="{ on: state.connected, run: state.running }"></span>
         <h1>Walk<span>Fit</span></h1>
+      </div>
+      <!-- live session stats (#46) — real zeros, faded while the belt is idle -->
+      <div class="stat-strip" :class="{ idle: !state.running }">
+        <div class="sstat">
+          <span class="sv">{{ mmss(state.elapsed) }}</span>
+          <span class="sk">time</span>
+        </div>
+        <div class="sstat">
+          <span class="sv">{{ fmtDist }}</span>
+          <span class="sk">distance</span>
+        </div>
+        <div class="sstat">
+          <span class="sv">{{ liveKcal }}</span>
+          <span class="sk">kcal</span>
+        </div>
+        <div class="sstat speed">
+          <span class="sv">{{ state.speed.toFixed(1) }}</span>
+          <span class="sk">km/h</span>
+        </div>
+        <div class="sstat">
+          <span class="sv">{{ pace }}</span>
+          <span class="sk">min/km</span>
+        </div>
       </div>
       <div class="head-actions">
         <button
@@ -1108,31 +1131,6 @@ const pace = computed(() => {
     </section>
 
     <p v-if="hr.state.error" class="warn">Heart rate: {{ hr.state.error }}</p>
-
-    <!-- live stats -->
-    <section class="stats">
-      <div class="stat big">
-        <span class="v">{{ state.speed.toFixed(1) }}</span
-        ><span class="u">km/h</span>
-        <span class="k">current speed</span>
-      </div>
-      <div class="stat">
-        <span class="v">{{ fmtDist }}</span
-        ><span class="k">distance</span>
-      </div>
-      <div class="stat">
-        <span class="v">{{ mmss(state.elapsed) }}</span
-        ><span class="k">time</span>
-      </div>
-      <div class="stat">
-        <span class="v">{{ pace }}</span
-        ><span class="k">pace</span>
-      </div>
-      <div class="stat">
-        <span class="v">{{ liveKcal }}</span
-        ><span class="k">kcal</span>
-      </div>
-    </section>
 
     <!-- controls -->
 
@@ -1704,6 +1702,7 @@ header {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 8px;
+  flex-wrap: wrap; /* narrow screens: the stat strip wraps to its own row */
 }
 .brand {
   display: flex;
@@ -2019,49 +2018,48 @@ code {
   margin-top: 6px;
 }
 
-.stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  margin-bottom: 18px;
+/* --- header live-stat strip (#46) --- */
+/* Always its own full-width row under the brand row: the app is a fluid column
+   (max 460px), so five chips never fit inline beside brand + actions. */
+.stat-strip {
+  order: 3;
+  flex-basis: 100%;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
 }
-.stat {
-  background: #171a21;
-  border: 1px solid #232833;
-  border-radius: 14px;
-  padding: 12px;
+.sstat {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  background: #171a21;
+  border: 1px solid #232833;
+  border-radius: 10px;
+  padding: 5px 4px 4px;
+  transition: opacity 0.35s;
 }
-.stat.big {
-  grid-column: span 4;
-  align-items: baseline;
-  flex-direction: row;
-  gap: 8px;
-}
-.stat .v {
-  font-size: 20px;
+.sv {
+  font-size: 16px;
   font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
-.stat.big .v {
-  font-size: 44px;
-  font-weight: 800;
+.sstat.speed .sv {
   color: var(--accent);
 }
-.stat.big .u {
-  font-size: 16px;
-  color: #8a93a3;
-}
-.stat .k {
-  font-size: 11px;
+.sk {
+  font-size: 9px;
   text-transform: uppercase;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.5px;
   color: #8a93a3;
-  margin-left: auto;
+  white-space: nowrap;
 }
-.stat.big .k {
-  align-self: center;
+/* idle: real zeros, faded — the strip never hides, so no layout jump on start */
+.stat-strip.idle .sstat {
+  opacity: 0.45;
 }
 
 .hr-spark-area {

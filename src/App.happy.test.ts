@@ -31,7 +31,10 @@ describe('App happy path', () => {
     await clickButton(w, 'Skip') // step 2 heart rate -> 3
     await clickButton(w, 'Free walk') // finish
     expect(w.text()).not.toContain('Connect your treadmill')
-    expect(w.text()).toContain('current speed')
+    // header stat strip shows the live values, faded while idle (#46)
+    expect(w.find('.stat-strip').exists()).toBe(true)
+    expect(w.find('.stat-strip').classes()).toContain('idle')
+    expect(w.find('.stat-strip').text()).toContain('min/km')
     expect(w.find('.workout-banner').exists()).toBe(false)
   })
 
@@ -174,7 +177,7 @@ describe('App happy path', () => {
       .find((c) => c.text().includes('Workout'))!
       .trigger('click')
     // still inside the wizard (step 4), not the header's separate overlay
-    expect(w.text()).toContain('current speed')
+    expect(w.find('.stat-strip').exists()).toBe(true)
     expect(w.find('.wizard').exists()).toBe(true)
     expect(w.find('.workout-tabs').exists()).toBe(true)
     expect(w.find('.tlist').exists()).toBe(true)

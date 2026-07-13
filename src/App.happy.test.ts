@@ -99,6 +99,72 @@ describe('App happy path', () => {
     vi.useRealTimers()
   })
 
+  it('statistics sheet shows activity rings, daily charts, and the HR range chart', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T20:00:00.000Z') })
+    // seed: one walk today (with steps + HR range), one yesterday (pre-#43 shape: no steps/hr range)
+    localStorage.setItem('walkfit.goals', JSON.stringify({ kcal: 400, steps: 6000, minutes: 30 }))
+    localStorage.setItem(
+      'walkfit.history',
+      JSON.stringify([
+        {
+          date: '2026-07-12T08:00:00.000Z',
+          distance: 900,
+          duration: 900,
+          kcal: 40,
+          avgHr: 100,
+        },
+        {
+          date: '2026-07-13T08:00:00.000Z',
+          distance: 1500,
+          duration: 1200,
+          kcal: 72,
+          steps: 1800,
+          avgHr: 112,
+          hrMin: 88,
+          hrMax: 131,
+        },
+      ]),
+    )
+    const w = mount(App)
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Free walk')
+    await clickButton(w, '☰')
+    await clickButton(w, 'Statistics')
+
+    // rings: three tracks, fills for today's non-zero metrics, legend shows value/goal
+    expect(w.findAll('.ring-track').length).toBe(3)
+    expect(w.findAll('.ring-fill').length).toBe(3)
+    const legend = w.find('.ring-legend').text()
+    expect(legend).toContain('72')
+    expect(legend).toContain('/ 400 kcal')
+    expect(legend).toContain('1800')
+    expect(legend).toContain('/ 6000 steps')
+    expect(legend).toContain('20') // 1200s -> 20 min
+    expect(legend).toContain('/ 30 min')
+
+    // daily detail: three bar charts with period totals, 7d default
+    const charts = w.findAll('.daychart')
+    expect(charts.length).toBe(4) // kcal, steps, time + HR
+    expect(charts[0]!.text()).toContain('112 kcal') // 40 + 72 over the week
+    expect(charts[1]!.text()).toContain('1800 steps') // yesterday's pre-#43 walk adds 0
+    expect(w.find('.chip.on').text()).toBe('7d')
+    expect(w.findAll('.bar-slot').length).toBeGreaterThan(20) // 7 slots x 3 charts + HR
+
+    // HR chart: both days have HR data (yesterday falls back to avgHr for the range)
+    expect(w.findAll('.hr-span').length).toBe(2)
+    expect(w.findAll('.hr-avg').length).toBe(2)
+
+    // range selector re-renders at 30 days
+    await w
+      .findAll('.chip')
+      .find((c) => c.text() === '30d')!
+      .trigger('click')
+    expect(w.find('.chip.on').text()).toBe('30d')
+    expect(w.findAll('.daychart')[0]!.findAll('.bar-slot').length).toBe(30)
+    vi.useRealTimers()
+  })
+
   it('wizard step 4 embeds the same tabbed WorkoutPicker as the header menu, including HR targets', async () => {
     const w = mount(App)
     await clickButton(w, 'Skip')

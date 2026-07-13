@@ -89,8 +89,12 @@ Keep pinned Playwright version and image tag in sync.
   session kcal), and the shared `Workout`/`Segment`/`HrTarget` types (SFCs can't export
   types, so App.vue's HR_TARGETS shape lives here).
 - `src/statistics.ts` — completed-session log persisted to `localStorage` (key stays
-  `walkfit.history` for backward compat): `Session` type, `addSession`, `loadStatistics`,
-  `weeklyTotals` (ISO-week rollups), `currentStreak`. Unit-tested in `src/statistics.test.ts`.
+  `walkfit.history` for backward compat): `Session` type (optional `steps`/`hrMin`/`hrMax`
+  are absent on pre-#43 logs — readers must null-guard), `addSession`, `loadStatistics`,
+  `weeklyTotals` (ISO-week rollups), `dailyTotals` (zero-filled per-local-day buckets for
+  the activity rings / daily charts), `currentStreak`, and the daily `Goals`
+  (`walkfit.goals`, defaults 500 kcal / 8000 steps / 30 min, editable in Settings).
+  Unit-tested in `src/statistics.test.ts`.
 - `src/weight.ts` — weigh-in log (`walkfit.weight.log`, issue #16): `WeightEntry`
   (`date`/`kg`/`source`), `mergeWeighIns` (idempotent on `source+date` so provider
   re-syncs never duplicate; same-key overwrites = corrected readings). Unit-tested in
@@ -122,8 +126,10 @@ same transition opens the upload-prompt popup.
 
 `localStorage` keys: `walkfit.treadmill.id`, `walkfit.hr.id` (remembered device ids),
 `walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.history`,
-`walkfit.weight.log` (weigh-ins), `walkfit.strava` / `walkfit.withings` (OAuth tokens),
-`walkfit.health.lastSync.<provider>` (sync cursors), `walkfit.view` (`track` | `scenic`).
+`walkfit.goals` (daily activity goals), `walkfit.weight.log` (weigh-ins),
+`walkfit.strava` / `walkfit.withings` (OAuth tokens), `walkfit.health.lastSync.<provider>`
+(sync cursors), `walkfit.view` (`track` | `scenic`), `walkfit.capture` (raw BLE frame
+debug logging, off unless `'1'`).
 
 **Health sync** — `health.ts` defines `HealthProvider` (id doubles as
 `WeightEntry.source`; reactive state; `connect`/`disconnect`/`handleRedirect`/

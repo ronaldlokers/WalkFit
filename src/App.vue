@@ -4,8 +4,8 @@ import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill'
 import { useHeartRate } from './heartrate'
 import { workouts, timeline, metForSpeed } from './workouts'
 import type { Workout, HrTarget } from './workouts'
-import { loadHistory, addSession, weeklyTotals, currentStreak } from './history'
-import type { Session } from './history'
+import { loadStatistics, addSession, weeklyTotals, currentStreak } from './statistics'
+import type { Session } from './statistics'
 import { loadWeightLog, addWeighIn } from './weight'
 import type { WeightEntry } from './weight'
 import { syncProvider } from './health'
@@ -48,15 +48,15 @@ function wizardStartHr(t: HrTarget) {
   startHrWorkout(t)
 }
 
-// --- header overflow menu (Workout / History / Disconnect / Settings) ---
+// --- header overflow menu (Workout / Statistics / Disconnect / Settings) ---
 const moreMenuOpen = ref(false)
 function menuOpenWorkouts() {
   moreMenuOpen.value = false
   openWorkoutMenu()
 }
-function menuOpenHistory() {
+function menuOpenStatistics() {
   moreMenuOpen.value = false
-  historyOpen.value = true
+  statisticsOpen.value = true
 }
 function menuDisconnect() {
   moreMenuOpen.value = false
@@ -374,12 +374,12 @@ watch(
   },
 )
 
-// --- session history ---
+// --- session statistics ---
 const MIN_SESSION_DISTANCE = 50 // metres — filters out accidental/blip starts
-const history = ref(loadHistory())
-const historyOpen = ref(false)
-const weekly = computed(() => weeklyTotals(history.value))
-const streak = computed(() => currentStreak(history.value))
+const sessions = ref(loadStatistics())
+const statisticsOpen = ref(false)
+const weekly = computed(() => weeklyTotals(sessions.value))
+const streak = computed(() => currentStreak(sessions.value))
 let sessionStart: Date | null = null
 let sessionName = 'Free walk'
 let hrSum = 0
@@ -410,7 +410,7 @@ watch(
           kcal: liveKcal.value,
           avgHr: hrCount ? Math.round(hrSum / hrCount) : null,
         }
-        history.value = addSession(session)
+        sessions.value = addSession(session)
         if (strava.state.connected) stravaPrompt.value = { session, name: sessionName }
       }
       sessionStart = null
@@ -727,7 +727,7 @@ const pace = computed(() => {
           <div v-if="moreMenuOpen" class="menu-backdrop" @click="moreMenuOpen = false"></div>
           <div v-if="moreMenuOpen" class="menu-panel">
             <button class="menu-item" @click="menuOpenWorkouts">📋 Workout</button>
-            <button class="menu-item" @click="menuOpenHistory">📈 History</button>
+            <button class="menu-item" @click="menuOpenStatistics">📈 Statistics</button>
             <button v-if="state.connected" class="menu-item" @click="menuDisconnect">
               🔌 Disconnect
             </button>
@@ -1077,15 +1077,15 @@ const pace = computed(() => {
       </div>
     </div>
 
-    <!-- session history -->
-    <div v-if="historyOpen" class="overlay" @click.self="historyOpen = false">
+    <!-- session statistics -->
+    <div v-if="statisticsOpen" class="overlay" @click.self="statisticsOpen = false">
       <div class="sheet">
         <div class="sheet-head">
-          <h2>History</h2>
-          <button class="x" @click="historyOpen = false">✕</button>
+          <h2>Statistics</h2>
+          <button class="x" @click="statisticsOpen = false">✕</button>
         </div>
 
-        <div v-if="!history.length" class="hist-empty">
+        <div v-if="!sessions.length" class="hist-empty">
           <span class="hist-empty-icon">🏃</span>
           <p class="hint">No walks logged yet — finish a walk to see it here.</p>
         </div>
@@ -1097,8 +1097,8 @@ const pace = computed(() => {
               <span class="k">day streak</span>
             </div>
             <div>
-              <span class="v">{{ history.length }}</span>
-              <span class="k">{{ history.length === 1 ? 'walk' : 'walks' }} total</span>
+              <span class="v">{{ sessions.length }}</span>
+              <span class="k">{{ sessions.length === 1 ? 'walk' : 'walks' }} total</span>
             </div>
           </div>
 
@@ -2201,7 +2201,7 @@ input[type='range'] {
   letter-spacing: 0.5px;
   color: #8a93a3;
 }
-/* --- history --- */
+/* --- statistics --- */
 .hist-empty {
   display: flex;
   flex-direction: column;
@@ -2281,6 +2281,10 @@ input[type='range'] {
   font-size: 11px;
   color: #8a93a3;
   margin-top: 4px;
+}
+.weight-section {
+  /* separate the Weight block from the By-week block above it */
+  margin-top: 22px;
 }
 .weight-section .hist-tiles {
   margin-bottom: 12px;

@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import type { Session } from './history'
+import type { Session } from './statistics'
 
 // Strava OAuth2 + activity upload. The client_id below is public (it's part of the
 // authorize URL every user's browser sends), but client_secret is not — token exchange
@@ -147,7 +147,7 @@ export function useStrava() {
     return next.accessToken
   }
 
-  // session: one entry from src/history.ts.
+  // session: one entry from src/statistics.ts.
   async function uploadSession(session: Session, name: string) {
     state.uploading = true
     state.error = ''

@@ -72,7 +72,7 @@ describe('App happy path', () => {
     expect(cards[0]!.text()).toMatch(/kcal/)
   })
 
-  it('history sheet logs a weigh-in: trend appears and kcal weight follows the newest entry', async () => {
+  it('statistics sheet logs a weigh-in: trend appears and kcal weight follows the newest entry', async () => {
     // fake only Date: two same-ms weigh-ins would share the merge key (source+date)
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T08:00:00.000Z') })
     const w = mount(App)
@@ -80,7 +80,7 @@ describe('App happy path', () => {
     await clickButton(w, 'Skip')
     await clickButton(w, 'Free walk')
     await clickButton(w, '☰')
-    await clickButton(w, 'History')
+    await clickButton(w, 'Statistics')
     expect(w.find('.weight-section').exists()).toBe(true)
     expect(w.text()).toContain('No weigh-ins yet')
 

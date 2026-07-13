@@ -50,7 +50,7 @@ match. `src/vite-env.d.ts` declares the `VITE_STRAVA_*` env vars and `webkitAudi
 
 CI (`.github/workflows/ci.yml`) runs lint → format:check → typecheck → test → build on
 PRs; deploy workflow gates on tests too. Tests: `src/protocol.test.ts` (framing/checksum,
-phantom-2x speed filter, telemetry + HR parsing), `src/workouts.test.ts`, `src/history.test.ts`,
+phantom-2x speed filter, telemetry + HR parsing), `src/workouts.test.ts`, `src/statistics.test.ts`,
 `src/App.happy.test.ts` (jsdom + @vue/test-utils happy-path: wizard → walk/workout flows),
 and `src/App.hrWorkout.test.ts` (mocks both `treadmill.ts`/`heartrate.ts` composables to
 drive `state.elapsed`/`bpm` directly — verifies nudge direction, the 20s rate limit, that it
@@ -88,9 +88,9 @@ Keep pinned Playwright version and image tag in sync.
   `workoutStats`, `timeline`, `metForSpeed` (MET-based kcal estimate, also used for live
   session kcal), and the shared `Workout`/`Segment`/`HrTarget` types (SFCs can't export
   types, so App.vue's HR_TARGETS shape lives here).
-- `src/history.ts` — completed-session log persisted to `localStorage` (`walkfit.history`):
-  `Session` type, `addSession`, `weeklyTotals` (ISO-week rollups), `currentStreak`.
-  Unit-tested in `src/history.test.ts`.
+- `src/statistics.ts` — completed-session log persisted to `localStorage` (key stays
+  `walkfit.history` for backward compat): `Session` type, `addSession`, `loadStatistics`,
+  `weeklyTotals` (ISO-week rollups), `currentStreak`. Unit-tested in `src/statistics.test.ts`.
 - `src/weight.ts` — weigh-in log (`walkfit.weight.log`, issue #16): `WeightEntry`
   (`date`/`kg`/`source`), `mergeWeighIns` (idempotent on `source+date` so provider
   re-syncs never duplicate; same-key overwrites = corrected readings). Unit-tested in
@@ -104,7 +104,7 @@ Keep pinned Playwright version and image tag in sync.
 - `src/WorkoutPicker.vue` — the tabbed weight-loss/HR workout picker, shared verbatim
   between the wizard's step 4 and the header's workout menu (see "Workouts" below).
 - `src/App.vue` — the rest of the UI (still mostly one component): loop, chart, controls,
-  stats, header overflow menu, history view, settings, onboarding wizard.
+  stats, header overflow menu, statistics view, settings, onboarding wizard.
 - `src/main.ts`, `src/style.css` — bootstrap + global styles/theme vars (`--accent`), plus
   the base `.btn` family — kept unscoped/global (not in `App.vue`'s `<style scoped>`)
   specifically so `WorkoutPicker.vue`'s buttons pick it up too; scoped styles don't cross
@@ -115,7 +115,7 @@ first time. Both composables expose `autoConnect()` (called on mount) which sile
 reconnects to previously-granted device via `navigator.bluetooth.getDevices()` (no picker),
 with 8s timeout so off/out-of-range device doesn't hang UI.
 
-Session logged to history when `state.running` goes true→false and covered at least
+Session logged to statistics when `state.running` goes true→false and covered at least
 50 m (filters accidental starts) — fires both on explicit Stop and on belt's own
 staleness-timeout auto-stop, so doesn't matter which one ends walk. If Strava connected,
 same transition opens the upload-prompt popup.
@@ -176,7 +176,7 @@ Inside the picker, two tabs:
 The two workout modes are mutually exclusive (`active` for weight-loss, `hrTarget` for
 HR) — starting one clears the other.
 
-**Header overflow menu** — Workout / History / Disconnect (only while connected) /
+**Header overflow menu** — Workout / Statistics / Disconnect (only while connected) /
 Settings live behind a single ☰ button (`moreMenuOpen`) instead of separate header
 buttons, to keep the header from crowding on narrow screens. The Connect button (when
 not connected) and the HR badge (when a sensor is connected) stay directly in the

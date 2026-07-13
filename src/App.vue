@@ -2,9 +2,10 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill.js'
 import { useHeartRate } from './heartrate.js'
-import { trainings, trainingStats, timeline, metForSpeed } from './trainings.js'
+import { workouts, timeline, metForSpeed } from './workouts.js'
 import { loadHistory, addSession, weeklyTotals, currentStreak } from './history.js'
 import { useStrava } from './strava.js'
+import WorkoutPicker from './WorkoutPicker.vue'
 
 const {
   state,
@@ -20,20 +21,43 @@ const {
 const hr = useHeartRate()
 const strava = useStrava()
 const origin = window.location.origin
-const stats = (t) => trainingStats(t, weightKg.value)
 
 // --- onboarding wizard ---
 const wizardOpen = ref(true)
-const wizardStep = ref(1) // 1 treadmill · 2 heart rate · 3 mode · 4 pick training
+const wizardStep = ref(1) // 1 treadmill · 2 heart rate · 3 mode · 4 pick workout
 function wizardWalk() {
   active.value = null
   wizardOpen.value = false
 }
-function wizardPick(t) {
-  active.value = t
-  resetStats()
-  setSpeed(t.segments[0].speed)
+// Wizard's own start handlers: same shared start logic as the header-button menu, plus
+// closing the wizard (WorkoutPicker itself has no "close" affordance in the wizard step —
+// :closable="false" — the wizard's own Back button is the only way out besides picking).
+function wizardStartPlan(w) {
   wizardOpen.value = false
+  startWorkout(w)
+}
+function wizardStartHr(t) {
+  wizardOpen.value = false
+  startHrWorkout(t)
+}
+
+// --- header overflow menu (Workout / History / Disconnect / Settings) ---
+const moreMenuOpen = ref(false)
+function menuOpenWorkouts() {
+  moreMenuOpen.value = false
+  openWorkoutMenu()
+}
+function menuOpenHistory() {
+  moreMenuOpen.value = false
+  historyOpen.value = true
+}
+function menuDisconnect() {
+  moreMenuOpen.value = false
+  disconnect()
+}
+function menuOpenSettings() {
+  moreMenuOpen.value = false
+  settingsOpen.value = true
 }
 
 // --- settings ---
@@ -77,18 +101,23 @@ function speak(text) {
 const maxHr = ref(Number(localStorage.getItem('walkfit.maxhr')) || 190)
 watch(maxHr, (v) => localStorage.setItem('walkfit.maxhr', v))
 
-// --- weight (used for calorie estimates — see trainingStats / metForSpeed) ---
+// --- weight (used for calorie estimates — see workoutStats / metForSpeed) ---
 const weightKg = ref(Number(localStorage.getItem('walkfit.weight')) || 70)
 watch(weightKg, (v) => localStorage.setItem('walkfit.weight', v))
+// Shared by the live HR badge (hrZone) and the HR-steered autopilot's target picker below,
+// so the two can't drift apart. hi is a %-of-maxHr upper bound; Infinity for the top zone.
+const HR_ZONES = [
+  { z: 1, name: 'Warm up', color: '#6ab0ff', hi: 60 },
+  { z: 2, name: 'Fat burn', color: '#2ed573', hi: 70 },
+  { z: 3, name: 'Cardio', color: '#f5a623', hi: 80 },
+  { z: 4, name: 'Hard', color: '#ff7f50', hi: 90 },
+  { z: 5, name: 'Max', color: '#ff4757', hi: Infinity },
+]
 const hrZone = computed(() => {
   const bpm = hr.state.bpm
   if (!bpm) return { z: 0, name: '—', color: '#8a93a3' }
   const p = (bpm / maxHr.value) * 100
-  if (p < 60) return { z: 1, name: 'Warm up', color: '#6ab0ff' }
-  if (p < 70) return { z: 2, name: 'Fat burn', color: '#2ed573' }
-  if (p < 80) return { z: 3, name: 'Cardio', color: '#f5a623' }
-  if (p < 90) return { z: 4, name: 'Hard', color: '#ff7f50' }
-  return { z: 5, name: 'Max', color: '#ff4757' }
+  return HR_ZONES.find((zn) => p < zn.hi) || HR_ZONES[HR_ZONES.length - 1]
 })
 const hrSpark = computed(() => {
   const h = hr.state.history
@@ -104,6 +133,66 @@ const hrSpark = computed(() => {
   )
   return { line: pts.join(' '), area: `M0,${H} L${pts.join(' L')} L${W},${H} Z` }
 })
+
+// --- HR workouts: hold a target heart-rate range by nudging belt speed ---
+// Own table rather than reusing HR_ZONES: steer targets need a "Light" range below
+// fat-burn (47.5–60% — 90–113 bpm at the default 190 max) that the display zones
+// don't have, and the top "Max" zone is not a sane steer target.
+const HR_TARGETS = [
+  { id: 'light', name: 'Light', color: '#6ab0ff', loPct: 47.5, hiPct: 60 },
+  { id: 'fatburn', name: 'Fat burn', color: '#2ed573', loPct: 60, hiPct: 70 },
+  { id: 'cardio', name: 'Cardio', color: '#f5a623', loPct: 70, hiPct: 80 },
+  { id: 'hard', name: 'Hard', color: '#ff7f50', loPct: 80, hiPct: 90 },
+]
+const HR_NUDGE_STEP = 0.3 // km/h per adjustment
+const HR_ADJUST_INTERVAL = 20 // seconds between nudges (issue #18 calls for 15–30s)
+// Contiguous, non-overlapping bpm ranges: hi is one below the next target's lo
+// (Light 90–113, Fat burn 114–132, … at the default 190 max HR).
+function hrTargetRange(t) {
+  return {
+    lo: Math.round((t.loPct / 100) * maxHr.value),
+    hi: Math.round((t.hiPct / 100) * maxHr.value) - 1,
+  }
+}
+const hrTarget = ref(null) // active HR_TARGETS entry while the autopilot is steering speed
+let lastHrAdjustElapsed = 0
+function startHrWorkout(t) {
+  active.value = null // mutually exclusive with a weight-loss workout
+  hrTarget.value = t
+  menuOpen.value = false
+  lastHrAdjustElapsed = state.elapsed
+  if (state.connected) start()
+}
+function endHrWorkout() {
+  hrTarget.value = null
+  stop()
+}
+// Nudge at most once per HR_ADJUST_INTERVAL, only while the belt is actually moving (so
+// this can't fight the countdown-window enforcement in treadmill.js — setSpeed re-arms
+// its own ~8s enforce window each call, well inside our >=20s cadence, so the two never
+// overlap). setSpeed() itself clamps to SPEED_MIN..SPEED_MAX and snaps to the step grid,
+// and state.speed already comes from the phantom-2x-filtered reading — no separate
+// filtering needed here.
+watch(
+  () => [state.elapsed, state.running],
+  () => {
+    if (!hrTarget.value || !state.running) return
+    if (state.elapsed - lastHrAdjustElapsed < HR_ADJUST_INTERVAL) return
+    lastHrAdjustElapsed = state.elapsed
+    const bpm = hr.state.bpm
+    if (!bpm) return // no reading this cycle — try again next interval rather than guess
+    const { lo, hi } = hrTargetRange(hrTarget.value)
+    if (bpm < lo) setSpeed(state.targetSpeed + HR_NUDGE_STEP)
+    else if (bpm > hi) setSpeed(state.targetSpeed - HR_NUDGE_STEP)
+  },
+)
+// HR workout has nothing to steer by once the sensor disconnects.
+watch(
+  () => hr.state.connected,
+  (connected) => {
+    if (!connected && hrTarget.value) endHrWorkout()
+  },
+)
 
 // --- view mode: athletics track loop, or a side-scrolling scenic walk ---
 const viewMode = ref(localStorage.getItem('walkfit.view') === 'scenic' ? 'scenic' : 'track')
@@ -242,7 +331,7 @@ const bestLap = computed(() => (lapTimes.value.length ? Math.min(...lapTimes.val
 
 // --- live calorie counter ---
 // Integrated per-tick from actual speed (via metForSpeed), not a single average-speed
-// estimate — accumulates correctly through a training's varying-speed segments.
+// estimate — accumulates correctly through a workout's varying-speed segments.
 const liveKcal = ref(0)
 let kcalAccum = 0
 let lastKcalElapsed = 0
@@ -250,7 +339,7 @@ watch(
   () => state.elapsed,
   (elapsed, prevElapsed) => {
     if (elapsed < prevElapsed) {
-      // stats were reset (Reset button, wizard pick, training start)
+      // stats were reset (Reset button, wizard pick, workout start)
       kcalAccum = 0
       lastKcalElapsed = 0
       liveKcal.value = 0
@@ -342,14 +431,14 @@ function bump(delta) {
   setSpeed(speedInput.value)
 }
 
-// --- trainings ---
+// --- workouts (weight-loss plans + HR-steered) ---
 const menuOpen = ref(false)
-const preview = ref(null) // training shown in the menu detail
-function openTrainingMenu() {
+const workoutTab = ref('plans') // 'plans' (weight loss) | 'hr' (heart rate) — header menu's initial tab
+function openWorkoutMenu(tab = 'plans') {
   menuOpen.value = true
-  preview.value = null
+  workoutTab.value = tab
 }
-const active = ref(null) // training currently running
+const active = ref(null) // weight-loss workout currently running
 const activeTl = computed(() => (active.value ? timeline(active.value) : null))
 const curSegIndex = computed(() => {
   if (!activeTl.value) return -1
@@ -394,7 +483,7 @@ watch(
     if (!active.value) return
     const tl = activeTl.value
     if (state.running && state.elapsed >= tl.total) {
-      finishTraining()
+      finishWorkout()
       return
     }
     const seg = tl.segs.find((s) => state.elapsed >= s.start && state.elapsed < s.end)
@@ -402,19 +491,19 @@ watch(
   },
 )
 
-async function startTraining(t) {
+async function startWorkout(t) {
   active.value = t
+  hrTarget.value = null // mutually exclusive with an HR workout
   resetStats()
   menuOpen.value = false
-  preview.value = null
   setSpeed(t.segments[0].speed) // sets target for the start sequence
   if (state.connected) await start()
 }
-function endTraining() {
+function endWorkout() {
   active.value = null
   stop()
 }
-function finishTraining() {
+function finishWorkout() {
   const t = active.value
   active.value = null
   stop()
@@ -440,19 +529,6 @@ function planPath(t) {
   }
   return { line: pts.join(' '), area: `M0,${CH_H} L${pts.join(' L')} L${CH_W},${CH_H} Z` }
 }
-function miniPath(t) {
-  const W = 100,
-    H = 34
-  const { segs, total } = timeline(t)
-  const pts = []
-  for (const s of segs) {
-    const x0 = (s.start / total) * W,
-      x1 = (s.end / total) * W
-    const y = H - (s.speed / SPEED_MAX) * H
-    pts.push(`${x0.toFixed(1)},${y.toFixed(1)}`, `${x1.toFixed(1)},${y.toFixed(1)}`)
-  }
-  return `M0,${H} L${pts.join(' L')} L${W},${H} Z`
-}
 
 const activePlan = computed(() => (active.value ? planPath(active.value) : null))
 const progressX = computed(() =>
@@ -469,7 +545,7 @@ const actualLine = computed(() => {
     .join(' ')
 })
 
-// free-walk chart (no training active)
+// free-walk chart (no workout active)
 const walkPoints = computed(() => {
   const h = state.history
   if (h.length < 2) return []
@@ -493,12 +569,6 @@ function mmss(sec) {
   sec = Math.max(0, Math.floor(sec))
   return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`
 }
-function segDur(min) {
-  const sec = Math.round(min * 60)
-  return sec % 60 === 0
-    ? `${sec / 60} min`
-    : `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
-}
 const fmtDist = computed(() =>
   state.distance >= 1000
     ? (state.distance / 1000).toFixed(2) + ' km'
@@ -519,9 +589,13 @@ const pace = computed(() => {
         <h1>Walk<span>Fit</span></h1>
       </div>
       <div class="head-actions">
-        <button class="btn ghost sm" @click="openTrainingMenu">Training</button>
-        <button class="btn ghost sm" @click="historyOpen = true">History</button>
-        <span v-if="hr.state.connected" class="hr-badge" :title="hrZone.name">
+        <button
+          v-if="hr.state.connected"
+          class="hr-badge"
+          :class="{ on: !!hrTarget }"
+          :title="hrTarget ? 'HR workout — tap to change' : `${hrZone.name} — tap for HR workout`"
+          @click="openWorkoutMenu('hr')"
+        >
           <svg
             v-if="hrSpark"
             class="hr-badge-spark"
@@ -536,7 +610,7 @@ const pace = computed(() => {
             />
           </svg>
           <span class="hr-badge-content">♥ {{ hr.state.bpm || '–' }}</span>
-        </span>
+        </button>
         <button
           v-if="!state.connected"
           class="btn primary sm"
@@ -545,8 +619,22 @@ const pace = computed(() => {
         >
           {{ state.connecting ? 'Connecting…' : 'Connect' }}
         </button>
-        <button v-else class="btn ghost sm" @click="disconnect">Disconnect</button>
-        <button class="cog" aria-label="Settings" @click="settingsOpen = true">⚙</button>
+        <!-- anchor wrapper: the dropdown panel positions itself relative to this,
+             directly under the ☰ button, instead of guessing header height in CSS -->
+        <div class="menu-anchor">
+          <button class="cog" aria-label="Menu" @click="moreMenuOpen = true">☰</button>
+
+          <!-- click-outside-to-close backdrop, invisible, full-screen, below the panel -->
+          <div v-if="moreMenuOpen" class="menu-backdrop" @click="moreMenuOpen = false"></div>
+          <div v-if="moreMenuOpen" class="menu-panel">
+            <button class="menu-item" @click="menuOpenWorkouts">📋 Workout</button>
+            <button class="menu-item" @click="menuOpenHistory">📈 History</button>
+            <button v-if="state.connected" class="menu-item" @click="menuDisconnect">
+              🔌 Disconnect
+            </button>
+            <button class="menu-item" @click="menuOpenSettings">⚙ Settings</button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -718,7 +806,7 @@ const pace = computed(() => {
       <button class="btn ghost" @click="resetStats">Reset</button>
     </section>
 
-    <section v-if="!active" class="controls" :class="{ disabled: !state.connected }">
+    <section v-if="!active && !hrTarget" class="controls" :class="{ disabled: !state.connected }">
       <div class="speed-row">
         <button class="btn round" :disabled="!state.connected" @click="bump(-SPEED_STEP)">−</button>
         <div class="speed-set">
@@ -737,17 +825,17 @@ const pace = computed(() => {
       </div>
     </section>
 
-    <!-- training banner + profile, OR free-walk speed chart -->
+    <!-- workout banner + profile, OR free-walk speed chart -->
     <section v-if="active" class="chart-wrap">
-      <div class="train-banner">
+      <div class="workout-banner">
         <div>
-          <span class="train-name">{{ active.name }}</span>
-          <span v-if="curSeg" class="train-seg">
+          <span class="workout-name">{{ active.name }}</span>
+          <span v-if="curSeg" class="workout-seg">
             seg {{ curSegIndex + 1 }}/{{ activeTl.segs.length }} · now
             {{ curSeg.speed.toFixed(1) }} km/h · next in {{ mmss(timeToNext) }}
           </span>
         </div>
-        <button class="btn halt sm" @click="endTraining">End</button>
+        <button class="btn halt sm" @click="endWorkout">End</button>
       </div>
       <svg viewBox="0 0 320 120" class="chart">
         <rect class="done" x="0" y="0" :width="progressX" height="120" />
@@ -761,14 +849,24 @@ const pace = computed(() => {
         <line class="cursor" :x1="progressX" y1="0" :x2="progressX" y2="120" />
         <circle class="cursor-dot" :cx="progressX" cy="6" r="4" />
       </svg>
-      <div class="train-foot">
+      <div class="workout-foot">
         <span>{{ mmss(state.elapsed) }} / {{ mmss(activeTl.total) }}</span>
         <span>{{ mmss(remaining) }} left</span>
       </div>
     </section>
 
     <section v-else class="chart-wrap">
-      <div class="chart-head">
+      <div v-if="hrTarget" class="workout-banner">
+        <div>
+          <span class="workout-name">HR workout · {{ hrTarget.name }}</span>
+          <span class="workout-seg">
+            target {{ hrTargetRange(hrTarget).lo }}–{{ hrTargetRange(hrTarget).hi }} bpm · now
+            {{ hr.state.bpm || '–' }} bpm · {{ state.targetSpeed.toFixed(1) }} km/h
+          </span>
+        </div>
+        <button class="btn halt sm" @click="endHrWorkout">End</button>
+      </div>
+      <div v-else class="chart-head">
         <span class="chart-title">Speed over time</span>
         <span v-if="peakSpeed" class="chart-peak">peak {{ peakSpeed.toFixed(1) }} km/h</span>
       </div>
@@ -780,7 +878,7 @@ const pace = computed(() => {
         <path v-if="walkArea" class="area" :d="walkArea" />
         <polyline v-if="walkLine" class="actual" :points="walkLine" />
       </svg>
-      <p v-if="state.history.length < 2" class="chart-empty">Start walking, or pick a training.</p>
+      <p v-if="state.history.length < 2" class="chart-empty">Start walking, or pick a workout.</p>
     </section>
 
     <p v-if="hr.state.error" class="warn">Heart rate: {{ hr.state.error }}</p>
@@ -821,72 +919,23 @@ const pace = computed(() => {
       <pre>{{ state.log.join('\n') }}</pre>
     </details>
 
-    <!-- trainings menu -->
+    <!-- workout menu: weight-loss plans, or HR-steered targets -->
     <div v-if="menuOpen" class="overlay" @click.self="menuOpen = false">
       <div class="sheet">
-        <div class="sheet-head">
-          <button v-if="preview" class="x" @click="preview = null">‹</button>
-          <h2>{{ preview ? preview.name : 'Training' }}</h2>
-          <button class="x" @click="menuOpen = false">✕</button>
-        </div>
-
-        <div v-if="!preview" class="tlist">
-          <button v-for="t in trainings" :key="t.id" class="tcard" @click="preview = t">
-            <div class="tcard-main">
-              <span class="tname">{{ t.name }}</span>
-              <span class="tfocus">{{ t.focus }}</span>
-              <span class="tmeta"
-                >{{ mmss(stats(t).minutes * 60) }} · {{ stats(t).distanceKm.toFixed(1) }} km · ~{{
-                  stats(t).kcal
-                }}
-                kcal</span
-              >
-            </div>
-            <svg class="mini" viewBox="0 0 100 34">
-              <path :d="miniPath(t)" />
-            </svg>
-          </button>
-        </div>
-
-        <div v-else class="tdetail">
-          <p class="tfocus">{{ preview.focus }}</p>
-          <div class="detail-tiles">
-            <div>
-              <span class="v">{{ mmss(stats(preview).minutes * 60) }}</span
-              ><span class="k">time</span>
-            </div>
-            <div>
-              <span class="v">{{ stats(preview).distanceKm.toFixed(1) }}</span
-              ><span class="k">km</span>
-            </div>
-            <div>
-              <span class="v">~{{ stats(preview).kcal }}</span
-              ><span class="k">kcal</span>
-            </div>
-          </div>
-          <svg viewBox="0 0 320 120" class="chart detail-chart">
-            <g v-for="g in gridLines" :key="g.s">
-              <line class="grid" x1="0" :y1="g.y" x2="320" :y2="g.y" />
-              <text class="grid-label" x="3" :y="g.y - 3">{{ g.s }}</text>
-            </g>
-            <path class="area" :d="planPath(preview).area" />
-            <polyline class="plan" :points="planPath(preview).line" />
-          </svg>
-          <ol class="seglist">
-            <li v-for="(s, i) in preview.segments" :key="i">
-              <span class="seg-i">{{ i + 1 }}</span>
-              <span class="seg-sp">{{ s.speed.toFixed(1) }} km/h</span>
-              <span class="seg-mn">{{ segDur(s.minutes) }}</span>
-            </li>
-          </ol>
-          <div class="detail-actions">
-            <button class="btn ghost" @click="preview = null">Back</button>
-            <button class="btn go" @click="startTraining(preview)">Start training</button>
-          </div>
-          <p v-if="!state.connected" class="hint">
-            Not connected — connect the treadmill first, or start it and connect after.
-          </p>
-        </div>
+        <WorkoutPicker
+          :workouts="workouts"
+          :weight-kg="weightKg"
+          :max-hr="maxHr"
+          :connected="state.connected"
+          :hr-targets="HR_TARGETS"
+          :active-hr-target="hrTarget"
+          :adjust-interval="HR_ADJUST_INTERVAL"
+          :start-tab="workoutTab"
+          @start-plan="startWorkout"
+          @start-hr="startHrWorkout"
+          @stop-hr="endHrWorkout"
+          @close="menuOpen = false"
+        />
       </div>
     </div>
 
@@ -1053,8 +1102,8 @@ const pace = computed(() => {
             </button>
             <button class="mode-card" @click="wizardStep = 4">
               <span class="mode-emoji">📋</span>
-              <span class="mode-name">Training</span>
-              <span class="mode-desc">Guided weight-loss session</span>
+              <span class="mode-name">Workout</span>
+              <span class="mode-desc">Weight-loss plan, or HR-steered</span>
             </button>
           </div>
           <div class="wiz-nav">
@@ -1063,24 +1112,20 @@ const pace = computed(() => {
           </div>
         </div>
 
-        <!-- 4: pick training -->
-        <div v-else class="wiz-step">
-          <h2>Choose a training</h2>
-          <div class="tlist wiz-tlist">
-            <button v-for="t in trainings" :key="t.id" class="tcard" @click="wizardPick(t)">
-              <div class="tcard-main">
-                <span class="tname">{{ t.name }}</span>
-                <span class="tfocus">{{ t.focus }}</span>
-                <span class="tmeta"
-                  >{{ mmss(stats(t).minutes * 60) }} · {{ stats(t).distanceKm.toFixed(1) }} km · ~{{
-                    stats(t).kcal
-                  }}
-                  kcal</span
-                >
-              </div>
-              <svg class="mini" viewBox="0 0 100 34"><path :d="miniPath(t)" /></svg>
-            </button>
-          </div>
+        <!-- 4: pick a workout — same picker the header/HR-badge menu uses -->
+        <div v-else class="wiz-step wiz-workout-step">
+          <WorkoutPicker
+            :workouts="workouts"
+            :weight-kg="weightKg"
+            :max-hr="maxHr"
+            :connected="state.connected"
+            :hr-targets="HR_TARGETS"
+            :active-hr-target="hrTarget"
+            :adjust-interval="HR_ADJUST_INTERVAL"
+            :closable="false"
+            @start-plan="wizardStartPlan"
+            @start-hr="wizardStartHr"
+          />
           <div class="wiz-nav">
             <button class="btn ghost" @click="wizardStep = 3">Back</button>
             <span></span>
@@ -1501,23 +1546,23 @@ code {
   margin-top: 8px;
 }
 
-.train-banner {
+.workout-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 8px;
 }
-.train-name {
+.workout-name {
   font-weight: 700;
   font-size: 15px;
   display: block;
 }
-.train-seg {
+.workout-seg {
   font-size: 12px;
   color: #8a93a3;
 }
-.train-foot {
+.workout-foot {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
@@ -1623,6 +1668,11 @@ code {
   padding: 8px 12px;
   font-size: 14px;
   font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+}
+.hr-badge.on {
+  border-color: var(--accent);
 }
 .hr-badge-spark {
   position: absolute;
@@ -1697,10 +1747,6 @@ code {
   display: flex;
   gap: 8px;
 }
-.btn.forget {
-  color: #ff7f7f;
-}
-
 .controls.disabled {
   opacity: 0.55;
 }
@@ -1737,53 +1783,6 @@ input[type='range'] {
   opacity: 0.55;
 }
 
-.btn {
-  border: none;
-  border-radius: 12px;
-  padding: 12px 16px;
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-  color: #fff;
-  background: #232833;
-  transition: 0.15s;
-}
-.btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.btn.sm {
-  padding: 8px 12px;
-  font-size: 13px;
-}
-.btn.primary {
-  background: var(--accent);
-  color: #05210f;
-}
-.btn.ghost {
-  background: #1b1f27;
-  color: #cbd3df;
-  font-weight: 600;
-}
-.btn.round {
-  width: 46px;
-  height: 46px;
-  padding: 0;
-  font-size: 24px;
-  border-radius: 50%;
-}
-.btn.go {
-  flex: 1;
-  background: var(--accent);
-  color: #05210f;
-}
-.btn.halt {
-  flex: 1;
-  background: #ff4757;
-}
-.btn.halt.sm {
-  flex: 0;
-}
 .hint {
   margin-top: 14px;
   font-size: 12.5px;
@@ -1813,6 +1812,46 @@ input[type='range'] {
   align-items: center;
   background: #0b0d12;
   padding: 16px;
+}
+.menu-anchor {
+  position: relative;
+}
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+.menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 21;
+  background: #12151b;
+  border: 1px solid #232833;
+  border-radius: 14px;
+  padding: 6px;
+  min-width: 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: #e8ecf2;
+  padding: 11px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.menu-item:hover {
+  background: #1b1f27;
 }
 .wizard {
   width: 100%;
@@ -1849,6 +1888,9 @@ input[type='range'] {
   flex-direction: column;
   gap: 12px;
   text-align: center;
+}
+.wiz-workout-step {
+  text-align: left;
 }
 .wiz-icon {
   font-size: 46px;
@@ -1912,10 +1954,6 @@ input[type='range'] {
   font-size: 12px;
   color: #8a93a3;
 }
-.wiz-tlist {
-  text-align: left;
-  margin: 6px 0;
-}
 .sheet {
   background: #12151b;
   border: 1px solid #232833;
@@ -1952,60 +1990,6 @@ input[type='range'] {
   cursor: pointer;
 }
 
-.tlist {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.tcard {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-align: left;
-  background: #171a21;
-  border: 1px solid #232833;
-  border-radius: 14px;
-  padding: 12px;
-  cursor: pointer;
-}
-.tcard-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.tname {
-  font-weight: 700;
-  font-size: 15px;
-}
-.tfocus {
-  font-size: 12.5px;
-  color: #8a93a3;
-  line-height: 1.4;
-}
-.tmeta {
-  font-size: 12px;
-  color: var(--accent);
-  font-weight: 600;
-  margin-top: 2px;
-}
-.mini {
-  width: 100px;
-  height: 34px;
-  flex: none;
-}
-.mini path {
-  fill: rgba(46, 213, 115, 0.18);
-  stroke: var(--accent);
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
-}
-
-.tdetail {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
 .detail-tiles {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2030,13 +2014,6 @@ input[type='range'] {
   letter-spacing: 0.5px;
   color: #8a93a3;
 }
-.seglist {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
 /* --- history --- */
 .hist-empty {
   display: flex;
@@ -2133,33 +2110,6 @@ input[type='range'] {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  color: #8a93a3;
-}
-.seglist li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  padding: 7px 10px;
-  background: #171a21;
-  border-radius: 8px;
-}
-.seg-i {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #232833;
-  color: #cbd3df;
-  display: grid;
-  place-items: center;
-  font-size: 11px;
-  font-weight: 700;
-}
-.seg-sp {
-  font-weight: 700;
-}
-.seg-mn {
-  margin-left: auto;
   color: #8a93a3;
 }
 .detail-actions {

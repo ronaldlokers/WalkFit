@@ -1,9 +1,11 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill'
 import { useHeartRate } from './heartrate'
 import { workouts, timeline, metForSpeed } from './workouts'
+import type { Workout, HrTarget } from './workouts'
 import { loadHistory, addSession, weeklyTotals, currentStreak } from './history'
+import type { Session } from './history'
 import { useStrava } from './strava'
 import WorkoutPicker from './WorkoutPicker.vue'
 
@@ -32,11 +34,11 @@ function wizardWalk() {
 // Wizard's own start handlers: same shared start logic as the header-button menu, plus
 // closing the wizard (WorkoutPicker itself has no "close" affordance in the wizard step —
 // :closable="false" — the wizard's own Back button is the only way out besides picking).
-function wizardStartPlan(w) {
+function wizardStartPlan(w: Workout) {
   wizardOpen.value = false
   startWorkout(w)
 }
-function wizardStartHr(t) {
+function wizardStartHr(t: HrTarget) {
   wizardOpen.value = false
   startHrWorkout(t)
 }
@@ -68,11 +70,11 @@ watch(debugOn, (v) => localStorage.setItem('walkfit.debug', v ? '1' : '0'))
 // --- audio cues ---
 const audioOn = ref(localStorage.getItem('walkfit.audio') !== '0') // default on
 watch(audioOn, (v) => localStorage.setItem('walkfit.audio', v ? '1' : '0'))
-let audioCtx = null
+let audioCtx: AudioContext | null = null
 function beep(freq = 880, ms = 120) {
   if (!audioOn.value) return
   try {
-    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)()
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext!)()
     const o = audioCtx.createOscillator()
     const g = audioCtx.createGain()
     o.frequency.value = freq
@@ -85,7 +87,7 @@ function beep(freq = 880, ms = 120) {
     // no audio output available — cues are best-effort
   }
 }
-function speak(text) {
+function speak(text: string) {
   if (!audioOn.value) return
   try {
     const u = new SpeechSynthesisUtterance(text)
@@ -99,11 +101,11 @@ function speak(text) {
 
 // --- heart rate zones ---
 const maxHr = ref(Number(localStorage.getItem('walkfit.maxhr')) || 190)
-watch(maxHr, (v) => localStorage.setItem('walkfit.maxhr', v))
+watch(maxHr, (v) => localStorage.setItem('walkfit.maxhr', String(v)))
 
 // --- weight (used for calorie estimates — see workoutStats / metForSpeed) ---
 const weightKg = ref(Number(localStorage.getItem('walkfit.weight')) || 70)
-watch(weightKg, (v) => localStorage.setItem('walkfit.weight', v))
+watch(weightKg, (v) => localStorage.setItem('walkfit.weight', String(v)))
 // Shared by the live HR badge (hrZone) and the HR-steered autopilot's target picker below,
 // so the two can't drift apart. hi is a %-of-maxHr upper bound; Infinity for the top zone.
 const HR_ZONES = [
@@ -138,7 +140,7 @@ const hrSpark = computed(() => {
 // Own table rather than reusing HR_ZONES: steer targets need a "Light" range below
 // fat-burn (47.5–60% — 90–113 bpm at the default 190 max) that the display zones
 // don't have, and the top "Max" zone is not a sane steer target.
-const HR_TARGETS = [
+const HR_TARGETS: HrTarget[] = [
   { id: 'light', name: 'Light', color: '#6ab0ff', loPct: 47.5, hiPct: 60 },
   { id: 'fatburn', name: 'Fat burn', color: '#2ed573', loPct: 60, hiPct: 70 },
   { id: 'cardio', name: 'Cardio', color: '#f5a623', loPct: 70, hiPct: 80 },
@@ -148,15 +150,15 @@ const HR_NUDGE_STEP = 0.3 // km/h per adjustment
 const HR_ADJUST_INTERVAL = 20 // seconds between nudges (issue #18 calls for 15–30s)
 // Contiguous, non-overlapping bpm ranges: hi is one below the next target's lo
 // (Light 90–113, Fat burn 114–132, … at the default 190 max HR).
-function hrTargetRange(t) {
+function hrTargetRange(t: HrTarget) {
   return {
     lo: Math.round((t.loPct / 100) * maxHr.value),
     hi: Math.round((t.hiPct / 100) * maxHr.value) - 1,
   }
 }
-const hrTarget = ref(null) // active HR_TARGETS entry while the autopilot is steering speed
+const hrTarget = ref<HrTarget | null>(null) // active HR_TARGETS entry while the autopilot is steering speed
 let lastHrAdjustElapsed = 0
-function startHrWorkout(t) {
+function startHrWorkout(t: HrTarget) {
   active.value = null // mutually exclusive with a weight-loss workout
   hrTarget.value = t
   menuOpen.value = false
@@ -195,7 +197,9 @@ watch(
 )
 
 // --- view mode: athletics track loop, or a side-scrolling scenic walk ---
-const viewMode = ref(localStorage.getItem('walkfit.view') === 'scenic' ? 'scenic' : 'track')
+const viewMode = ref<'track' | 'scenic'>(
+  localStorage.getItem('walkfit.view') === 'scenic' ? 'scenic' : 'track',
+)
 watch(viewMode, async (v) => {
   localStorage.setItem('walkfit.view', v)
   if (v === 'track') {
@@ -215,7 +219,7 @@ watch(viewMode, async (v) => {
 // is decided by a deterministic hash of fixed-size "spawn buckets" along the route — same
 // bucket index always resolves to the same prop, so nothing jumps or differs between
 // re-renders, but the layout isn't a visibly repeating tile like the old design.
-function sceneHash(seed) {
+function sceneHash(seed: number) {
   const x = Math.sin(seed * 12.9898) * 43758.5453
   return x - Math.floor(x)
 }
@@ -224,13 +228,14 @@ const GROUND_PX_PER_M = 13 // ground-layer scroll scale — tuned for a brisk, r
 const GROUND_BUCKET_M = 12 // metres per potential spawn slot
 const GROUND_SPAWN_CHANCE = 0.6
 const GROUND_TYPES = ['tree', 'tree', 'light', 'car', 'bird', 'dog', 'bin']
-const GROUND_STYLE = {
-  tree: { emoji: '🌳', y: 198, sizeMin: 26, sizeMax: 36 },
-  car: { emoji: '🚗', y: 176, sizeMin: 24, sizeMax: 28 },
-  bird: { emoji: '🐦', y: 118, sizeMin: 14, sizeMax: 18 },
-  dog: { emoji: '🐕', y: 198, sizeMin: 16, sizeMax: 20 },
-  bin: { emoji: '🗑️', y: 196, sizeMin: 16, sizeMax: 20 },
-}
+const GROUND_STYLE: Record<string, { emoji: string; y: number; sizeMin: number; sizeMax: number }> =
+  {
+    tree: { emoji: '🌳', y: 198, sizeMin: 26, sizeMax: 36 },
+    car: { emoji: '🚗', y: 176, sizeMin: 24, sizeMax: 28 },
+    bird: { emoji: '🐦', y: 118, sizeMin: 14, sizeMax: 18 },
+    dog: { emoji: '🐕', y: 198, sizeMin: 16, sizeMax: 20 },
+    bin: { emoji: '🗑️', y: 196, sizeMin: 16, sizeMax: 20 },
+  }
 const GROUND_CLEAR_X = 26 // non-tree ground props stay hidden within this many px of the walker
 
 // Trees depth-swap based on whether they've scrolled past the walker yet: still ahead
@@ -241,8 +246,16 @@ const groundScenery = computed(() => {
   const halfSpanM = 400 / GROUND_PX_PER_M / 2 + GROUND_BUCKET_M
   const fromBucket = Math.floor((state.distance - halfSpanM) / GROUND_BUCKET_M)
   const toBucket = Math.ceil((state.distance + halfSpanM) / GROUND_BUCKET_M)
-  const behind = []
-  const front = []
+  interface GroundProp {
+    key: number
+    type: string
+    x: number
+    y?: number
+    size?: number
+    emoji?: string
+  }
+  const behind: GroundProp[] = []
+  const front: GroundProp[] = []
   for (let b = fromBucket; b <= toBucket; b++) {
     if (sceneHash(b) >= GROUND_SPAWN_CHANCE) continue
     const type = GROUND_TYPES[Math.floor(sceneHash(b + 7919) * GROUND_TYPES.length)]
@@ -274,7 +287,7 @@ const clouds = computed(() => {
   const halfSpanM = 400 / CLOUD_PX_PER_M / 2 + CLOUD_BUCKET_M
   const fromBucket = Math.floor((cloudDistance - halfSpanM) / CLOUD_BUCKET_M)
   const toBucket = Math.ceil((cloudDistance + halfSpanM) / CLOUD_BUCKET_M)
-  const items = []
+  const items: { key: number; x: number; y: number; scale: number }[] = []
   for (let b = fromBucket; b <= toBucket; b++) {
     if (sceneHash(b + 555001) >= CLOUD_SPAWN_CHANCE) continue
     const worldM = b * CLOUD_BUCKET_M + sceneHash(b + 660002) * CLOUD_BUCKET_M
@@ -290,7 +303,7 @@ const clouds = computed(() => {
 // Foreground road dashes scroll faster than the ground layer — sells the depth stack.
 const foregroundDashOffset = computed(() => -(state.distance * GROUND_PX_PER_M * 1.4))
 
-const trackEl = ref(null)
+const trackEl = ref<SVGPathElement | null>(null)
 const pathLen = ref(0)
 const lapLength = 400 // metres per virtual lap — one athletics-track lap
 onMounted(() => {
@@ -311,7 +324,7 @@ const marker = computed(() => {
 const dashOffset = computed(() => pathLen.value * (1 - lapFraction.value))
 
 // --- lap times ---
-const lapTimes = ref([])
+const lapTimes = ref<number[]>([])
 let lapStartElapsed = 0
 watch(laps, (n, old) => {
   if (n > old) {
@@ -360,7 +373,7 @@ const history = ref(loadHistory())
 const historyOpen = ref(false)
 const weekly = computed(() => weeklyTotals(history.value))
 const streak = computed(() => currentStreak(history.value))
-let sessionStart = null
+let sessionStart: Date | null = null
 let sessionName = 'Free walk'
 let hrSum = 0
 let hrCount = 0
@@ -383,7 +396,7 @@ watch(
       hrCount = 0
     } else if (!running && was) {
       if (state.distance >= MIN_SESSION_DISTANCE) {
-        const session = {
+        const session: Session = {
           date: (sessionStart || new Date()).toISOString(),
           distance: Math.round(state.distance),
           duration: Math.round(state.elapsed),
@@ -399,7 +412,7 @@ watch(
 )
 
 // --- Strava upload prompt ---
-const stravaPrompt = ref(null) // { session, name } while the post-walk popup is open
+const stravaPrompt = ref<{ session: Session; name: string } | null>(null) // set while the post-walk popup is open
 async function uploadToStrava() {
   if (!stravaPrompt.value) return
   const { session, name } = stravaPrompt.value
@@ -423,7 +436,7 @@ watch(
 function applySpeed() {
   setSpeed(speedInput.value)
 }
-function bump(delta) {
+function bump(delta: number) {
   speedInput.value = Math.min(
     SPEED_MAX,
     Math.max(SPEED_MIN, Math.round((speedInput.value + delta) / SPEED_STEP) * SPEED_STEP),
@@ -433,19 +446,19 @@ function bump(delta) {
 
 // --- workouts (weight-loss plans + HR-steered) ---
 const menuOpen = ref(false)
-const workoutTab = ref('plans') // 'plans' (weight loss) | 'hr' (heart rate) — header menu's initial tab
-function openWorkoutMenu(tab = 'plans') {
+const workoutTab = ref<'plans' | 'hr'>('plans') // header menu's initial tab
+function openWorkoutMenu(tab: 'plans' | 'hr' = 'plans') {
   menuOpen.value = true
   workoutTab.value = tab
 }
-const active = ref(null) // weight-loss workout currently running
+const active = ref<Workout | null>(null) // weight-loss workout currently running
 const activeTl = computed(() => (active.value ? timeline(active.value) : null))
 const curSegIndex = computed(() => {
   if (!activeTl.value) return -1
   return activeTl.value.segs.findIndex((s) => state.elapsed >= s.start && state.elapsed < s.end)
 })
 const curSeg = computed(() =>
-  curSegIndex.value >= 0 ? activeTl.value.segs[curSegIndex.value] : null,
+  curSegIndex.value >= 0 ? activeTl.value!.segs[curSegIndex.value] : null,
 )
 const remaining = computed(() =>
   activeTl.value ? Math.max(0, activeTl.value.total - state.elapsed) : 0,
@@ -471,7 +484,7 @@ watch(
 )
 watch(curSegIndex, (i, old) => {
   if (!active.value || !state.running || i <= 0 || old < 0) return
-  speak(`${activeTl.value.segs[i].speed.toFixed(1)} kilometers per hour`)
+  speak(`${activeTl.value!.segs[i].speed.toFixed(1)} kilometers per hour`)
 })
 
 // Drive the belt through the plan: set the target to the current segment's speed at
@@ -481,7 +494,7 @@ watch(
   () => [state.elapsed, state.running, active.value],
   () => {
     if (!active.value) return
-    const tl = activeTl.value
+    const tl = activeTl.value! // non-null whenever active is set
     if (state.running && state.elapsed >= tl.total) {
       finishWorkout()
       return
@@ -491,7 +504,7 @@ watch(
   },
 )
 
-async function startWorkout(t) {
+async function startWorkout(t: Workout) {
   active.value = t
   hrTarget.value = null // mutually exclusive with an HR workout
   resetStats()
@@ -518,9 +531,9 @@ const CH_W = 320,
   CH_H = 120
 const gridLines = [2, 4, 6].map((s) => ({ s, y: CH_H - (s / SPEED_MAX) * CH_H }))
 
-function planPath(t) {
+function planPath(t: Workout) {
   const { segs, total } = timeline(t)
-  const pts = []
+  const pts: string[] = []
   for (const s of segs) {
     const x0 = (s.start / total) * CH_W,
       x1 = (s.end / total) * CH_W
@@ -565,7 +578,7 @@ const walkArea = computed(() => {
 const peakSpeed = computed(() => (state.history.length ? Math.max(...state.history) : 0))
 
 // --- formatting ---
-function mmss(sec) {
+function mmss(sec: number) {
   sec = Math.max(0, Math.floor(sec))
   return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`
 }
@@ -707,7 +720,7 @@ const pace = computed(() => {
           {{ laps === 1 ? 'lap' : 'laps' }} · 400 m track
         </text>
         <text v-if="lastLap !== null" class="lap-times" x="200" y="174">
-          last {{ mmss(lastLap) }} · best {{ mmss(bestLap) }}
+          last {{ mmss(lastLap) }} · best {{ mmss(bestLap!) }}
         </text>
       </svg>
 
@@ -793,7 +806,7 @@ const pace = computed(() => {
           </text>
           <text x="18" y="42" class="scene-badge-sub">
             {{
-              lastLap !== null ? `last ${mmss(lastLap)} · best ${mmss(bestLap)}` : 'walk to start'
+              lastLap !== null ? `last ${mmss(lastLap)} · best ${mmss(bestLap!)}` : 'walk to start'
             }}
           </text>
         </g>
@@ -831,7 +844,7 @@ const pace = computed(() => {
         <div>
           <span class="workout-name">{{ active.name }}</span>
           <span v-if="curSeg" class="workout-seg">
-            seg {{ curSegIndex + 1 }}/{{ activeTl.segs.length }} · now
+            seg {{ curSegIndex + 1 }}/{{ activeTl!.segs.length }} · now
             {{ curSeg.speed.toFixed(1) }} km/h · next in {{ mmss(timeToNext) }}
           </span>
         </div>
@@ -843,14 +856,14 @@ const pace = computed(() => {
           <line class="grid" x1="0" :y1="g.y" x2="320" :y2="g.y" />
           <text class="grid-label" x="3" :y="g.y - 3">{{ g.s }}</text>
         </g>
-        <path class="area" :d="activePlan.area" />
-        <polyline class="plan" :points="activePlan.line" />
+        <path class="area" :d="activePlan!.area" />
+        <polyline class="plan" :points="activePlan!.line" />
         <polyline v-if="actualLine" class="actual" :points="actualLine" />
         <line class="cursor" :x1="progressX" y1="0" :x2="progressX" y2="120" />
         <circle class="cursor-dot" :cx="progressX" cy="6" r="4" />
       </svg>
       <div class="workout-foot">
-        <span>{{ mmss(state.elapsed) }} / {{ mmss(activeTl.total) }}</span>
+        <span>{{ mmss(state.elapsed) }} / {{ mmss(activeTl!.total) }}</span>
         <span>{{ mmss(remaining) }} left</span>
       </div>
     </section>

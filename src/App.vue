@@ -279,9 +279,9 @@ const track2d = {
   // common finish line across all lanes at s = 0, same as the 3D view
   finish: { a: svgPt(0, TRACK_IN), b: svgPt(0, TRACK_OUT) },
   staggers: laneStaggers().map((st) => ({ a: svgPt(st.s, st.o0), b: svgPt(st.s, st.o1) })),
-  // painted lane numbers + the green 200 m break line, like the 3D view. The numbers sit
-  // just before the finish here — past it they'd crowd the stagger staircase at map scale.
-  laneNums: laneNumbers().map((n) => ({ ...svgPt(-5, n.o), lane: n.lane })),
+  // painted lane numbers + the green 200 m break line, exactly where the 3D view (and a
+  // real track) has them: just past the finish line.
+  laneNums: laneNumbers().map((n) => ({ ...svgPt(n.s, n.o), lane: n.lane })),
   breakLine: { a: svgPt(BREAK_LINE_S, TRACK_IN), b: svgPt(BREAK_LINE_S, TRACK_OUT) },
 }
 

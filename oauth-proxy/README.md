@@ -35,8 +35,8 @@ mise exec -- wrangler secret put WITHINGS_CLIENT_ID
 mise exec -- wrangler secret put WITHINGS_CLIENT_SECRET
 ```
 
-Set `ALLOWED_ORIGIN` in `wrangler.toml` to the app's exact origin(s), comma-separated
-(e.g. `http://localhost:5173,https://ronaldlokers.github.io`), then:
+`ALLOWED_ORIGIN` is preset in `wrangler.toml` to the app's origins (GitHub Pages +
+local dev), comma-separated exact origins — adjust it if yours differ, then:
 
 ```bash
 mise exec -- wrangler deploy

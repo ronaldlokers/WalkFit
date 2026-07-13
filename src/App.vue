@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill'
 import { useHeartRate } from './heartrate'
 import { workouts, timeline, metForSpeed } from './workouts'
 import type { Workout, HrTarget } from './workouts'
-import { loadStatistics, addSession, weeklyTotals, currentStreak } from './statistics'
+import {
+  loadStatistics,
+  addSession,
+  weeklyTotals,
+  currentStreak,
+  dailyTotals,
+  loadGoals,
+  saveGoals,
+} from './statistics'
 import type { Session } from './statistics'
 import { loadWeightLog, addWeighIn } from './weight'
 import type { WeightEntry } from './weight'
@@ -380,16 +388,23 @@ const sessions = ref(loadStatistics())
 const statisticsOpen = ref(false)
 const weekly = computed(() => weeklyTotals(sessions.value))
 const streak = computed(() => currentStreak(sessions.value))
+// Daily activity goals for the rings (#43); edits in Settings persist via the watcher.
+const goals = reactive(loadGoals())
+watch(goals, () => saveGoals({ ...goals }))
 let sessionStart: Date | null = null
 let sessionName = 'Free walk'
 let hrSum = 0
 let hrCount = 0
+let hrLo = 0 // session bpm low/high for the daily HR range chart (#43)
+let hrHi = 0
 watch(
   () => hr.state.bpm,
   (bpm) => {
     if (state.running && bpm > 0) {
       hrSum += bpm
       hrCount += 1
+      if (!hrLo || bpm < hrLo) hrLo = bpm
+      if (bpm > hrHi) hrHi = bpm
     }
   },
 )
@@ -401,6 +416,8 @@ watch(
       sessionName = active.value?.name || 'Free walk'
       hrSum = 0
       hrCount = 0
+      hrLo = 0
+      hrHi = 0
     } else if (!running && was) {
       if (state.distance >= MIN_SESSION_DISTANCE) {
         const session: Session = {
@@ -408,7 +425,9 @@ watch(
           distance: Math.round(state.distance),
           duration: Math.round(state.elapsed),
           kcal: liveKcal.value,
+          steps: state.steps, // belt's own pedometer count (0 if FW never reported one)
           avgHr: hrCount ? Math.round(hrSum / hrCount) : null,
+          ...(hrCount ? { hrMin: hrLo, hrMax: hrHi } : {}),
         }
         sessions.value = addSession(session)
         if (strava.state.connected) stravaPrompt.value = { session, name: sessionName }
@@ -1356,6 +1375,27 @@ const pace = computed(() => {
             </span>
           </div>
           <p class="set-note">Used to estimate calories burned.</p>
+
+          <h3>Daily goals</h3>
+          <div class="set-row">
+            <span>Calories</span>
+            <span class="set-inline">
+              <input v-model.number="goals.kcal" type="number" min="50" max="5000" step="50" />
+              <span class="set-unit">kcal</span>
+            </span>
+          </div>
+          <div class="set-row">
+            <span>Steps</span>
+            <input v-model.number="goals.steps" type="number" min="500" max="50000" step="500" />
+          </div>
+          <div class="set-row">
+            <span>Activity time</span>
+            <span class="set-inline">
+              <input v-model.number="goals.minutes" type="number" min="5" max="300" step="5" />
+              <span class="set-unit">min</span>
+            </span>
+          </div>
+          <p class="set-note">The activity rings in Statistics fill toward these.</p>
 
           <template v-if="strava.state.supported">
             <h3>Strava</h3>

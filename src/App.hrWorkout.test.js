@@ -31,7 +31,7 @@ const fakeHr = reactive({
 })
 const setSpeedCalls = []
 
-vi.mock('./treadmill.js', () => ({
+vi.mock('./treadmill', () => ({
   useTreadmill: () => ({
     state: fakeTm,
     connect: vi.fn(),
@@ -55,7 +55,7 @@ vi.mock('./treadmill.js', () => ({
   SPEED_MAX: 6.0,
   SPEED_STEP: 0.1,
 }))
-vi.mock('./heartrate.js', () => ({
+vi.mock('./heartrate', () => ({
   useHeartRate: () => ({
     state: fakeHr,
     connect: vi.fn(),

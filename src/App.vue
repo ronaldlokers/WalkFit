@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill.js'
-import { useHeartRate } from './heartrate.js'
+import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill'
+import { useHeartRate } from './heartrate'
 import { workouts, timeline, metForSpeed } from './workouts'
 import { loadHistory, addSession, weeklyTotals, currentStreak } from './history'
 import { useStrava } from './strava'

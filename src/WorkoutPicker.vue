@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue'
-import { SPEED_MAX } from './treadmill.js'
+import { SPEED_MAX } from './treadmill'
 import { workoutStats, timeline } from './workouts'
 
 // Shared by the wizard's "pick a workout" step and the header/HR-badge menu — same

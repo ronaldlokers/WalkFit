@@ -15,12 +15,12 @@ export interface SpeedFilter {
 export function checksum(inner: number[]): number {
   return inner.reduce((a, b) => a ^ b, 0)
 }
-export function frame(inner: number[]): Uint8Array {
+export function frame(inner: number[]): Uint8Array<ArrayBuffer> {
   return Uint8Array.from([0x02, ...inner, checksum(inner), 0x03])
 }
 
 // Set target speed (km/h) -> vendor write frame. speed encoded as km/h x10.
-export function setSpeedFrame(kmh: number): Uint8Array {
+export function setSpeedFrame(kmh: number): Uint8Array<ArrayBuffer> {
   return frame([0x53, 0x02, Math.round(kmh * 10)])
 }
 

@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { parseHeartRate } from './protocol.js'
+import { parseHeartRate } from './protocol'
 
 // Standard Bluetooth Heart Rate Service (works with Garmin "Broadcast Heart Rate",
 // chest straps, etc.) — separate GATT device from the treadmill.

@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { setSpeedFrame, STATUS_QUERY, parseTelemetry, createSpeedFilter } from './protocol.js'
+import { setSpeedFrame, STATUS_QUERY, parseTelemetry, createSpeedFilter } from './protocol'
 
 // --- Dreaver Motion One (FitShow FS-BT-T4) BLE identifiers ---
 const FTMS_SERVICE = 0x1826 // Fitness Machine Service

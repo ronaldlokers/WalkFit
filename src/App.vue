@@ -295,7 +295,7 @@ const pathLen = ref(0)
 const lapLength = 400 // metres per virtual lap — one athletics-track lap
 onMounted(() => {
   if (trackEl.value) pathLen.value = trackEl.value.getTotalLength()
-  state.supported && connectAuto() // silent reconnect to remembered devices
+  if (state.supported) connectAuto() // silent reconnect to remembered devices
   strava.handleRedirect() // no-op unless we just came back from Strava's OAuth page
 })
 async function connectAuto() {

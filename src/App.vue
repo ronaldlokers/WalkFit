@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, watch, defineAsyncComponent } from 'vue'
 import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill'
 import { useHeartRate } from './heartrate'
 import { workouts, timeline, metForSpeed } from './workouts'
@@ -14,6 +14,16 @@ import {
   saveGoals,
 } from './statistics'
 import type { Session } from './statistics'
+import {
+  trackPoint,
+  laneStaggers,
+  BEND_R,
+  STRAIGHT_M,
+  LANE_W,
+  LANES,
+  TRACK_IN,
+  TRACK_OUT,
+} from './scenic'
 import { loadWeightLog, addWeighIn } from './weight'
 import type { WeightEntry } from './weight'
 import { syncProvider } from './health'
@@ -209,7 +219,16 @@ watch(
   },
 )
 
-// --- view mode: athletics track loop, or a side-scrolling scenic walk ---
+// --- view mode: athletics track loop, or the first-person 3D scenic walk (#51) ---
+// Scenic3D pulls in three.js, so it's an async component: the chunk only downloads the
+// first time the scenic view is opened — the main bundle stays three-free.
+const Scenic3D = defineAsyncComponent(() => import('./Scenic3D.vue'))
+const scenicSupported = ref(true)
+function scenicUnsupported() {
+  // no WebGL: remember it (disables the toggle) and fall back to the track view
+  scenicSupported.value = false
+  viewMode.value = 'track'
+}
 const viewMode = ref<'track' | 'scenic'>(
   localStorage.getItem('walkfit.view') === 'scenic' ? 'scenic' : 'track',
 )
@@ -226,95 +245,39 @@ watch(viewMode, async (v) => {
   }
 })
 
-// Scenic view: a "world position in metres" model, not a repeating scroll tile. The
-// walker sprite is fixed on screen at WALKER_X; every prop's screen x is derived from
-// how far its world position is from state.distance right now. Which props exist at all
-// is decided by a deterministic hash of fixed-size "spawn buckets" along the route — same
-// bucket index always resolves to the same prop, so nothing jumps or differs between
-// re-renders, but the layout isn't a visibly repeating tile like the old design.
-function sceneHash(seed: number) {
-  const x = Math.sin(seed * 12.9898) * 43758.5453
-  return x - Math.floor(x)
+// --- 2D track view: the same 400 m track model as the 3D walk (scenic.ts), top-down ---
+// Mapping: 3D (x, z) → SVG (cx + z·k, cy + x·k). Lateral offsets are exaggerated ×TE
+// (transit-map style) so the six lanes stay readable at map scale — at true proportion
+// the whole band is ~16 px and the lanes vanish. Loop paths use exact circular arcs, so
+// getTotalLength maps linearly to walked metres and the marker/progress stay true.
+const TK = 2.0 // px per metre along the loop
+const TE = 2.5 // lateral lane-width exaggeration
+const TCX = 200
+const TCY = 130
+function svgPt(s: number, o: number) {
+  const p = trackPoint(s, o * TE)
+  return { x: TCX + p.z * TK, y: TCY + p.x * TK }
 }
-const WALKER_X = 200
-const GROUND_PX_PER_M = 13 // ground-layer scroll scale — tuned for a brisk, readable pace
-const GROUND_BUCKET_M = 12 // metres per potential spawn slot
-const GROUND_SPAWN_CHANCE = 0.6
-const GROUND_TYPES = ['tree', 'tree', 'light', 'car', 'bird', 'dog', 'bin']
-const GROUND_STYLE: Record<string, { emoji: string; y: number; sizeMin: number; sizeMax: number }> =
-  {
-    tree: { emoji: '🌳', y: 198, sizeMin: 26, sizeMax: 36 },
-    car: { emoji: '🚗', y: 176, sizeMin: 24, sizeMax: 28 },
-    bird: { emoji: '🐦', y: 118, sizeMin: 14, sizeMax: 18 },
-    dog: { emoji: '🐕', y: 198, sizeMin: 16, sizeMax: 20 },
-    bin: { emoji: '🗑️', y: 196, sizeMin: 16, sizeMax: 20 },
-  }
-const GROUND_CLEAR_X = 26 // non-tree ground props stay hidden within this many px of the walker
-
-// Trees depth-swap based on whether they've scrolled past the walker yet: still ahead
-// (screenX > WALKER_X) renders behind the walker, already passed renders in front —
-// simulates walking past something close to the path. Streetlights always render in
-// front (they're closer to the path edge than the walker's own lane).
-const groundScenery = computed(() => {
-  const halfSpanM = 400 / GROUND_PX_PER_M / 2 + GROUND_BUCKET_M
-  const fromBucket = Math.floor((state.distance - halfSpanM) / GROUND_BUCKET_M)
-  const toBucket = Math.ceil((state.distance + halfSpanM) / GROUND_BUCKET_M)
-  interface GroundProp {
-    key: number
-    type: string
-    x: number
-    y?: number
-    size?: number
-    emoji?: string
-  }
-  const behind: GroundProp[] = []
-  const front: GroundProp[] = []
-  for (let b = fromBucket; b <= toBucket; b++) {
-    if (sceneHash(b) >= GROUND_SPAWN_CHANCE) continue
-    const type = GROUND_TYPES[Math.floor(sceneHash(b + 7919) * GROUND_TYPES.length)]
-    const worldM = b * GROUND_BUCKET_M + sceneHash(b + 104729) * GROUND_BUCKET_M
-    const x = WALKER_X + (worldM - state.distance) * GROUND_PX_PER_M
-    if (x < -40 || x > 440) continue
-    if (type === 'light') {
-      front.push({ key: b, type, x })
-      continue
-    }
-    if (type !== 'tree' && Math.abs(x - WALKER_X) < GROUND_CLEAR_X) continue
-    const style = GROUND_STYLE[type]
-    const size = style.sizeMin + sceneHash(b + 200003) * (style.sizeMax - style.sizeMin)
-    const item = { key: b, type, x, y: style.y, size, emoji: style.emoji }
-    if (type === 'tree') (x > WALKER_X ? behind : front).push(item)
-    else behind.push(item)
-  }
-  return { behind, front }
-})
-
-// Clouds drift far slower than the ground (CLOUD_PARALLAX < 1 scales down how fast their
-// "world" advances relative to real distance walked) and use much wider spawn buckets.
-const CLOUD_PX_PER_M = 6
-const CLOUD_BUCKET_M = 80
-const CLOUD_SPAWN_CHANCE = 0.7
-const CLOUD_PARALLAX = 0.22
-const clouds = computed(() => {
-  const cloudDistance = state.distance * CLOUD_PARALLAX
-  const halfSpanM = 400 / CLOUD_PX_PER_M / 2 + CLOUD_BUCKET_M
-  const fromBucket = Math.floor((cloudDistance - halfSpanM) / CLOUD_BUCKET_M)
-  const toBucket = Math.ceil((cloudDistance + halfSpanM) / CLOUD_BUCKET_M)
-  const items: { key: number; x: number; y: number; scale: number }[] = []
-  for (let b = fromBucket; b <= toBucket; b++) {
-    if (sceneHash(b + 555001) >= CLOUD_SPAWN_CHANCE) continue
-    const worldM = b * CLOUD_BUCKET_M + sceneHash(b + 660002) * CLOUD_BUCKET_M
-    const x = 200 + (worldM - cloudDistance) * CLOUD_PX_PER_M
-    if (x < -60 || x > 460) continue
-    const y = 20 + sceneHash(b + 770003) * 55
-    const scale = 0.6 + sceneHash(b + 880004) * 0.9
-    items.push({ key: b, x, y, scale })
-  }
-  return items
-})
-
-// Foreground road dashes scroll faster than the ground layer — sells the depth stack.
-const foregroundDashOffset = computed(() => -(state.distance * GROUND_PX_PER_M * 1.4))
+// closed loop at (exaggerated) lateral offset o, starting at s = 0, walking direction
+function loopPath(o: number): string {
+  const r = (BEND_R + o * TE) * TK
+  const hs = (STRAIGHT_M / 2) * TK
+  return (
+    `M ${TCX + hs} ${TCY + r} L ${TCX - hs} ${TCY + r} ` +
+    `A ${r} ${r} 0 0 1 ${TCX - hs} ${TCY - r} ` +
+    `L ${TCX + hs} ${TCY - r} A ${r} ${r} 0 0 1 ${TCX + hs} ${TCY + r} Z`
+  )
+}
+const track2d = {
+  band: loopPath((TRACK_IN + TRACK_OUT) / 2),
+  bandW: (TRACK_OUT - TRACK_IN) * TE * TK,
+  laneW: LANE_W * TE * TK, // one lane in px — sizes the progress stroke
+  laneLines: Array.from({ length: LANES + 1 }, (_, i) => loopPath(TRACK_IN + i * LANE_W)),
+  lane1: loopPath(0), // the runner's guide path — lane-1 centreline, same as the 3D camera
+  // common finish line across all lanes at s = 0, same as the 3D view
+  finish: { a: svgPt(0, TRACK_IN), b: svgPt(0, TRACK_OUT) },
+  staggers: laneStaggers().map((st) => ({ a: svgPt(st.s, st.o0), b: svgPt(st.s, st.o1) })),
+}
 
 const trackEl = ref<SVGPathElement | null>(null)
 const pathLen = ref(0)
@@ -899,57 +862,52 @@ const pace = computed(() => {
 
     <!-- virtual loop / scenic walk -->
     <section class="track-wrap">
-      <div class="view-toggle">
-        <button class="view-btn" :class="{ on: viewMode === 'track' }" @click="viewMode = 'track'">
-          🏟️ Track
-        </button>
+      <!-- quick 2D/3D flip overlaid on the visual; the same toggle lives in Settings -->
+      <div class="view-flip">
+        <button :class="{ on: viewMode === 'track' }" @click="viewMode = 'track'">2D</button>
         <button
-          class="view-btn"
           :class="{ on: viewMode === 'scenic' }"
+          :disabled="!scenicSupported"
+          :title="scenicSupported ? undefined : 'Needs WebGL'"
           @click="viewMode = 'scenic'"
         >
-          🌳 Scenic
+          3D
         </button>
       </div>
-
       <svg v-if="viewMode === 'track'" viewBox="0 0 400 260" class="track">
-        <!-- athletics track: red surface, white lane lines, start/finish at the left straight -->
-        <path
-          class="track-band"
-          d="M110,40 L290,40 A90,90 0 0 1 290,220 L110,220 A90,90 0 0 1 110,40 Z"
+        <!-- top-down render of the same 400 m track model the 3D view walks (scenic.ts):
+             six lanes, common finish line, staggered starts -->
+
+        <path class="track-band" :d="track2d.band" :stroke-width="track2d.bandW" />
+        <path v-for="(d, i) in track2d.laneLines" :key="`lane-${i}`" class="track-lane" :d="d" />
+        <line
+          class="startline"
+          :x1="track2d.finish.a.x"
+          :y1="track2d.finish.a.y"
+          :x2="track2d.finish.b.x"
+          :y2="track2d.finish.b.y"
         />
-        <path
-          class="track-border"
-          d="M110,23 L290,23 A107,107 0 0 1 290,237 L110,237 A107,107 0 0 1 110,23 Z"
+        <line
+          v-for="(st, i) in track2d.staggers"
+          :key="`stagger-${i}`"
+          class="stagger"
+          :x1="st.a.x"
+          :y1="st.a.y"
+          :x2="st.b.x"
+          :y2="st.b.y"
         />
-        <path
-          class="track-border"
-          d="M110,57 L290,57 A73,73 0 0 1 290,203 L110,203 A73,73 0 0 1 110,57 Z"
-        />
-        <path
-          class="track-lane"
-          d="M110,31.5 L290,31.5 A98.5,98.5 0 0 1 290,228.5 L110,228.5 A98.5,98.5 0 0 1 110,31.5 Z"
-        />
-        <path
-          class="track-lane"
-          d="M110,48.5 L290,48.5 A81.5,81.5 0 0 1 290,211.5 L110,211.5 A81.5,81.5 0 0 1 110,48.5 Z"
-        />
-        <path
-          ref="trackEl"
-          class="track-line"
-          d="M110,40 L290,40 A90,90 0 0 1 290,220 L110,220 A90,90 0 0 1 110,40 Z"
-        />
+        <!-- invisible guide path: the lane-1 centreline the marker + progress follow -->
+        <path ref="trackEl" class="track-line" :d="track2d.lane1" />
         <path
           class="track-progress"
-          d="M110,40 L290,40 A90,90 0 0 1 290,220 L110,220 A90,90 0 0 1 110,40 Z"
+          :d="track2d.lane1"
+          :stroke-width="track2d.laneW - 1.6"
           :stroke-dasharray="pathLen"
           :stroke-dashoffset="dashOffset"
         />
-        <line class="startline" x1="110" y1="23" x2="110" y2="57" />
         <g :transform="`translate(${marker.x},${marker.y})`" class="runner">
-          <circle class="halo" r="16" />
-          <circle class="body" r="9" />
-          <text y="1">🏃</text>
+          <circle class="halo" r="12" />
+          <circle class="body" r="7" />
         </g>
         <text class="lap-num" x="200" y="120">{{ laps }}</text>
         <text class="lap-label" x="200" y="150">
@@ -964,89 +922,24 @@ const pace = computed(() => {
            position in metres" model (see groundScenery/clouds), not a repeating tile —
            each fixed-size distance bucket deterministically hashes to whether/what spawns,
            so the scene never repeats obviously but also never jumps between renders. -->
-      <svg v-else viewBox="0 0 400 260" class="scene">
-        <defs>
-          <linearGradient id="sceneSky" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#1a2233" />
-            <stop offset="100%" stop-color="#222c40" />
-          </linearGradient>
-        </defs>
-        <rect x="0" y="0" width="400" height="150" fill="url(#sceneSky)" />
-
-        <!-- far background: clouds drift slowest (CLOUD_PARALLAX) -->
-        <g
-          v-for="c in clouds"
-          :key="`cloud-${c.key}`"
-          class="scene-cloud"
-          :style="{ transform: `translate(${c.x}px,${c.y}px) scale(${c.scale})` }"
-        >
-          <ellipse cx="-10" cy="0" rx="14" ry="9" />
-          <ellipse cx="8" cy="-4" rx="16" ry="11" />
-          <ellipse cx="24" cy="0" rx="12" ry="8" />
-        </g>
-
-        <rect class="scene-road" x="0" y="150" width="400" height="28" />
-        <rect class="scene-sidewalk" x="0" y="178" width="400" height="20" />
-        <rect class="scene-grass" x="0" y="198" width="400" height="62" />
-        <!-- foreground: road dashes scroll fastest (stroke-dashoffset, no tiling needed) -->
-        <line
-          class="scene-road-dash"
-          x1="0"
-          y1="164"
-          x2="400"
-          y2="164"
-          :stroke-dashoffset="foregroundDashOffset"
+      <div v-else class="scene3d-wrap">
+        <Scenic3D
+          :distance="state.distance"
+          :speed="state.speed"
+          @unsupported="scenicUnsupported"
         />
-
-        <!-- midground, behind the walker: trees still ahead + car/bird/dog/bin -->
-        <g v-for="p in groundScenery.behind" :key="`b-${p.key}`" class="scene-item">
-          <text
-            class="scene-prop"
-            :style="{ transform: `translateX(${p.x}px)` }"
-            :y="p.y"
-            :font-size="p.size"
-          >
-            {{ p.emoji }}
-          </text>
-        </g>
-
-        <text class="scene-walker" x="200" y="196">🚶</text>
-
-        <!-- midground, in front of the walker: streetlights (always) + trees already passed -->
-        <g v-for="p in groundScenery.front" :key="`f-${p.key}`" class="scene-item">
-          <g
-            v-if="p.type === 'light'"
-            class="scene-light-group"
-            :style="{ transform: `translateX(${p.x}px)` }"
-          >
-            <line class="scene-light-pole" x1="0" y1="198" x2="0" y2="130" />
-            <line class="scene-light-pole" x1="0" y1="130" x2="10" y2="130" />
-            <circle class="scene-light-lamp" cx="10" cy="130" r="4" />
-          </g>
-          <text
-            v-else
-            class="scene-prop"
-            :style="{ transform: `translateX(${p.x}px)` }"
-            :y="p.y"
-            :font-size="p.size"
-          >
-            {{ p.emoji }}
-          </text>
-        </g>
-
-        <g class="scene-badge">
-          <rect x="8" y="8" width="128" height="42" rx="10" />
-          <text x="18" y="27">
-            {{ laps }}
-            <tspan class="scene-badge-unit">× 400m</tspan>
-          </text>
-          <text x="18" y="42" class="scene-badge-sub">
+        <!-- lap badge carried over from the track view, overlaid on the 3D canvas -->
+        <div class="scene-badge3d">
+          <div class="scene-badge3d-main">
+            {{ laps }} <span class="scene-badge3d-unit">× 400m</span>
+          </div>
+          <div class="scene-badge3d-sub">
             {{
               lastLap !== null ? `last ${mmss(lastLap)} · best ${mmss(bestLap!)}` : 'walk to start'
             }}
-          </text>
-        </g>
-      </svg>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="action-row" :class="{ disabled: !state.connected }">
@@ -1617,6 +1510,27 @@ const pace = computed(() => {
           </div>
           <p class="set-note">The activity rings in Statistics fill toward these.</p>
 
+          <h3>Display</h3>
+          <div class="set-row">
+            <span>Track view</span>
+            <div class="set-actions">
+              <button
+                :class="viewMode === 'track' ? 'btn primary sm' : 'btn ghost sm'"
+                @click="viewMode = 'track'"
+              >
+                2D
+              </button>
+              <button
+                :class="viewMode === 'scenic' ? 'btn primary sm' : 'btn ghost sm'"
+                :disabled="!scenicSupported"
+                :title="scenicSupported ? undefined : 'Needs WebGL'"
+                @click="viewMode = 'scenic'"
+              >
+                3D
+              </button>
+            </div>
+          </div>
+
           <template v-if="strava.state.supported">
             <h3>Strava</h3>
             <div class="set-row">
@@ -1784,6 +1698,37 @@ code {
 
 .track-wrap {
   margin: 6px 0 14px;
+  position: relative; /* anchors the overlaid 2D/3D flip */
+}
+.view-flip {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  gap: 2px;
+  background: rgba(10, 12, 16, 0.72);
+  border: 1px solid #232833;
+  border-radius: 999px;
+  padding: 2px;
+}
+.view-flip button {
+  background: none;
+  border: 0;
+  color: #8a93a3;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.view-flip button.on {
+  background: var(--accent);
+  color: #05210f;
+}
+.view-flip button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 .track {
   width: 100%;
@@ -1791,42 +1736,34 @@ code {
 }
 .track-band {
   fill: none;
-  stroke: #6e352c; /* tartan red, muted for the dark theme */
-  stroke-width: 34;
-  stroke-linejoin: round;
-}
-.track-border {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.45);
-  stroke-width: 1.5;
+  stroke: #83392d; /* tartan red; width bound from the lane count so lanes stay true */
 }
 .track-lane {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.22);
-  stroke-width: 1;
-  stroke-dasharray: 8 6;
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-width: 0.8;
 }
+/* geometry guide only — the runner marker and progress ring follow it via
+   getTotalLength/getPointAtLength, so it never needs to be painted */
 .track-line {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.22);
-  stroke-width: 1;
-  stroke-dasharray: 8 6;
+  stroke: none;
 }
 .track-progress {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 8;
+  /* stroke-width bound in the template: one exaggerated lane minus a margin */
   stroke-linecap: round;
   transition: stroke-dashoffset 0.25s linear;
   filter: drop-shadow(0 0 6px rgba(46, 213, 115, 0.5));
 }
 .startline {
   stroke: #eee;
-  stroke-width: 3;
+  stroke-width: 2;
 }
-.runner text {
-  text-anchor: middle;
-  font-size: 13px;
+.stagger {
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 1.2;
 }
 .runner .halo {
   fill: rgba(46, 213, 115, 0.18);
@@ -1856,101 +1793,32 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
-.view-toggle {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
+/* --- 3D scenic (#51): canvas wrapper + overlaid lap badge --- */
+.scene3d-wrap {
+  position: relative;
 }
-.view-btn {
-  flex: 1;
-  background: #171a21;
+.scene-badge3d {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(10, 12, 16, 0.72);
   border: 1px solid #232833;
-  color: #8a93a3;
   border-radius: 10px;
-  padding: 7px;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
+  padding: 6px 12px;
+  pointer-events: none;
 }
-.view-btn.on {
-  color: #e8ecf2;
-  border-color: var(--accent);
-  background: #1a2420;
-}
-
-.scene {
-  width: 100%;
-  display: block;
-  border-radius: 16px;
-  overflow: hidden;
-}
-.scene-grass {
-  fill: #1c2820;
-}
-.scene-road {
-  fill: #2b2f38;
-}
-.scene-sidewalk {
-  fill: #3a3f4a;
-}
-.scene-road-dash {
-  stroke: rgba(255, 255, 255, 0.35);
-  stroke-width: 2;
-  stroke-dasharray: 10 8;
-  transition: stroke-dashoffset 0.25s linear;
-}
-.scene-cloud {
-  fill: rgba(255, 255, 255, 0.5);
-  transition: transform 0.25s linear;
-}
-.scene-prop {
-  text-anchor: middle;
-  dominant-baseline: text-after-edge;
-  transition: transform 0.25s linear;
-}
-.scene-light-group {
-  transition: transform 0.25s linear;
-}
-.scene-light-pole {
-  stroke: #4a5261;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-}
-.scene-light-lamp {
-  fill: #ffd97a;
-  filter: drop-shadow(0 0 4px rgba(255, 217, 122, 0.8));
-}
-.scene-walker {
-  text-anchor: middle;
-  dominant-baseline: text-after-edge;
-  font-size: 30px;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
-  /* The 🚶 glyph faces left by default; the scenery scrolls left too (walking forward
-     slides the world backward past you), so mirror the walker to face the direction
-     of travel instead of reversing every prop's scroll direction. */
-  transform: scaleX(-1);
-  transform-box: fill-box;
-  transform-origin: center;
-}
-.scene-badge rect {
-  fill: rgba(10, 12, 16, 0.72);
-  stroke: #232833;
-  stroke-width: 1;
-}
-.scene-badge text {
-  fill: #e8ecf2;
-  font-size: 13px;
+.scene-badge3d-main {
+  font-size: 14px;
   font-weight: 700;
 }
-.scene-badge-unit {
-  fill: #8a93a3;
+.scene-badge3d-unit {
+  color: #8a93a3;
   font-size: 10px;
   font-weight: 500;
 }
-.scene-badge text.scene-badge-sub {
+.scene-badge3d-sub {
   font-size: 10.5px;
-  font-weight: 500;
-  fill: #8a93a3;
+  color: #8a93a3;
 }
 
 .chart-wrap {

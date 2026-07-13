@@ -107,6 +107,11 @@ Keep pinned Playwright version and image tag in sync.
   "Strava upload" below.
 - `src/WorkoutPicker.vue` — the tabbed weight-loss/HR workout picker, shared verbatim
   between the wizard's step 4 and the header's workout menu (see "Workouts" below).
+- `src/scenic.ts` — **pure, framework-free** world model for the 3D scenic walk (the
+  400 m stadium-loop geometry, surroundings, day/night). Unit-tested in
+  `src/scenic.test.ts`. See the scenic paragraph below.
+- `src/Scenic3D.vue` — the three.js first-person scenic renderer; async component, so
+  three.js lives in a lazy chunk (see below).
 - `src/App.vue` — the rest of the UI (still mostly one component): loop, chart, controls,
   header live-stat strip (time/distance/kcal/speed/pace — real zeros faded while idle),
   header overflow menu, statistics view, settings, onboarding wizard. Below 900px it's a
@@ -192,36 +197,49 @@ buttons, to keep the header from crowding on narrow screens. The Connect button 
 not connected) and the HR badge (when a sensor is connected) stay directly in the
 header — both are primary, frequently-tapped actions, unlike the four menu items.
 
-The main visual has two modes, toggled above it: the 400 m athletics **track** (default),
-or a side-scrolling **scenic** walk. Both read the same `state.distance`/`state.speed` —
-no separate tracking. The walker emoji is fixed on screen at `WALKER_X` (200); it's
-mirrored via `transform: scaleX(-1)` (with `transform-box: fill-box`) — the 🚶 glyph faces
-left by default, same direction the scenery scrolls, which reads as walking backward
-otherwise. Lap count/lap-times carry over into scenic mode as a corner badge instead of
-the track's big centered number.
+The main visual has two modes, toggled by the pill overlaid on the visual's top-right
+corner or in **Settings → Display** (2D / 3D): the
+top-down 2D **track** (default), or the first-person 3D **scenic** walk (#51). Both
+read the same `state.distance`/`state.speed` — no separate tracking. Lap
+count/lap-times carry over into the 3D mode as a corner badge overlaid on the canvas.
 
-Scenic uses a **world-position-in-metres model**, not a repeating scroll tile: each prop's
-screen x is `WALKER_X + (worldM - state.distance) * pxPerMetre`, so "spawning" is really
-just enumerating which fixed-size distance buckets are currently in view. `sceneHash(seed)`
-is a cheap deterministic pseudo-random (sine-based) — the same bucket index always
-resolves to the same prop/position/size, so the scene never jumps or differs between
-re-renders despite not being a literal repeating pattern. `groundScenery` (trees, streetlight,
-car, bird, dog, bin — `GROUND_PX_PER_M`/`GROUND_BUCKET_M`) and `clouds` (own slower
-`CLOUD_PARALLAX` scale + wider buckets) are separate bucket systems. Depth is layered by
-paint order: clouds → road/sidewalk/grass → `groundScenery.behind` → walker →
-`groundScenery.front` → badge. Trees depth-swap into whichever group matches whether
-their world position is still ahead of or already behind `state.distance`; streetlights
-are always in `front` (closer to the path than the walker's lane). The foreground road
-dash scrolls via `stroke-dashoffset` (not tile duplication — a plain dash pattern doesn't
-need it) at a faster px/metre rate than the ground layer, for a depth-parallax read.
+**Scenic (3D)** is a first-person walk around the 400 m athletics track itself, camera
+centred in **lane 1** (infield on the left, counterclockwise like athletics). It splits
+into two layers. `src/scenic.ts` is the pure world model: `trackPoint(s, o)` gives
+position and unit tangent on the stadium loop (IAAF straights 84.39 m, bend radius
+derived so the lane-1 line measures exactly 400 m; `o` is lateral offset, positive
+outward), `surroundings()` places a deterministic trees/bushes/rocks ring plus 4
+floodlight masts via `worldHash`, and `dayPhase`/`skyAt` drive dawn→night keyframes over
+`DAY_LENGTH_M` = 3200 m of _walked distance_ — every walk starts at dawn; floodlights
+read as lit at night because their heads are unlit MeshBasic. `distanceSigns()` places
+"100 m/200 m/300 m" signposts beside the track, and `laneStaggers()` computes the classic
+staggered start line per lane (lane k+1's lap is 2π·k·LANE_W longer, so its mark sits
+that far past the common finish — every lane's lap to the finish then measures exactly
+400 m; all staggers land on the home straight). `src/Scenic3D.vue` turns that into
+three.js meshes, all **built once** (a loop world needs no streaming): the red track
+band, lane lines and start/finish line are closed loop-ribbons sampled every 2 m at
+lateral offsets — their materials are `DoubleSide` because travel direction reverses
+halfway around the loop, so any fixed triangle winding backface-culls one straight. Lane
+lines sit 4 cm above the track surface (less separation z-fights into shimmer on the far
+side of the loop). A vertex-gradient sky dome (fog color at horizon → sky color
+overhead) kills the ground/sky seam, and the camera interpolates toward `state.distance`
+at belt speed (distance ticks in at ~4 Hz; naive snapping would stutter). Comfort: fixed
+horizon, no bob; `prefers-reduced-motion` renders discretely per distance tick instead
+of a continuous rAF loop; rAF pauses when the tab is hidden. **three.js is the one
+runtime dependency**, and only the scenic view pays for it: `Scenic3D.vue` is a
+`defineAsyncComponent` so Vite splits it (+three) into a lazy chunk (~520 kB raw) that
+downloads on first open — the main bundle stays three-free. No WebGL (probed before any
+three setup) → the component emits `unsupported`, the app falls back to the 2D track
+view and disables the Scenic toggle.
 
-The track `<svg>` only exists in the DOM while that view is active (`v-if`), so its path
-geometry (`pathLen`, read via `getTotalLength()` for the runner marker + progress ring)
-has to be recomputed on _every_ mount, not just once in `onMounted` — the `watch(viewMode)`
-handler does this. Skipping it means loading straight into a persisted `scenic` preference
-leaves `pathLen` stuck at 0 forever, even after switching back to Track: marker frozen at
-the SVG origin, progress ring invisible. Easy to reintroduce if this gets refactored —
-verified by mounting the app with `localStorage['walkfit.view'] = 'scenic'` pre-set.
+The 2D track view is **generated from the same scenic.ts model** the 3D view walks —
+not hand-drawn SVG: `track2d` in App.vue maps 3D `(x, z)` → SVG `(cx + z·k, cy + x·k)`
+(k = 2 px/m, with lateral offsets exaggerated ×2.5 transit-map style so the six lanes
+stay readable) and builds the band, all seven lane lines, the full-width finish line,
+and the staggered starts from `trackPoint`/`laneStaggers`. Loop paths use exact
+circular arcs, and lane 1's guide path is at offset 0 (unaffected by the exaggeration),
+so `getTotalLength` maps linearly to walked metres; the runner marker and progress
+ring follow that invisible guide (`.track-line`, `stroke: none` — geometry only).
 
 The track `<svg>` only exists in the DOM while that view is active (`v-if`), so its path
 geometry (`pathLen`, read via `getTotalLength()` for the runner marker + progress ring)

@@ -37,7 +37,9 @@ describe('App happy path', () => {
     const w = mount(App)
     await clickButton(w, 'Skip')
     await clickButton(w, 'Skip')
-    // choose Workout mode (the wizard card, not the header button of the same text)
+    // choose Workout mode (the wizard card, not the header button of the same text) —
+    // this now opens the same overlay the header button does: card click previews, a
+    // separate "Start workout" button actually activates it.
     await w
       .findAll('.mode-card')
       .find((c) => c.text().includes('Workout'))
@@ -45,7 +47,11 @@ describe('App happy path', () => {
     const cards = w.findAll('.tcard')
     expect(cards.length).toBeGreaterThan(0)
     await cards[0].trigger('click')
-    // wizard closed, a workout is now active
+    await w
+      .findAll('button')
+      .find((b) => b.text().includes('Start workout'))
+      .trigger('click')
+    // overlay closed, a workout is now active
     expect(w.find('.train-banner').exists()).toBe(true)
     // manual speed control is hidden while a workout drives the belt
     expect(w.find('.speed-row').exists()).toBe(false)
@@ -61,5 +67,25 @@ describe('App happy path', () => {
     expect(cards.length).toBe(5)
     expect(cards[0].text()).toMatch(/km/)
     expect(cards[0].text()).toMatch(/kcal/)
+  })
+
+  it('wizard → Workout opens the same tabbed menu as the header button, including HR targets', async () => {
+    const w = mount(App)
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Skip')
+    await w
+      .findAll('.mode-card')
+      .find((c) => c.text().includes('Workout'))
+      .trigger('click')
+    // wizard closed, real workout overlay open on the weight-loss tab
+    expect(w.text()).not.toContain('Connect your treadmill')
+    expect(w.find('.workout-tabs').exists()).toBe(true)
+    expect(w.find('.tlist').exists()).toBe(true)
+    // switching tabs from here reaches the same HR targets the header button's menu has
+    await w
+      .findAll('.workout-tab')
+      .find((b) => b.text().includes('Heart rate'))
+      .trigger('click')
+    expect(w.findAll('.hr-zone-opt').length).toBe(4)
   })
 })

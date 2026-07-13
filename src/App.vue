@@ -24,16 +24,16 @@ const stats = (t) => trainingStats(t, weightKg.value)
 
 // --- onboarding wizard ---
 const wizardOpen = ref(true)
-const wizardStep = ref(1) // 1 treadmill · 2 heart rate · 3 mode · 4 pick workout
+const wizardStep = ref(1) // 1 treadmill · 2 heart rate · 3 mode
 function wizardWalk() {
   active.value = null
   wizardOpen.value = false
 }
-function wizardPick(t) {
-  active.value = t
-  resetStats()
-  setSpeed(t.segments[0].speed)
+// "Workout" mode card: close the wizard and open the same workout menu the header
+// button opens, instead of a separate wizard-only picker — one picker, one behavior.
+function wizardOpenWorkouts() {
   wizardOpen.value = false
+  openWorkoutMenu()
 }
 
 // --- settings ---
@@ -1171,7 +1171,7 @@ const pace = computed(() => {
         </div>
 
         <!-- 3: mode -->
-        <div v-else-if="wizardStep === 3" class="wiz-step">
+        <div v-else class="wiz-step">
           <div class="wiz-icon">🎯</div>
           <h2>What today?</h2>
           <div class="mode-grid">
@@ -1180,38 +1180,14 @@ const pace = computed(() => {
               <span class="mode-name">Free walk</span>
               <span class="mode-desc">Set your own pace</span>
             </button>
-            <button class="mode-card" @click="wizardStep = 4">
+            <button class="mode-card" @click="wizardOpenWorkouts">
               <span class="mode-emoji">📋</span>
               <span class="mode-name">Workout</span>
-              <span class="mode-desc">Guided weight-loss session</span>
+              <span class="mode-desc">Weight-loss plan, or HR-steered</span>
             </button>
           </div>
           <div class="wiz-nav">
             <button class="btn ghost" @click="wizardStep = 2">Back</button>
-            <span></span>
-          </div>
-        </div>
-
-        <!-- 4: pick a weight-loss workout -->
-        <div v-else class="wiz-step">
-          <h2>Choose a workout</h2>
-          <div class="tlist wiz-tlist">
-            <button v-for="t in trainings" :key="t.id" class="tcard" @click="wizardPick(t)">
-              <div class="tcard-main">
-                <span class="tname">{{ t.name }}</span>
-                <span class="tfocus">{{ t.focus }}</span>
-                <span class="tmeta"
-                  >{{ mmss(stats(t).minutes * 60) }} · {{ stats(t).distanceKm.toFixed(1) }} km · ~{{
-                    stats(t).kcal
-                  }}
-                  kcal</span
-                >
-              </div>
-              <svg class="mini" viewBox="0 0 100 34"><path :d="miniPath(t)" /></svg>
-            </button>
-          </div>
-          <div class="wiz-nav">
-            <button class="btn ghost" @click="wizardStep = 3">Back</button>
             <span></span>
           </div>
         </div>
@@ -2091,10 +2067,6 @@ input[type='range'] {
 .mode-desc {
   font-size: 12px;
   color: #8a93a3;
-}
-.wiz-tlist {
-  text-align: left;
-  margin: 6px 0;
 }
 .sheet {
   background: #12151b;

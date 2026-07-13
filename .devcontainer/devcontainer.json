@@ -22,11 +22,17 @@
   // bus — mounting the socket is all the "passthrough" needed (Linux hosts only).
   "mounts": ["source=/run/dbus/system_bus_socket,target=/run/dbus/system_bus_socket,type=bind"],
   "postCreateCommand": "bash .devcontainer/post-create.sh",
-  "forwardPorts": [5173],
+  "forwardPorts": [5173, 8976],
   "portsAttributes": {
     "5173": {
       "label": "vite dev server",
       "onAutoForward": "notify"
+    },
+    // wrangler login's OAuth callback listener — the Cloudflare dashboard redirects the
+    // host browser to localhost:8976, which must reach wrangler inside the container.
+    "8976": {
+      "label": "wrangler login callback",
+      "onAutoForward": "silent"
     }
   }
 }

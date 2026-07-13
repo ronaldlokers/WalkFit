@@ -13,5 +13,6 @@ test('wizard → Free walk reaches the main screen', async ({ page }) => {
   await page.getByRole('button', { name: 'Skip', exact: true }).click() // heart-rate step
   await page.getByRole('button', { name: 'Free walk' }).click()
   await expect(page.getByRole('heading', { name: 'Connect your treadmill' })).toBeHidden()
-  await expect(page.getByText('current speed')).toBeVisible()
+  // the header stat strip replaced the old stats section (#46)
+  await expect(page.getByText('min/km')).toBeVisible()
 })

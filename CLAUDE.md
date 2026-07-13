@@ -108,7 +108,8 @@ Keep pinned Playwright version and image tag in sync.
 - `src/WorkoutPicker.vue` — the tabbed weight-loss/HR workout picker, shared verbatim
   between the wizard's step 4 and the header's workout menu (see "Workouts" below).
 - `src/App.vue` — the rest of the UI (still mostly one component): loop, chart, controls,
-  stats, header overflow menu, statistics view, settings, onboarding wizard.
+  header live-stat strip (time/distance/kcal/speed/pace — real zeros faded while idle),
+  header overflow menu, statistics view, settings, onboarding wizard.
 - `src/main.ts`, `src/style.css` — bootstrap + global styles/theme vars (`--accent`), plus
   the base `.btn` family — kept unscoped/global (not in `App.vue`'s `<style scoped>`)
   specifically so `WorkoutPicker.vue`'s buttons pick it up too; scoped styles don't cross

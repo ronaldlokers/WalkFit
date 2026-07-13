@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import App from './App.vue'
 
@@ -70,6 +70,33 @@ describe('App happy path', () => {
     expect(cards.length).toBe(5)
     expect(cards[0]!.text()).toMatch(/km/)
     expect(cards[0]!.text()).toMatch(/kcal/)
+  })
+
+  it('history sheet logs a weigh-in: trend appears and kcal weight follows the newest entry', async () => {
+    // fake only Date: two same-ms weigh-ins would share the merge key (source+date)
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T08:00:00.000Z') })
+    const w = mount(App)
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Free walk')
+    await clickButton(w, '☰')
+    await clickButton(w, 'History')
+    expect(w.find('.weight-section').exists()).toBe(true)
+    expect(w.text()).toContain('No weigh-ins yet')
+
+    await w.find('.weigh-row input').setValue(82.4)
+    await clickButton(w, 'Log weigh-in')
+    expect(w.find('.weight-section').text()).toContain('82.4')
+    expect(JSON.parse(localStorage.getItem('walkfit.weight.log')!)).toHaveLength(1)
+    expect(localStorage.getItem('walkfit.weight')).toBe('82.4') // newest entry drives kcal weight
+
+    // second entry a day later -> two points, trend chart renders
+    vi.setSystemTime(new Date('2026-07-14T08:00:00.000Z'))
+    await w.find('.weigh-row input').setValue(82.1)
+    await clickButton(w, 'Log weigh-in')
+    expect(w.find('.weight-chart').exists()).toBe(true)
+    expect(localStorage.getItem('walkfit.weight')).toBe('82.1')
+    vi.useRealTimers()
   })
 
   it('wizard step 4 embeds the same tabbed WorkoutPicker as the header menu, including HR targets', async () => {

@@ -6,6 +6,8 @@ import { workouts, timeline, metForSpeed } from './workouts'
 import type { Workout, HrTarget } from './workouts'
 import { loadHistory, addSession, weeklyTotals, currentStreak } from './history'
 import type { Session } from './history'
+import { loadWeightLog, addWeighIn } from './weight'
+import type { WeightEntry } from './weight'
 import { useStrava } from './strava'
 import WorkoutPicker from './WorkoutPicker.vue'
 
@@ -410,6 +412,66 @@ watch(
     }
   },
 )
+
+// --- weight log (issue #16) ---
+const weightLog = ref<WeightEntry[]>(loadWeightLog())
+const latestWeight = computed(() => weightLog.value[weightLog.value.length - 1] ?? null)
+// Delta vs the last weigh-in at least ~30 days before the newest one (falls back to the
+// oldest entry when the log is younger than that; null until two entries exist).
+const weightDelta = computed(() => {
+  const log = weightLog.value
+  if (log.length < 2) return null
+  const latest = log[log.length - 1]
+  const cutoff = new Date(latest.date).getTime() - 30 * 86400000
+  let refEntry = log[0]
+  for (const e of log) {
+    if (new Date(e.date).getTime() <= cutoff) refEntry = e
+    else break
+  }
+  return latest.kg - refEntry.kg
+})
+// Trend line, x proportional to time (weigh-ins are irregular — index-spacing would lie).
+const weightSpark = computed(() => {
+  const log = weightLog.value
+  if (log.length < 2) return null
+  const W = 320,
+    H = 80
+  const kgs = log.map((e) => e.kg)
+  const min = Math.min(...kgs),
+    max = Math.max(...kgs)
+  const rng = Math.max(0.5, max - min) // floor so a flat log doesn't zoom into noise
+  const t0 = new Date(log[0].date).getTime()
+  const span = Math.max(1, new Date(log[log.length - 1].date).getTime() - t0)
+  const pts = log.map(
+    (e) =>
+      `${(((new Date(e.date).getTime() - t0) / span) * W).toFixed(1)},${(H - 0.12 * H - ((e.kg - min) / rng) * 0.76 * H).toFixed(1)}`,
+  )
+  return { line: pts.join(' '), area: `M0,${H} L${pts.join(' L')} L${W},${H} Z`, min, max }
+})
+const weighInInput = ref<number | null>(null)
+function logWeighIn() {
+  if (!weighInInput.value) return
+  const kg = Math.round(weighInInput.value * 10) / 10
+  weightLog.value = addWeighIn({ date: new Date().toISOString(), kg, source: 'manual' })
+  weighInInput.value = null
+  syncWeightKg()
+}
+// Newest weigh-in drives the kcal-estimate weight (walkfit.weight persists via the
+// weightKg watcher above).
+function syncWeightKg() {
+  const newest = weightLog.value[weightLog.value.length - 1]
+  if (newest) weightKg.value = newest.kg
+}
+// The Settings weight field doubles as a manual weigh-in. @change fires on commit
+// (blur/enter), not per keystroke, so edits don't spam the log.
+function weightSettingChanged() {
+  if (weightKg.value >= 30 && weightKg.value <= 250)
+    weightLog.value = addWeighIn({
+      date: new Date().toISOString(),
+      kg: weightKg.value,
+      source: 'manual',
+    })
+}
 
 // --- Strava upload prompt ---
 const stravaPrompt = ref<{ session: Session; name: string } | null>(null) // set while the post-walk popup is open
@@ -1044,6 +1106,55 @@ const pace = computed(() => {
             </ul>
           </div>
         </div>
+
+        <div class="hist-section weight-section">
+          <h3>Weight</h3>
+          <div v-if="latestWeight" class="detail-tiles hist-tiles">
+            <div>
+              <span class="v">{{ latestWeight.kg.toFixed(1) }}<span class="unit">kg</span></span>
+              <span class="k">latest</span>
+            </div>
+            <div>
+              <span class="v"
+                >{{
+                  weightDelta === null
+                    ? '—'
+                    : (weightDelta > 0 ? '+' : '') + weightDelta.toFixed(1)
+                }}<span v-if="weightDelta !== null" class="unit">kg</span></span
+              >
+              <span class="k">vs ~30 days</span>
+            </div>
+          </div>
+          <template v-if="weightSpark">
+            <svg class="weight-chart" viewBox="0 0 320 80" preserveAspectRatio="none">
+              <path class="weight-area" :d="weightSpark.area" />
+              <polyline class="weight-line" :points="weightSpark.line" />
+            </svg>
+            <div class="weight-range">
+              {{ weightSpark.min.toFixed(1) }}–{{ weightSpark.max.toFixed(1) }} kg
+            </div>
+          </template>
+          <p v-if="!weightLog.length" class="hint">
+            No weigh-ins yet — log one to start the trend.
+          </p>
+          <div class="set-row weigh-row">
+            <span class="set-inline">
+              <input
+                v-model.number="weighInInput"
+                type="number"
+                step="0.1"
+                min="30"
+                max="250"
+                :placeholder="String(weightKg)"
+                @keyup.enter="logWeighIn"
+              />
+              <span class="set-unit">kg</span>
+            </span>
+            <button class="btn go sm" :disabled="!weighInInput" @click="logWeighIn">
+              Log weigh-in
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1210,7 +1321,13 @@ const pace = computed(() => {
           <div class="set-row">
             <span>Weight</span>
             <span class="set-inline">
-              <input v-model.number="weightKg" type="number" min="30" max="200" />
+              <input
+                v-model.number="weightKg"
+                type="number"
+                min="30"
+                max="200"
+                @change="weightSettingChanged"
+              />
               <span class="set-unit">kg</span>
             </span>
           </div>
@@ -2083,6 +2200,36 @@ input[type='range'] {
 }
 .weeklist li:hover {
   border-color: #333a46;
+}
+.weight-chart {
+  display: block;
+  width: 100%;
+  height: 90px;
+  background: #171a21;
+  border: 1px solid #232833;
+  border-radius: 14px;
+}
+.weight-area {
+  fill: rgba(46, 213, 115, 0.12);
+}
+.weight-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+.weight-range {
+  text-align: right;
+  font-size: 11px;
+  color: #8a93a3;
+  margin-top: 4px;
+}
+.weight-section .hist-tiles {
+  margin-bottom: 12px;
+}
+.weigh-row {
+  margin-top: 10px;
 }
 .week-head {
   display: flex;

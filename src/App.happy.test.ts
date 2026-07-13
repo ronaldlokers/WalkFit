@@ -168,6 +168,22 @@ describe('App happy path', () => {
     vi.useRealTimers()
   })
 
+  it('scenic without WebGL falls back to the track view and disables the toggle', async () => {
+    // jsdom has no WebGL: the async Scenic3D component mounts, probes, and emits
+    // 'unsupported' — the app must land on the track view, not a blank scene (#51).
+    localStorage.setItem('walkfit.view', 'scenic')
+    const w = mount(App)
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Free walk')
+    // let the defineAsyncComponent import (three.js chunk) + mount + emit settle
+    await vi.waitFor(() => expect(w.find('.track').exists()).toBe(true), { timeout: 5000 })
+    expect(w.find('.scene3d-wrap').exists()).toBe(false)
+    const scenicBtn = w.findAll('.view-btn').find((b) => b.text().includes('Scenic'))!
+    expect(scenicBtn.attributes('disabled')).toBeDefined()
+    expect(scenicBtn.attributes('title')).toBe('Needs WebGL')
+  })
+
   it('wizard step 4 embeds the same tabbed WorkoutPicker as the header menu, including HR targets', async () => {
     const w = mount(App)
     await clickButton(w, 'Skip')

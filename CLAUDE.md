@@ -107,6 +107,11 @@ Keep pinned Playwright version and image tag in sync.
   "Strava upload" below.
 - `src/WorkoutPicker.vue` — the tabbed weight-loss/HR workout picker, shared verbatim
   between the wizard's step 4 and the header's workout menu (see "Workouts" below).
+- `src/scenic.ts` — **pure, framework-free** world model for the 3D scenic walk (what
+  exists at metre z: path curve, biomes, props, signposts, day/night). Unit-tested in
+  `src/scenic.test.ts`. See the scenic paragraph below.
+- `src/Scenic3D.vue` — the three.js first-person scenic renderer; async component, so
+  three.js lives in a lazy chunk (see below).
 - `src/App.vue` — the rest of the UI (still mostly one component): loop, chart, controls,
   header live-stat strip (time/distance/kcal/speed/pace — real zeros faded while idle),
   header overflow menu, statistics view, settings, onboarding wizard. Below 900px it's a
@@ -193,35 +198,30 @@ not connected) and the HR badge (when a sensor is connected) stay directly in th
 header — both are primary, frequently-tapped actions, unlike the four menu items.
 
 The main visual has two modes, toggled above it: the 400 m athletics **track** (default),
-or a side-scrolling **scenic** walk. Both read the same `state.distance`/`state.speed` —
-no separate tracking. The walker emoji is fixed on screen at `WALKER_X` (200); it's
-mirrored via `transform: scaleX(-1)` (with `transform-box: fill-box`) — the 🚶 glyph faces
-left by default, same direction the scenery scrolls, which reads as walking backward
-otherwise. Lap count/lap-times carry over into scenic mode as a corner badge instead of
-the track's big centered number.
+or a first-person 3D **scenic** walk (#51). Both read the same
+`state.distance`/`state.speed` — no separate tracking. Lap count/lap-times carry over
+into scenic mode as a corner badge overlaid on the canvas.
 
-Scenic uses a **world-position-in-metres model**, not a repeating scroll tile: each prop's
-screen x is `WALKER_X + (worldM - state.distance) * pxPerMetre`, so "spawning" is really
-just enumerating which fixed-size distance buckets are currently in view. `sceneHash(seed)`
-is a cheap deterministic pseudo-random (sine-based) — the same bucket index always
-resolves to the same prop/position/size, so the scene never jumps or differs between
-re-renders despite not being a literal repeating pattern. `groundScenery` (trees, streetlight,
-car, bird, dog, bin — `GROUND_PX_PER_M`/`GROUND_BUCKET_M`) and `clouds` (own slower
-`CLOUD_PARALLAX` scale + wider buckets) are separate bucket systems. Depth is layered by
-paint order: clouds → road/sidewalk/grass → `groundScenery.behind` → walker →
-`groundScenery.front` → badge. Trees depth-swap into whichever group matches whether
-their world position is still ahead of or already behind `state.distance`; streetlights
-are always in `front` (closer to the path than the walker's lane). The foreground road
-dash scrolls via `stroke-dashoffset` (not tile duplication — a plain dash pattern doesn't
-need it) at a faster px/metre rate than the ground layer, for a depth-parallax read.
-
-The track `<svg>` only exists in the DOM while that view is active (`v-if`), so its path
-geometry (`pathLen`, read via `getTotalLength()` for the runner marker + progress ring)
-has to be recomputed on _every_ mount, not just once in `onMounted` — the `watch(viewMode)`
-handler does this. Skipping it means loading straight into a persisted `scenic` preference
-leaves `pathLen` stuck at 0 forever, even after switching back to Track: marker frozen at
-the SVG origin, progress ring invisible. Easy to reintroduce if this gets refactored —
-verified by mounting the app with `localStorage['walkfit.view'] = 'scenic'` pre-set.
+**Scenic (3D)** splits into two layers. `src/scenic.ts` is the pure world model — it
+answers "what exists at metre z": `worldHash` (deterministic sine hash — metre N always
+renders the same scene), `pathX`/`pathHeading` (gentle S-curve walkway), `biomeAt`
+(5 biomes cycling every 500 m: park → lakeside → forest → town → hills), `chunkProps`
+(40 m chunks; biome resolved per prop so chunks straddling a border don't spawn into the
+lakeside water), `signpostsIn` (km markers), and `dayPhase`/`skyAt` (dawn→night keyframes
+over `DAY_LENGTH_M` = 3200 m of _walked distance_ — every walk starts at dawn).
+`src/Scenic3D.vue` turns that into three.js meshes: chunk streaming (~240 m ahead, fog
+hides the edge; per-chunk geometry disposed behind), low-poly procedural props with
+shared unit geometries, a vertex-gradient sky dome (fog color at horizon → sky color
+overhead; kills the ground/sky seam), and a camera at eye height that interpolates
+toward `state.distance` at belt speed (distance ticks in at ~4 Hz; naive snapping would
+stutter). Ribbon triangle winding matters: faces must point +y or the walkway is
+backface-culled from above. Comfort: fixed horizon, no bob; `prefers-reduced-motion`
+renders discretely per distance tick instead of a continuous rAF loop; rAF pauses when
+the tab is hidden. **three.js is the one runtime dependency**, and only the scenic view
+pays for it: `Scenic3D.vue` is a `defineAsyncComponent` so Vite splits it (+three) into
+a lazy chunk (~520 kB raw) that downloads on first open — the main bundle stays
+three-free. No WebGL (probed before any three setup) → the component emits
+`unsupported`, the app falls back to the track view and disables the Scenic toggle.
 
 The track `<svg>` only exists in the DOM while that view is active (`v-if`), so its path
 geometry (`pathLen`, read via `getTotalLength()` for the runner marker + progress ring)

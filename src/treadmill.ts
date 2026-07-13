@@ -30,6 +30,7 @@ export interface TreadmillState {
   speed: number // live speed reported by device (km/h)
   targetSpeed: number // last speed we asked for (km/h)
   distance: number // metres, integrated client-side from live speed
+  steps: number // step count reported by the belt's own pedometer (fff1 running frame)
   elapsed: number // seconds the belt has been moving
   error: string
   history: number[] // speed (km/h) sampled once per second since connect
@@ -49,6 +50,7 @@ export function useTreadmill() {
     speed: 0,
     targetSpeed: SPEED_MIN,
     distance: 0,
+    steps: 0,
     elapsed: 0,
     error: '',
     history: [],
@@ -115,8 +117,10 @@ export function useTreadmill() {
     if (!ev) return
     // NB the device emits 02 53 01 03 "idle" even while running, so status frames must
     // NOT zero the speed — speed comes only from 'speed' events + the staleness timeout.
-    if (ev.type === 'speed') onSpeedReading(ev.speed)
-    else if (ev.type === 'status') dbg('st1', ev.running ? 0 : 3)
+    if (ev.type === 'speed') {
+      onSpeedReading(ev.speed)
+      if (ev.steps !== undefined) state.steps = ev.steps // belt's own pedometer count
+    } else if (ev.type === 'status') dbg('st1', ev.running ? 0 : 3)
     else if (ev.type === 'stop') dbg('st3', 0)
   }
 
@@ -308,6 +312,7 @@ export function useTreadmill() {
 
   function resetStats() {
     state.distance = 0
+    state.steps = 0
     state.elapsed = 0
     state.history = []
   }

@@ -197,7 +197,8 @@ buttons, to keep the header from crowding on narrow screens. The Connect button 
 not connected) and the HR badge (when a sensor is connected) stay directly in the
 header — both are primary, frequently-tapped actions, unlike the four menu items.
 
-The main visual has two modes, toggled in **Settings → Display** (2D / 3D): the
+The main visual has two modes, toggled by the pill overlaid on the visual's top-right
+corner or in **Settings → Display** (2D / 3D): the
 top-down 2D **track** (default), or the first-person 3D **scenic** walk (#51). Both
 read the same `state.distance`/`state.speed` — no separate tracking. Lap
 count/lap-times carry over into the 3D mode as a corner badge overlaid on the canvas.

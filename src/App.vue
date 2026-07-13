@@ -862,6 +862,18 @@ const pace = computed(() => {
 
     <!-- virtual loop / scenic walk -->
     <section class="track-wrap">
+      <!-- quick 2D/3D flip overlaid on the visual; the same toggle lives in Settings -->
+      <div class="view-flip">
+        <button :class="{ on: viewMode === 'track' }" @click="viewMode = 'track'">2D</button>
+        <button
+          :class="{ on: viewMode === 'scenic' }"
+          :disabled="!scenicSupported"
+          :title="scenicSupported ? undefined : 'Needs WebGL'"
+          @click="viewMode = 'scenic'"
+        >
+          3D
+        </button>
+      </div>
       <svg v-if="viewMode === 'track'" viewBox="0 0 400 260" class="track">
         <!-- top-down render of the same 400 m track model the 3D view walks (scenic.ts):
              six lanes, common finish line, staggered starts -->
@@ -1686,6 +1698,37 @@ code {
 
 .track-wrap {
   margin: 6px 0 14px;
+  position: relative; /* anchors the overlaid 2D/3D flip */
+}
+.view-flip {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  gap: 2px;
+  background: rgba(10, 12, 16, 0.72);
+  border: 1px solid #232833;
+  border-radius: 999px;
+  padding: 2px;
+}
+.view-flip button {
+  background: none;
+  border: 0;
+  color: #8a93a3;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.view-flip button.on {
+  background: var(--accent);
+  color: #05210f;
+}
+.view-flip button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 .track {
   width: 100%;

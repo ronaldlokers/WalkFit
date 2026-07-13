@@ -91,6 +91,14 @@ Keep pinned Playwright version and image tag in sync.
 - `src/history.ts` — completed-session log persisted to `localStorage` (`walkfit.history`):
   `Session` type, `addSession`, `weeklyTotals` (ISO-week rollups), `currentStreak`.
   Unit-tested in `src/history.test.ts`.
+- `src/weight.ts` — weigh-in log (`walkfit.weight.log`, issue #16): `WeightEntry`
+  (`date`/`kg`/`source`), `mergeWeighIns` (idempotent on `source+date` so provider
+  re-syncs never duplicate; same-key overwrites = corrected readings). Unit-tested in
+  `src/weight.test.ts`. The newest entry drives `weightKg` (the kcal-estimate weight).
+- `src/health.ts` — `HealthProvider` interface + `syncProvider`/lastSync helpers for
+  weigh-in sync services. See "Health sync" below.
+- `src/withings.ts` — `useWithings()`: the first `HealthProvider` (Withings scale).
+  Unit-tested in `src/withings.test.ts` (envelope, measure parsing, refresh rotation).
 - `src/strava.ts` — `useStrava()` composable: OAuth2 connect + per-session upload. See
   "Strava upload" below.
 - `src/WorkoutPicker.vue` — the tabbed weight-loss/HR workout picker, shared verbatim
@@ -114,7 +122,22 @@ same transition opens the upload-prompt popup.
 
 `localStorage` keys: `walkfit.treadmill.id`, `walkfit.hr.id` (remembered device ids),
 `walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.history`,
-`walkfit.strava` (OAuth tokens), `walkfit.view` (`track` | `scenic`).
+`walkfit.weight.log` (weigh-ins), `walkfit.strava` / `walkfit.withings` (OAuth tokens),
+`walkfit.health.lastSync.<provider>` (sync cursors), `walkfit.view` (`track` | `scenic`).
+
+**Health sync** — `health.ts` defines `HealthProvider` (id doubles as
+`WeightEntry.source`; reactive state; `connect`/`disconnect`/`handleRedirect`/
+`syncWeight`). Providers are listed in App.vue's `healthProviders` and rendered
+generically in Settings (connect / sync now / disconnect); connected ones auto-sync on
+load, results merge into the weight log and the newest entry updates `weightKg`. The
+interface is transport-agnostic on purpose — a future Apple Health provider can be a
+file import rather than OAuth. **OAuth redirect ownership:** every OAuth flow (Strava +
+providers) shares one redirect URI; a flow may only consume a `?code&state` callback
+when the returned `state` matches the nonce in its OWN sessionStorage key, and must
+leave the URL untouched otherwise (`handleOAuthRedirects()` probes them in turn). Break
+this rule and providers eat each other's callbacks. Withings specifics (rotated refresh
+tokens, `{status,body}` envelope, redirect_uri echoed on exchange, demo mode) live in
+`withings.ts` and `strava-proxy/README.md`.
 
 **Workouts** — `WorkoutPicker.vue` is the single picker, mounted in two places that must
 stay behaviorally identical:
@@ -207,17 +230,18 @@ because its OAuth token endpoint requires `client_secret` for both the initial e
 every refresh — no PKCE, confirmed against Strava's own docs — and a secret can't live in a
 browser bundle.
 
-- `strava-proxy/` — standalone Cloudflare Worker, two routes (`/token`, `/refresh`), both
-  thin passthroughs to `POST https://www.strava.com/oauth/token` with the secret injected
-  server-side. See `strava-proxy/README.md` for deploy steps (register a Strava API app,
-  `wrangler secret put`, `wrangler deploy`).
-- Activity **upload** does NOT go through the worker — `api.strava.com` sends permissive
-  CORS headers, so `src/strava.ts` calls it directly from the browser with the bearer
-  access token. Don't add an upload route to the worker; keep its surface to the two
-  token routes only.
-- `VITE_STRAVA_CLIENT_ID` is public (it's part of the authorize URL every browser sends) —
-  fine in a repo Actions variable, not a secret. Set both vars in the deploy workflow's repo
-  Settings → Secrets and variables → Actions → Variables.
+- `strava-proxy/` — standalone Cloudflare Worker holding the OAuth secrets for ALL
+  integrations: `/{provider}/token` + `/{provider}/refresh` routes (`strava`,
+  `withings`; legacy `/token`/`/refresh` alias to strava), thin passthroughs to each
+  provider's token endpoint with the secret injected server-side. See
+  `strava-proxy/README.md` for deploy steps and per-provider app registration.
+- Data traffic does NOT go through the worker — `api.strava.com` (upload) and
+  `wbsapi.withings.net` (measures) both send permissive CORS headers, so the client
+  calls them directly with the bearer token. Don't add data routes to the worker; keep
+  its surface to token routes only.
+- `VITE_STRAVA_CLIENT_ID` / `VITE_WITHINGS_CLIENT_ID` are public (part of the authorize
+  URL every browser sends) — fine in a repo Actions variable, not a secret. Set the vars
+  in the deploy workflow's repo Settings → Secrets and variables → Actions → Variables.
 - Registering a Strava API app requires an active Strava subscription, and every new app
   is capped at 10 connected athletes until Strava approves a review request. Both are
   Strava-side account/app-settings matters, not WalkFit code — the OAuth flow already

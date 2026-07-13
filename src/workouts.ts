@@ -31,6 +31,16 @@ export interface WorkoutStats {
   kcal: number
 }
 
+// A steer target for the HR-steered workout mode: hold bpm inside lo..hi % of max HR.
+// Rows live in App.vue's HR_TARGETS; the shape is shared with WorkoutPicker's HR tab.
+export interface HrTarget {
+  id: string
+  name: string
+  color: string
+  loPct: number
+  hiPct: number
+}
+
 export const workouts: Workout[] = [
   {
     id: 'fatburn30',

@@ -231,9 +231,13 @@ downloads on first open — the main bundle stays three-free. No WebGL (probed b
 three setup) → the component emits `unsupported`, the app falls back to the 2D track
 view and disables the Scenic toggle.
 
-In the 2D track view, the runner marker, progress ring, and start/finish line all live
-in **lane 1** (the innermost band, 48.5–57 in viewBox units → centreline y 52.75, arc
-radius 77.25) — matching the 3D view's lane-1 camera.
+The 2D track view is **generated from the same scenic.ts model** the 3D view walks —
+not hand-drawn SVG: `track2d` in App.vue maps 3D `(x, z)` → SVG `(cx + z·k, cy + x·k)`
+(k = 2.2 px/m) and builds the band, all seven lane lines, the lane-1 start/finish line,
+the staggered starts, and the 100/200/300 m labels from `trackPoint`/`laneStaggers`/
+`distanceSigns`. Loop paths use exact circular arcs, so `getTotalLength` maps linearly
+to walked metres; the runner marker and progress ring follow the invisible lane-1
+guide path (`.track-line`, `stroke: none` — geometry only).
 
 The track `<svg>` only exists in the DOM while that view is active (`v-if`), so its path
 geometry (`pathLen`, read via `getTotalLength()` for the runner marker + progress ring)

@@ -14,6 +14,17 @@ import {
   saveGoals,
 } from './statistics'
 import type { Session } from './statistics'
+import {
+  trackPoint,
+  laneStaggers,
+  distanceSigns,
+  BEND_R,
+  STRAIGHT_M,
+  LANE_W,
+  LANES,
+  TRACK_IN,
+  TRACK_OUT,
+} from './scenic'
 import { loadWeightLog, addWeighIn } from './weight'
 import type { WeightEntry } from './weight'
 import { syncProvider } from './health'
@@ -234,6 +245,36 @@ watch(viewMode, async (v) => {
     if (trackEl.value) pathLen.value = trackEl.value.getTotalLength()
   }
 })
+
+// --- 2D track view: the same 400 m track model as the 3D walk (scenic.ts), top-down ---
+// Mapping: 3D (x, z) → SVG (cx + z·k, cy + x·k). Loop paths use exact circular arcs, so
+// getTotalLength maps linearly to walked metres and the marker/progress stay true.
+const TK = 2.2 // px per metre — fits the 400×260 viewBox
+const TCX = 200
+const TCY = 130
+function svgPt(s: number, o: number) {
+  const p = trackPoint(s, o)
+  return { x: TCX + p.z * TK, y: TCY + p.x * TK }
+}
+// closed loop at lateral offset o, starting at s = 0 and following the walking direction
+function loopPath(o: number): string {
+  const r = (BEND_R + o) * TK
+  const hs = (STRAIGHT_M / 2) * TK
+  return (
+    `M ${TCX + hs} ${TCY + r} L ${TCX - hs} ${TCY + r} ` +
+    `A ${r} ${r} 0 0 1 ${TCX - hs} ${TCY - r} ` +
+    `L ${TCX + hs} ${TCY - r} A ${r} ${r} 0 0 1 ${TCX + hs} ${TCY + r} Z`
+  )
+}
+const track2d = {
+  band: loopPath((TRACK_IN + TRACK_OUT) / 2),
+  bandW: (TRACK_OUT - TRACK_IN) * TK,
+  laneLines: Array.from({ length: LANES + 1 }, (_, i) => loopPath(TRACK_IN + i * LANE_W)),
+  lane1: loopPath(0), // the runner's guide path — lane-1 centreline, same as the 3D camera
+  start: { a: svgPt(0, TRACK_IN), b: svgPt(0, TRACK_IN + LANE_W) },
+  staggers: laneStaggers().map((st) => ({ a: svgPt(st.s, st.o0), b: svgPt(st.s, st.o1) })),
+  signs: distanceSigns().map((sg) => ({ ...svgPt(sg.s, TRACK_OUT + 4.5), label: String(sg.s) })),
+}
 
 const trackEl = ref<SVGPathElement | null>(null)
 const pathLen = ref(0)
@@ -834,44 +875,46 @@ const pace = computed(() => {
       </div>
 
       <svg v-if="viewMode === 'track'" viewBox="0 0 400 260" class="track">
-        <!-- athletics track: red surface, white lane lines, start/finish at the left straight -->
-        <path
-          class="track-band"
-          d="M110,40 L290,40 A90,90 0 0 1 290,220 L110,220 A90,90 0 0 1 110,40 Z"
+        <!-- top-down render of the same 400 m track model the 3D view walks (scenic.ts):
+             six lanes, lane-1 start/finish, staggered starts, 100 m marks -->
+        <path class="track-band" :d="track2d.band" :stroke-width="track2d.bandW" />
+        <path v-for="(d, i) in track2d.laneLines" :key="`lane-${i}`" class="track-lane" :d="d" />
+        <line
+          class="startline"
+          :x1="track2d.start.a.x"
+          :y1="track2d.start.a.y"
+          :x2="track2d.start.b.x"
+          :y2="track2d.start.b.y"
         />
-        <path
-          class="track-border"
-          d="M110,23 L290,23 A107,107 0 0 1 290,237 L110,237 A107,107 0 0 1 110,23 Z"
+        <line
+          v-for="(st, i) in track2d.staggers"
+          :key="`stagger-${i}`"
+          class="stagger"
+          :x1="st.a.x"
+          :y1="st.a.y"
+          :x2="st.b.x"
+          :y2="st.b.y"
         />
-        <path
-          class="track-border"
-          d="M110,57 L290,57 A73,73 0 0 1 290,203 L110,203 A73,73 0 0 1 110,57 Z"
-        />
-        <path
-          class="track-lane"
-          d="M110,31.5 L290,31.5 A98.5,98.5 0 0 1 290,228.5 L110,228.5 A98.5,98.5 0 0 1 110,31.5 Z"
-        />
-        <path
-          class="track-lane"
-          d="M110,48.5 L290,48.5 A81.5,81.5 0 0 1 290,211.5 L110,211.5 A81.5,81.5 0 0 1 110,48.5 Z"
-        />
-        <!-- runner + progress ride the lane-1 centreline (innermost lane, 48.5–57 band →
-             y 52.75, arc r 77.25); the start/finish line likewise spans just lane 1 -->
-        <path
-          ref="trackEl"
-          class="track-line"
-          d="M110,52.75 L290,52.75 A77.25,77.25 0 0 1 290,207.25 L110,207.25 A77.25,77.25 0 0 1 110,52.75 Z"
-        />
+        <text
+          v-for="(sg, i) in track2d.signs"
+          :key="`sign-${i}`"
+          class="track-sign"
+          :x="sg.x"
+          :y="sg.y"
+        >
+          {{ sg.label }}
+        </text>
+        <!-- invisible guide path: the lane-1 centreline the marker + progress follow -->
+        <path ref="trackEl" class="track-line" :d="track2d.lane1" />
         <path
           class="track-progress"
-          d="M110,52.75 L290,52.75 A77.25,77.25 0 0 1 290,207.25 L110,207.25 A77.25,77.25 0 0 1 110,52.75 Z"
+          :d="track2d.lane1"
           :stroke-dasharray="pathLen"
           :stroke-dashoffset="dashOffset"
         />
-        <line class="startline" x1="110" y1="48.5" x2="110" y2="57" />
         <g :transform="`translate(${marker.x},${marker.y})`" class="runner">
-          <circle class="halo" r="16" />
-          <circle class="body" r="9" />
+          <circle class="halo" r="10" />
+          <circle class="body" r="6" />
           <text y="1">🏃</text>
         </g>
         <text class="lap-num" x="200" y="120">{{ laps }}</text>
@@ -1649,42 +1692,44 @@ code {
 }
 .track-band {
   fill: none;
-  stroke: #6e352c; /* tartan red, muted for the dark theme */
-  stroke-width: 34;
-  stroke-linejoin: round;
-}
-.track-border {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.45);
-  stroke-width: 1.5;
+  stroke: #83392d; /* tartan red; width bound from the lane count so lanes stay true */
 }
 .track-lane {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.22);
-  stroke-width: 1;
-  stroke-dasharray: 8 6;
+  stroke: rgba(255, 255, 255, 0.25);
+  stroke-width: 0.5;
 }
+/* geometry guide only — the runner marker and progress ring follow it via
+   getTotalLength/getPointAtLength, so it never needs to be painted */
 .track-line {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.22);
-  stroke-width: 1;
-  stroke-dasharray: 8 6;
+  stroke: none;
 }
 .track-progress {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 8;
+  stroke-width: 2.2; /* stays inside lane 1 (one lane ≈ 2.7 px at this scale) */
   stroke-linecap: round;
   transition: stroke-dashoffset 0.25s linear;
   filter: drop-shadow(0 0 6px rgba(46, 213, 115, 0.5));
 }
 .startline {
   stroke: #eee;
-  stroke-width: 3;
+  stroke-width: 2;
+}
+.stagger {
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 1.2;
+}
+.track-sign {
+  fill: #8a93a3;
+  font-size: 9px;
+  font-weight: 600;
+  text-anchor: middle;
 }
 .runner text {
   text-anchor: middle;
-  font-size: 13px;
+  font-size: 9px;
 }
 .runner .halo {
   fill: rgba(46, 213, 115, 0.18);

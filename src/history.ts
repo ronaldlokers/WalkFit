@@ -2,7 +2,23 @@
 const KEY = 'walkfit.history'
 const MAX_ENTRIES = 500 // ~a year of daily walks; keeps localStorage bounded
 
-export function loadHistory() {
+export interface Session {
+  date: string // ISO string, session start
+  distance: number // metres
+  duration: number // seconds
+  kcal: number
+  avgHr: number | null // bpm, null when no HR sensor was connected
+}
+
+export interface WeekTotals {
+  week: string // "YYYY-Www" ISO-week key
+  sessions: number
+  distance: number // metres
+  duration: number // seconds
+  kcal: number
+}
+
+export function loadHistory(): Session[] {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || '[]')
     return Array.isArray(raw) ? raw : []
@@ -11,8 +27,7 @@ export function loadHistory() {
   }
 }
 
-// entry: { date (ISO string, session start), distance (m), duration (s), kcal, avgHr (bpm or null) }
-export function addSession(entry) {
+export function addSession(entry: Session): Session[] {
   const list = loadHistory()
   list.push(entry)
   if (list.length > MAX_ENTRIES) list.splice(0, list.length - MAX_ENTRIES)
@@ -20,19 +35,19 @@ export function addSession(entry) {
   return list
 }
 
-function isoWeekKey(date) {
+function isoWeekKey(date: Date): string {
   // ISO week (Mon-start), keyed as "YYYY-Www" so it sorts/groups correctly across year ends.
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
   const dayNum = d.getUTCDay() || 7
   d.setUTCDate(d.getUTCDate() + 4 - dayNum)
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
-  const week = Math.ceil(((d - yearStart) / 86400000 + 1) / 7)
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
   return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
 }
 
 // Weekly rollups, most recent week first.
-export function weeklyTotals(history) {
-  const byWeek = new Map()
+export function weeklyTotals(history: Session[]): WeekTotals[] {
+  const byWeek = new Map<string, WeekTotals>()
   for (const s of history) {
     const key = isoWeekKey(new Date(s.date))
     const w = byWeek.get(key) || { week: key, sessions: 0, distance: 0, duration: 0, kcal: 0 }
@@ -47,7 +62,7 @@ export function weeklyTotals(history) {
 
 // Consecutive-day streak ending today or yesterday (a walk yesterday still counts
 // as "keep the streak alive" — it only breaks once a full day is missed).
-export function currentStreak(history, now = new Date()) {
+export function currentStreak(history: Session[], now = new Date()): number {
   if (!history.length) return 0
   const days = new Set(history.map((s) => new Date(s.date).toDateString()))
   let streak = 0

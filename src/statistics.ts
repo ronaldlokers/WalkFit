@@ -1,4 +1,5 @@
-// Session history: one entry per completed walk, persisted to localStorage.
+// Session statistics: one entry per completed walk, persisted to localStorage.
+// Storage key stays 'walkfit.history' so existing logs survive the rename to statistics.
 const KEY = 'walkfit.history'
 const MAX_ENTRIES = 500 // ~a year of daily walks; keeps localStorage bounded
 
@@ -18,7 +19,7 @@ export interface WeekTotals {
   kcal: number
 }
 
-export function loadHistory(): Session[] {
+export function loadStatistics(): Session[] {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || '[]')
     return Array.isArray(raw) ? raw : []
@@ -28,7 +29,7 @@ export function loadHistory(): Session[] {
 }
 
 export function addSession(entry: Session): Session[] {
-  const list = loadHistory()
+  const list = loadStatistics()
   list.push(entry)
   if (list.length > MAX_ENTRIES) list.splice(0, list.length - MAX_ENTRIES)
   localStorage.setItem(KEY, JSON.stringify(list))
@@ -46,9 +47,9 @@ function isoWeekKey(date: Date): string {
 }
 
 // Weekly rollups, most recent week first.
-export function weeklyTotals(history: Session[]): WeekTotals[] {
+export function weeklyTotals(sessions: Session[]): WeekTotals[] {
   const byWeek = new Map<string, WeekTotals>()
-  for (const s of history) {
+  for (const s of sessions) {
     const key = isoWeekKey(new Date(s.date))
     const w = byWeek.get(key) || { week: key, sessions: 0, distance: 0, duration: 0, kcal: 0 }
     w.sessions += 1
@@ -62,9 +63,9 @@ export function weeklyTotals(history: Session[]): WeekTotals[] {
 
 // Consecutive-day streak ending today or yesterday (a walk yesterday still counts
 // as "keep the streak alive" — it only breaks once a full day is missed).
-export function currentStreak(history: Session[], now = new Date()): number {
-  if (!history.length) return 0
-  const days = new Set(history.map((s) => new Date(s.date).toDateString()))
+export function currentStreak(sessions: Session[], now = new Date()): number {
+  if (!sessions.length) return 0
+  const days = new Set(sessions.map((s) => new Date(s.date).toDateString()))
   let streak = 0
   const cursor = new Date(now)
   cursor.setHours(0, 0, 0, 0)

@@ -4,8 +4,13 @@ import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill'
 import { useHeartRate } from './heartrate'
 import { workouts, timeline, metForSpeed } from './workouts'
 import type { Workout, HrTarget } from './workouts'
-import { loadHistory, addSession, weeklyTotals, currentStreak } from './history'
-import type { Session } from './history'
+import { loadStatistics, addSession, weeklyTotals, currentStreak } from './statistics'
+import type { Session } from './statistics'
+import { loadWeightLog, addWeighIn } from './weight'
+import type { WeightEntry } from './weight'
+import { syncProvider } from './health'
+import type { HealthProvider } from './health'
+import { useWithings } from './withings'
 import { useStrava } from './strava'
 import WorkoutPicker from './WorkoutPicker.vue'
 
@@ -43,15 +48,15 @@ function wizardStartHr(t: HrTarget) {
   startHrWorkout(t)
 }
 
-// --- header overflow menu (Workout / History / Disconnect / Settings) ---
+// --- header overflow menu (Workout / Statistics / Disconnect / Settings) ---
 const moreMenuOpen = ref(false)
 function menuOpenWorkouts() {
   moreMenuOpen.value = false
   openWorkoutMenu()
 }
-function menuOpenHistory() {
+function menuOpenStatistics() {
   moreMenuOpen.value = false
-  historyOpen.value = true
+  statisticsOpen.value = true
 }
 function menuDisconnect() {
   moreMenuOpen.value = false
@@ -309,7 +314,9 @@ const lapLength = 400 // metres per virtual lap — one athletics-track lap
 onMounted(() => {
   if (trackEl.value) pathLen.value = trackEl.value.getTotalLength()
   if (state.supported) connectAuto() // silent reconnect to remembered devices
-  strava.handleRedirect() // no-op unless we just came back from Strava's OAuth page
+  handleOAuthRedirects() // no-op unless we just came back from an OAuth page
+  // silent weigh-in sync for connected health services (fire-and-forget, like connectAuto)
+  for (const p of healthProviders) if (p.state.connected) syncHealth(p)
 })
 async function connectAuto() {
   await Promise.allSettled([tmAutoConnect(), hr.autoConnect()])
@@ -367,12 +374,12 @@ watch(
   },
 )
 
-// --- session history ---
+// --- session statistics ---
 const MIN_SESSION_DISTANCE = 50 // metres — filters out accidental/blip starts
-const history = ref(loadHistory())
-const historyOpen = ref(false)
-const weekly = computed(() => weeklyTotals(history.value))
-const streak = computed(() => currentStreak(history.value))
+const sessions = ref(loadStatistics())
+const statisticsOpen = ref(false)
+const weekly = computed(() => weeklyTotals(sessions.value))
+const streak = computed(() => currentStreak(sessions.value))
 let sessionStart: Date | null = null
 let sessionName = 'Free walk'
 let hrSum = 0
@@ -403,13 +410,92 @@ watch(
           kcal: liveKcal.value,
           avgHr: hrCount ? Math.round(hrSum / hrCount) : null,
         }
-        history.value = addSession(session)
+        sessions.value = addSession(session)
         if (strava.state.connected) stravaPrompt.value = { session, name: sessionName }
       }
       sessionStart = null
     }
   },
 )
+
+// --- weight log (issue #16) ---
+const weightLog = ref<WeightEntry[]>(loadWeightLog())
+const latestWeight = computed(() => weightLog.value[weightLog.value.length - 1] ?? null)
+// Delta vs the last weigh-in at least ~30 days before the newest one (falls back to the
+// oldest entry when the log is younger than that; null until two entries exist).
+const weightDelta = computed(() => {
+  const log = weightLog.value
+  if (log.length < 2) return null
+  const latest = log[log.length - 1]
+  const cutoff = new Date(latest.date).getTime() - 30 * 86400000
+  let refEntry = log[0]
+  for (const e of log) {
+    if (new Date(e.date).getTime() <= cutoff) refEntry = e
+    else break
+  }
+  return latest.kg - refEntry.kg
+})
+// Trend line, x proportional to time (weigh-ins are irregular — index-spacing would lie).
+const weightSpark = computed(() => {
+  const log = weightLog.value
+  if (log.length < 2) return null
+  const W = 320,
+    H = 80
+  const kgs = log.map((e) => e.kg)
+  const min = Math.min(...kgs),
+    max = Math.max(...kgs)
+  const rng = Math.max(0.5, max - min) // floor so a flat log doesn't zoom into noise
+  const t0 = new Date(log[0].date).getTime()
+  const span = Math.max(1, new Date(log[log.length - 1].date).getTime() - t0)
+  const pts = log.map(
+    (e) =>
+      `${(((new Date(e.date).getTime() - t0) / span) * W).toFixed(1)},${(H - 0.12 * H - ((e.kg - min) / rng) * 0.76 * H).toFixed(1)}`,
+  )
+  return { line: pts.join(' '), area: `M0,${H} L${pts.join(' L')} L${W},${H} Z`, min, max }
+})
+const weighInInput = ref<number | null>(null)
+function logWeighIn() {
+  if (!weighInInput.value) return
+  const kg = Math.round(weighInInput.value * 10) / 10
+  weightLog.value = addWeighIn({ date: new Date().toISOString(), kg, source: 'manual' })
+  weighInInput.value = null
+  syncWeightKg()
+}
+// Newest weigh-in drives the kcal-estimate weight (walkfit.weight persists via the
+// weightKg watcher above).
+function syncWeightKg() {
+  const newest = weightLog.value[weightLog.value.length - 1]
+  if (newest) weightKg.value = newest.kg
+}
+// The Settings weight field doubles as a manual weigh-in. @change fires on commit
+// (blur/enter), not per keystroke, so edits don't spam the log.
+function weightSettingChanged() {
+  if (weightKg.value >= 30 && weightKg.value <= 250)
+    weightLog.value = addWeighIn({
+      date: new Date().toISOString(),
+      kg: weightKg.value,
+      source: 'manual',
+    })
+}
+
+// --- health services (weigh-in sync providers — see health.ts) ---
+const healthProviders: HealthProvider[] = [useWithings()]
+async function syncHealth(p: HealthProvider) {
+  const updated = await syncProvider(p)
+  if (updated) {
+    weightLog.value = updated
+    syncWeightKg()
+  }
+}
+// One ?code&state callback lands here for every OAuth flow (they share the redirect
+// URI); each flow claims it only when the state nonce is its own, so probe in turn.
+async function handleOAuthRedirects() {
+  if (await strava.handleRedirect()) return
+  for (const p of healthProviders) if (await p.handleRedirect()) return
+}
+function fmtSynced(ms: number | null) {
+  return ms ? new Date(ms).toLocaleString() : 'never'
+}
 
 // --- Strava upload prompt ---
 const stravaPrompt = ref<{ session: Session; name: string } | null>(null) // set while the post-walk popup is open
@@ -641,7 +727,7 @@ const pace = computed(() => {
           <div v-if="moreMenuOpen" class="menu-backdrop" @click="moreMenuOpen = false"></div>
           <div v-if="moreMenuOpen" class="menu-panel">
             <button class="menu-item" @click="menuOpenWorkouts">📋 Workout</button>
-            <button class="menu-item" @click="menuOpenHistory">📈 History</button>
+            <button class="menu-item" @click="menuOpenStatistics">📈 Statistics</button>
             <button v-if="state.connected" class="menu-item" @click="menuDisconnect">
               🔌 Disconnect
             </button>
@@ -991,15 +1077,15 @@ const pace = computed(() => {
       </div>
     </div>
 
-    <!-- session history -->
-    <div v-if="historyOpen" class="overlay" @click.self="historyOpen = false">
+    <!-- session statistics -->
+    <div v-if="statisticsOpen" class="overlay" @click.self="statisticsOpen = false">
       <div class="sheet">
         <div class="sheet-head">
-          <h2>History</h2>
-          <button class="x" @click="historyOpen = false">✕</button>
+          <h2>Statistics</h2>
+          <button class="x" @click="statisticsOpen = false">✕</button>
         </div>
 
-        <div v-if="!history.length" class="hist-empty">
+        <div v-if="!sessions.length" class="hist-empty">
           <span class="hist-empty-icon">🏃</span>
           <p class="hint">No walks logged yet — finish a walk to see it here.</p>
         </div>
@@ -1011,8 +1097,8 @@ const pace = computed(() => {
               <span class="k">day streak</span>
             </div>
             <div>
-              <span class="v">{{ history.length }}</span>
-              <span class="k">{{ history.length === 1 ? 'walk' : 'walks' }} total</span>
+              <span class="v">{{ sessions.length }}</span>
+              <span class="k">{{ sessions.length === 1 ? 'walk' : 'walks' }} total</span>
             </div>
           </div>
 
@@ -1042,6 +1128,55 @@ const pace = computed(() => {
                 </div>
               </li>
             </ul>
+          </div>
+        </div>
+
+        <div class="hist-section weight-section">
+          <h3>Weight</h3>
+          <div v-if="latestWeight" class="detail-tiles hist-tiles">
+            <div>
+              <span class="v">{{ latestWeight.kg.toFixed(1) }}<span class="unit">kg</span></span>
+              <span class="k">latest</span>
+            </div>
+            <div>
+              <span class="v"
+                >{{
+                  weightDelta === null
+                    ? '—'
+                    : (weightDelta > 0 ? '+' : '') + weightDelta.toFixed(1)
+                }}<span v-if="weightDelta !== null" class="unit">kg</span></span
+              >
+              <span class="k">vs ~30 days</span>
+            </div>
+          </div>
+          <template v-if="weightSpark">
+            <svg class="weight-chart" viewBox="0 0 320 80" preserveAspectRatio="none">
+              <path class="weight-area" :d="weightSpark.area" />
+              <polyline class="weight-line" :points="weightSpark.line" />
+            </svg>
+            <div class="weight-range">
+              {{ weightSpark.min.toFixed(1) }}–{{ weightSpark.max.toFixed(1) }} kg
+            </div>
+          </template>
+          <p v-if="!weightLog.length" class="hint">
+            No weigh-ins yet — log one to start the trend.
+          </p>
+          <div class="set-row weigh-row">
+            <span class="set-inline">
+              <input
+                v-model.number="weighInInput"
+                type="number"
+                step="0.1"
+                min="30"
+                max="250"
+                :placeholder="String(weightKg)"
+                @keyup.enter="logWeighIn"
+              />
+              <span class="set-unit">kg</span>
+            </span>
+            <button class="btn go sm" :disabled="!weighInInput" @click="logWeighIn">
+              Log weigh-in
+            </button>
           </div>
         </div>
       </div>
@@ -1210,7 +1345,13 @@ const pace = computed(() => {
           <div class="set-row">
             <span>Weight</span>
             <span class="set-inline">
-              <input v-model.number="weightKg" type="number" min="30" max="200" />
+              <input
+                v-model.number="weightKg"
+                type="number"
+                min="30"
+                max="200"
+                @change="weightSettingChanged"
+              />
               <span class="set-unit">kg</span>
             </span>
           </div>
@@ -1236,6 +1377,39 @@ const pace = computed(() => {
             </div>
             <p v-if="strava.state.error" class="set-note warn-note">{{ strava.state.error }}</p>
             <p class="set-note">Prompts to upload each finished walk once connected.</p>
+          </template>
+
+          <template v-for="p in healthProviders" :key="p.id">
+            <template v-if="p.state.supported">
+              <h3>{{ p.name }}</h3>
+              <div class="set-row">
+                <span>{{
+                  p.state.connected ? p.state.accountLabel || 'Connected' : 'Not connected'
+                }}</span>
+                <div class="set-actions">
+                  <button
+                    v-if="!p.state.connected"
+                    class="btn ghost sm"
+                    :disabled="p.state.connecting"
+                    @click="p.connect"
+                  >
+                    {{ p.state.connecting ? 'Connecting…' : 'Connect' }}
+                  </button>
+                  <template v-else>
+                    <button class="btn ghost sm" :disabled="p.state.syncing" @click="syncHealth(p)">
+                      {{ p.state.syncing ? 'Syncing…' : 'Sync now' }}
+                    </button>
+                    <button class="btn ghost sm" @click="p.disconnect">Disconnect</button>
+                  </template>
+                </div>
+              </div>
+              <p v-if="p.state.error" class="set-note warn-note">{{ p.state.error }}</p>
+              <p class="set-note">
+                Weigh-ins sync into the weight log{{
+                  p.state.connected ? ` — last synced ${fmtSynced(p.state.lastSync)}` : ''
+                }}.
+              </p>
+            </template>
           </template>
 
           <h3>Sound</h3>
@@ -2027,7 +2201,7 @@ input[type='range'] {
   letter-spacing: 0.5px;
   color: #8a93a3;
 }
-/* --- history --- */
+/* --- statistics --- */
 .hist-empty {
   display: flex;
   flex-direction: column;
@@ -2083,6 +2257,40 @@ input[type='range'] {
 }
 .weeklist li:hover {
   border-color: #333a46;
+}
+.weight-chart {
+  display: block;
+  width: 100%;
+  height: 90px;
+  background: #171a21;
+  border: 1px solid #232833;
+  border-radius: 14px;
+}
+.weight-area {
+  fill: rgba(46, 213, 115, 0.12);
+}
+.weight-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+.weight-range {
+  text-align: right;
+  font-size: 11px;
+  color: #8a93a3;
+  margin-top: 4px;
+}
+.weight-section {
+  /* separate the Weight block from the By-week block above it */
+  margin-top: 22px;
+}
+.weight-section .hist-tiles {
+  margin-bottom: 12px;
+}
+.weigh-row {
+  margin-top: 10px;
 }
 .week-head {
   display: flex;

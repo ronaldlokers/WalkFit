@@ -80,15 +80,20 @@ watch(maxHr, (v) => localStorage.setItem('walkfit.maxhr', v))
 // --- weight (used for calorie estimates — see trainingStats / metForSpeed) ---
 const weightKg = ref(Number(localStorage.getItem('walkfit.weight')) || 70)
 watch(weightKg, (v) => localStorage.setItem('walkfit.weight', v))
+// Shared by the live HR badge (hrZone) and the HR-steered autopilot's target picker below,
+// so the two can't drift apart. hi is a %-of-maxHr upper bound; Infinity for the top zone.
+const HR_ZONES = [
+  { z: 1, name: 'Warm up', color: '#6ab0ff', hi: 60 },
+  { z: 2, name: 'Fat burn', color: '#2ed573', hi: 70 },
+  { z: 3, name: 'Cardio', color: '#f5a623', hi: 80 },
+  { z: 4, name: 'Hard', color: '#ff7f50', hi: 90 },
+  { z: 5, name: 'Max', color: '#ff4757', hi: Infinity },
+]
 const hrZone = computed(() => {
   const bpm = hr.state.bpm
   if (!bpm) return { z: 0, name: '—', color: '#8a93a3' }
   const p = (bpm / maxHr.value) * 100
-  if (p < 60) return { z: 1, name: 'Warm up', color: '#6ab0ff' }
-  if (p < 70) return { z: 2, name: 'Fat burn', color: '#2ed573' }
-  if (p < 80) return { z: 3, name: 'Cardio', color: '#f5a623' }
-  if (p < 90) return { z: 4, name: 'Hard', color: '#ff7f50' }
-  return { z: 5, name: 'Max', color: '#ff4757' }
+  return HR_ZONES.find((zn) => p < zn.hi) || HR_ZONES[HR_ZONES.length - 1]
 })
 const hrSpark = computed(() => {
   const h = hr.state.history
@@ -104,6 +109,58 @@ const hrSpark = computed(() => {
   )
   return { line: pts.join(' '), area: `M0,${H} L${pts.join(' L')} L${W},${H} Z` }
 })
+
+// --- HR-steered autopilot: hold a target HR zone by nudging belt speed ---
+const HR_STEER_ZONES = [2, 3, 4] // Fat burn / Cardio / Hard — the realistic steer targets
+const HR_NUDGE_STEP = 0.3 // km/h per adjustment
+const HR_ADJUST_INTERVAL = 20 // seconds between nudges (issue calls for 15–30s)
+function hrZoneBpmRange(z) {
+  const idx = HR_ZONES.findIndex((zn) => zn.z === z)
+  const lo = Math.round(((idx > 0 ? HR_ZONES[idx - 1].hi : 0) / 100) * maxHr.value)
+  const hiPct = HR_ZONES[idx].hi
+  const hi = hiPct === Infinity ? null : Math.round((hiPct / 100) * maxHr.value)
+  return { lo, hi }
+}
+const hrZoneMode = ref(null) // target zone (2–4) while the autopilot is steering speed
+const hrPickerOpen = ref(false)
+let lastHrAdjustElapsed = 0
+function startHrZoneMode(z) {
+  active.value = null // mutually exclusive with a preset training
+  hrZoneMode.value = z
+  hrPickerOpen.value = false
+  lastHrAdjustElapsed = state.elapsed
+  if (state.connected) start()
+}
+function endHrZoneMode() {
+  hrZoneMode.value = null
+  stop()
+}
+// Nudge at most once per HR_ADJUST_INTERVAL, only while the belt is actually moving (so
+// this can't fight the countdown-window enforcement in treadmill.js — setSpeed re-arms
+// its own ~8s enforce window each call, well inside our >=20s cadence, so the two never
+// overlap). setSpeed() itself clamps to SPEED_MIN..SPEED_MAX and snaps to the step grid,
+// and state.speed already comes from the phantom-2x-filtered reading — no separate
+// filtering needed here.
+watch(
+  () => [state.elapsed, state.running],
+  () => {
+    if (!hrZoneMode.value || !state.running) return
+    if (state.elapsed - lastHrAdjustElapsed < HR_ADJUST_INTERVAL) return
+    lastHrAdjustElapsed = state.elapsed
+    const bpm = hr.state.bpm
+    if (!bpm) return // no reading this cycle — try again next interval rather than guess
+    const { lo, hi } = hrZoneBpmRange(hrZoneMode.value)
+    if (bpm < lo) setSpeed(state.targetSpeed + HR_NUDGE_STEP)
+    else if (hi !== null && bpm > hi) setSpeed(state.targetSpeed - HR_NUDGE_STEP)
+  },
+)
+// HR autopilot has nothing to steer by once the sensor disconnects.
+watch(
+  () => hr.state.connected,
+  (connected) => {
+    if (!connected && hrZoneMode.value) endHrZoneMode()
+  },
+)
 
 // --- view mode: athletics track loop, or a side-scrolling scenic walk ---
 const viewMode = ref(localStorage.getItem('walkfit.view') === 'scenic' ? 'scenic' : 'track')
@@ -404,6 +461,7 @@ watch(
 
 async function startTraining(t) {
   active.value = t
+  hrZoneMode.value = null // mutually exclusive with the HR-steered autopilot
   resetStats()
   menuOpen.value = false
   preview.value = null
@@ -521,7 +579,15 @@ const pace = computed(() => {
       <div class="head-actions">
         <button class="btn ghost sm" @click="openTrainingMenu">Training</button>
         <button class="btn ghost sm" @click="historyOpen = true">History</button>
-        <span v-if="hr.state.connected" class="hr-badge" :title="hrZone.name">
+        <button
+          v-if="hr.state.connected"
+          class="hr-badge"
+          :class="{ on: !!hrZoneMode }"
+          :title="
+            hrZoneMode ? 'HR autopilot — tap to change' : `${hrZone.name} — tap for HR autopilot`
+          "
+          @click="hrPickerOpen = true"
+        >
           <svg
             v-if="hrSpark"
             class="hr-badge-spark"
@@ -536,7 +602,7 @@ const pace = computed(() => {
             />
           </svg>
           <span class="hr-badge-content">♥ {{ hr.state.bpm || '–' }}</span>
-        </span>
+        </button>
         <button
           v-if="!state.connected"
           class="btn primary sm"
@@ -718,7 +784,7 @@ const pace = computed(() => {
       <button class="btn ghost" @click="resetStats">Reset</button>
     </section>
 
-    <section v-if="!active" class="controls" :class="{ disabled: !state.connected }">
+    <section v-if="!active && !hrZoneMode" class="controls" :class="{ disabled: !state.connected }">
       <div class="speed-row">
         <button class="btn round" :disabled="!state.connected" @click="bump(-SPEED_STEP)">−</button>
         <div class="speed-set">
@@ -768,7 +834,19 @@ const pace = computed(() => {
     </section>
 
     <section v-else class="chart-wrap">
-      <div class="chart-head">
+      <div v-if="hrZoneMode" class="train-banner">
+        <div>
+          <span class="train-name"
+            >HR autopilot · {{ HR_ZONES.find((zn) => zn.z === hrZoneMode).name }}</span
+          >
+          <span class="train-seg">
+            target {{ hrZoneBpmRange(hrZoneMode).lo }}–{{ hrZoneBpmRange(hrZoneMode).hi }} bpm · now
+            {{ hr.state.bpm || '–' }} bpm · {{ state.targetSpeed.toFixed(1) }} km/h
+          </span>
+        </div>
+        <button class="btn halt sm" @click="endHrZoneMode">End</button>
+      </div>
+      <div v-else class="chart-head">
         <span class="chart-title">Speed over time</span>
         <span v-if="peakSpeed" class="chart-peak">peak {{ peakSpeed.toFixed(1) }} km/h</span>
       </div>
@@ -926,6 +1004,43 @@ const pace = computed(() => {
             {{ strava.state.uploading ? 'Uploading…' : 'Upload' }}
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- HR-steered autopilot: pick a target zone -->
+    <div v-if="hrPickerOpen" class="overlay" @click.self="hrPickerOpen = false">
+      <div class="sheet strava-sheet">
+        <div class="sheet-head">
+          <h2>HR autopilot</h2>
+          <button class="x" @click="hrPickerOpen = false">✕</button>
+        </div>
+        <p class="hint hr-picker-hint">
+          Belt speed auto-adjusts every {{ HR_ADJUST_INTERVAL }}s to hold your heart rate in the
+          picked zone.
+        </p>
+        <div class="hr-zone-list">
+          <button
+            v-for="z in HR_STEER_ZONES"
+            :key="z"
+            class="hr-zone-opt"
+            :class="{ on: hrZoneMode === z }"
+            :style="{ '--zc': HR_ZONES.find((zn) => zn.z === z).color }"
+            @click="startHrZoneMode(z)"
+          >
+            <span class="hr-zone-name"
+              ><span class="hr-zone-dot"></span>{{ HR_ZONES.find((zn) => zn.z === z).name }}</span
+            >
+            <span class="hr-zone-range"
+              >{{ hrZoneBpmRange(z).lo }}–{{ hrZoneBpmRange(z).hi }} bpm</span
+            >
+          </button>
+        </div>
+        <button v-if="hrZoneMode" class="btn ghost hr-picker-stop" @click="endHrZoneMode">
+          Stop autopilot
+        </button>
+        <p v-if="!state.connected" class="hint">
+          Not connected — connect the treadmill first, or start it and connect after.
+        </p>
       </div>
     </div>
 
@@ -1623,6 +1738,11 @@ code {
   padding: 8px 12px;
   font-size: 14px;
   font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+}
+.hr-badge.on {
+  border-color: var(--accent);
 }
 .hr-badge-spark {
   position: absolute;
@@ -1798,6 +1918,52 @@ input[type='range'] {
 }
 .strava-sheet .detail-tiles {
   margin: 4px 0 16px;
+}
+.hr-picker-hint {
+  margin-top: 4px;
+}
+.hr-zone-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+.hr-zone-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #171a21;
+  border: 1px solid #232833;
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: inherit;
+  cursor: pointer;
+}
+.hr-zone-opt.on {
+  border-color: var(--zc);
+}
+.hr-zone-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.hr-zone-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--zc);
+  flex: 0 0 auto;
+}
+.hr-zone-range {
+  font-size: 12.5px;
+  color: #8a93a3;
+  font-variant-numeric: tabular-nums;
+}
+.hr-picker-stop {
+  width: 100%;
+  margin-top: 10px;
 }
 
 .overlay {

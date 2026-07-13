@@ -44,10 +44,13 @@ npm run format     # Prettier --write   (format:check in CI)
 
 CI (`.github/workflows/ci.yml`) runs lint → format:check → test → build on PRs; deploy
 workflow gates on tests too. Tests: `src/protocol.test.js` (framing/checksum, phantom-2x speed
-filter, telemetry + HR parsing), `src/trainings.test.js`, `src/history.test.js`, and
-`src/App.happy.test.js` (jsdom +
-@vue/test-utils happy-path: wizard → walk/training flows). `test/setup.js` polyfills
-`localStorage`; component test files opt into jsdom with `// @vitest-environment jsdom` docblock.
+filter, telemetry + HR parsing), `src/trainings.test.js`, `src/history.test.js`,
+`src/App.happy.test.js` (jsdom + @vue/test-utils happy-path: wizard → walk/training flows),
+and `src/App.hrAutopilot.test.js` (mocks both `treadmill.js`/`heartrate.js` composables to
+drive `state.elapsed`/`bpm` directly — verifies nudge direction, the 20s rate limit, that it
+stays silent while the belt isn't running, and that it ends itself on HR disconnect).
+`test/setup.js` polyfills `localStorage`; component test files opt into jsdom with a
+`// @vitest-environment jsdom` docblock.
 
 Formatting Prettier (no semicolons, single quotes, width 100). Note: Prettier splits long
 inline template handlers across lines, breaks multi-statement `@click="a; b"` — use
@@ -98,6 +101,19 @@ same transition opens the upload-prompt popup.
 `localStorage` keys: `walkfit.treadmill.id`, `walkfit.hr.id` (remembered device ids),
 `walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.history`,
 `walkfit.strava` (OAuth tokens), `walkfit.view` (`track` | `scenic`).
+
+**HR-steered autopilot** — tap the HR badge (header, only visible once a sensor is
+connected) to pick a target zone (Fat burn / Cardio / Hard); belt speed then nudges
+±`HR_NUDGE_STEP` every `HR_ADJUST_INTERVAL` (20s) to hold bpm inside that zone's range.
+Mutually exclusive with a preset training (`active`) — starting one clears the other.
+Deliberately simple and safe: nudges only fire while `state.running` is true and no more
+often than the 20s interval, so it can never race `treadmill.js`'s own ~8s
+countdown-window speed-enforcement retry (20s always exceeds that window). `setSpeed()`
+already clamps to `SPEED_MIN..SPEED_MAX` and snaps to the step grid, and `state.speed`
+is already the phantom-2x-filtered reading — the autopilot adds no protocol-level logic
+of its own, just decides _when_ to call `setSpeed()`. Ends itself if the HR sensor
+disconnects mid-session (nothing left to steer by). `HR_ZONES` (zone names/colors/bpm%
+thresholds) is shared between the live HR badge and this picker so they can't drift apart.
 
 The main visual has two modes, toggled above it: the 400 m athletics **track** (default),
 or a side-scrolling **scenic** walk. Both read the same `state.distance`/`state.speed` —

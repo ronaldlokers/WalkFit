@@ -29,14 +29,16 @@ so no HTTPS is needed for local use.
 3. Set speed with the slider or ± buttons. Watch your runner lap the 1 km loop.
 4. **Stop** halts the belt.
 
-### Training
+### Workout
 
-Tap **Training** (top right) for preset weight-loss walking sessions (steady fat-burn and
-interval workouts, 20–45 min). Pick one to see its speed/time timeline, distance and estimated
-calories, then **Start training** — the app drives the belt speed automatically through each
-segment, and the chart under the loop becomes the session profile with a moving "you are here"
-marker (amber) plus your actual speed (white) over the planned plan (green). Every session ends
-with a fixed 1:45 cooldown at 1 km/h. **End** returns to free walking.
+Open the **☰** menu (top right) → **Workout** for preset weight-loss walking sessions (steady
+fat-burn and interval workouts, 20–45 min), or an HR-steered workout that nudges belt speed to
+hold your heart rate in a target zone. For a weight-loss workout, pick one to see its speed/time
+timeline, distance and estimated calories, then **Start workout** — the app drives the belt
+speed automatically through each segment, and the chart under the loop becomes the session
+profile with a moving "you are here" marker (amber) plus your actual speed (white) over the
+planned plan (green). Every session ends with a fixed 1:45 cooldown at 1 km/h. **End** returns
+to free walking.
 
 ### Heart rate
 
@@ -46,7 +48,7 @@ Service (`0x180D`) — a chest strap, or a Garmin watch broadcasting HR.
 On a **Garmin Forerunner 970**: enable heart-rate broadcast (controls menu → _Broadcast Heart
 Rate_, or Settings → Sensors & Accessories → Wrist Heart Rate → _Broadcast During Activity_ /
 _Broadcast Now_). While broadcasting, the watch shows the broadcast icon; then hit **♥ HR** in
-WalkFit and pick it. The app shows live bpm and a training zone; set your **Max HR** to tune the
+WalkFit and pick it. The app shows live bpm and an HR zone; set your **Max HR** to tune the
 zones (defaults to 190, remembered locally). The zones are Warm-up / **Fat burn** / Cardio /
 Hard / Max — the green "Fat burn" band (60–70% max HR) is the sweet spot for weight loss.
 It's a separate Bluetooth connection from the treadmill, so connect each independently.

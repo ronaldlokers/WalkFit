@@ -78,16 +78,22 @@ Keep pinned Playwright version and image tag in sync.
 - `src/treadmill.js` — `useTreadmill()` composable: Web Bluetooth connection wiring around
   `protocol.js` (connect, start/stop, set speed, distance/time integration, auto-reconnect).
 - `src/heartrate.js` — `useHeartRate()` composable: standard BLE Heart Rate Service (`0x180D`).
-- `src/trainings.js` — training presets (segments of `{speed, minutes}`), `trainingStats`,
-  `timeline`, `metForSpeed` (MET-based kcal estimate, also used for live session kcal).
+- `src/workouts.js` — weight-loss workout presets (segments of `{speed, minutes}`),
+  `workoutStats`, `timeline`, `metForSpeed` (MET-based kcal estimate, also used for live
+  session kcal).
 - `src/history.js` — completed-session log persisted to `localStorage` (`walkfit.history`):
   `addSession`, `weeklyTotals` (ISO-week rollups), `currentStreak`. Unit-tested in
   `src/history.test.js`.
 - `src/strava.js` — `useStrava()` composable: OAuth2 connect + per-session upload. See
   "Strava upload" below.
-- `src/App.vue` — whole UI (single component): loop, chart, controls, stats, workout menu,
-  history view, settings, onboarding wizard.
-- `src/main.js`, `src/style.css` — bootstrap + global styles/theme vars (`--accent`).
+- `src/WorkoutPicker.vue` — the tabbed weight-loss/HR workout picker, shared verbatim
+  between the wizard's step 4 and the header's workout menu (see "Workouts" below).
+- `src/App.vue` — the rest of the UI (still mostly one component): loop, chart, controls,
+  stats, header overflow menu, history view, settings, onboarding wizard.
+- `src/main.js`, `src/style.css` — bootstrap + global styles/theme vars (`--accent`), plus
+  the base `.btn` family — kept unscoped/global (not in `App.vue`'s `<style scoped>`)
+  specifically so `WorkoutPicker.vue`'s buttons pick it up too; scoped styles don't cross
+  component boundaries.
 
 Treadmill and HR two independent GATT devices; each needs own user-gesture connect
 first time. Both composables expose `autoConnect()` (called on mount) which silently
@@ -103,27 +109,48 @@ same transition opens the upload-prompt popup.
 `walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.history`,
 `walkfit.strava` (OAuth tokens), `walkfit.view` (`track` | `scenic`).
 
-**Workouts** — the header "Workout" button and the HR badge both open the same menu
-overlay (`menuOpen`), tabbed via `workoutTab` (`plans` | `hr`):
+**Workouts** — `WorkoutPicker.vue` is the single picker, mounted in two places that must
+stay behaviorally identical:
 
-- **Weight loss** (`plans` tab, default): the original fixed-segment presets from
-  `trainings.js`, unchanged — pick one, belt follows its `{speed, minutes}` timeline.
-- **Heart rate** (`hr` tab, opened directly when the HR badge is tapped): pick a target —
-  Light / Fat burn / Cardio / Hard — and belt speed nudges ±`HR_NUDGE_STEP` every
-  `HR_ADJUST_INTERVAL` (20s) to hold bpm inside that target's range. `HR_TARGETS` is its
-  own table (not the display-only `HR_ZONES` used by the live badge) because the steer
-  targets need a "Light" range (47.5–60% of max HR — 90–113 bpm at the default 190) that
-  the badge's zones don't have, and the badge's top "Max" zone isn't a sane steer target.
-  Deliberately simple and safe: nudges only fire while `state.running` is true and no more
-  often than the 20s interval, so it can never race `treadmill.js`'s own ~8s
-  countdown-window speed-enforcement retry (20s always exceeds that window). `setSpeed()`
-  already clamps to `SPEED_MIN..SPEED_MAX` and snaps to the step grid, and `state.speed`
-  is already the phantom-2x-filtered reading — the workout mode adds no protocol-level
-  logic of its own, just decides _when_ to call `setSpeed()`. Ends itself if the HR sensor
-  disconnects mid-session (nothing left to steer by).
+1. The header's overflow menu (☰ — see below) → `menuOpen` overlay, `:closable="true"`,
+   emits close the overlay on pick/close.
+2. The onboarding wizard's step 4 (`wizardStep === 4`) → embedded inline,
+   `:closable="false"` (no ✕; the wizard's own Back nav is the only way out besides
+   picking), and its `@start-plan`/`@start-hr` handlers (`wizardStartPlan`/`wizardStartHr`)
+   additionally close the wizard.
+
+Both instances pass the same props (`workouts`, `weightKg`, `maxHr`, `hrTargets`,
+`activeHrTarget`, `adjustInterval`) sourced from `App.vue` state — nothing about the
+picker itself differs between the two mount points. `:start-tab` (defaults to `'plans'`)
+lets the header's HR badge open straight onto the `hr` tab (`openWorkoutMenu('hr')`)
+without the wizard needing that concept at all.
+
+Inside the picker, two tabs:
+
+- **Weight loss** (default): the fixed-segment presets from `workouts.js`, unchanged —
+  pick one, belt follows its `{speed, minutes}` timeline.
+- **Heart rate**: pick a target — Light / Fat burn / Cardio / Hard — and belt speed
+  nudges ±`HR_NUDGE_STEP` every `HR_ADJUST_INTERVAL` (20s, in `App.vue`) to hold bpm
+  inside that target's range. `HR_TARGETS` is its own table (not the display-only
+  `HR_ZONES` used by the live badge) because the steer targets need a "Light" range
+  (47.5–60% of max HR — 90–113 bpm at the default 190) that the badge's zones don't
+  have, and the badge's top "Max" zone isn't a sane steer target. Deliberately simple
+  and safe: nudges only fire while `state.running` is true and no more often than the
+  20s interval, so it can never race `treadmill.js`'s own ~8s countdown-window
+  speed-enforcement retry (20s always exceeds that window). `setSpeed()` already clamps
+  to `SPEED_MIN..SPEED_MAX` and snaps to the step grid, and `state.speed` is already the
+  phantom-2x-filtered reading — the workout mode adds no protocol-level logic of its
+  own, just decides _when_ to call `setSpeed()`. Ends itself if the HR sensor disconnects
+  mid-session (nothing left to steer by).
 
 The two workout modes are mutually exclusive (`active` for weight-loss, `hrTarget` for
 HR) — starting one clears the other.
+
+**Header overflow menu** — Workout / History / Disconnect (only while connected) /
+Settings live behind a single ☰ button (`moreMenuOpen`) instead of separate header
+buttons, to keep the header from crowding on narrow screens. The Connect button (when
+not connected) and the HR badge (when a sensor is connected) stay directly in the
+header — both are primary, frequently-tapped actions, unlike the four menu items.
 
 The main visual has two modes, toggled above it: the 400 m athletics **track** (default),
 or a side-scrolling **scenic** walk. Both read the same `state.distance`/`state.speed` —

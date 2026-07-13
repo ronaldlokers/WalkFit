@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { trainings, trainingStats, timeline } from './trainings.js'
+import { workouts, workoutStats, timeline } from './workouts.js'
 
-describe('trainings data', () => {
-  it('every training ends with the fixed 1:45 @ 1.0 km/h cooldown', () => {
-    for (const t of trainings) {
-      const last = t.segments[t.segments.length - 1]
+describe('workouts data', () => {
+  it('every workout ends with the fixed 1:45 @ 1.0 km/h cooldown', () => {
+    for (const w of workouts) {
+      const last = w.segments[w.segments.length - 1]
       expect(last).toEqual({ speed: 1.0, minutes: 1.75 })
     }
   })
@@ -12,13 +12,13 @@ describe('trainings data', () => {
 
 describe('timeline', () => {
   it('produces contiguous segment boundaries in seconds and a total', () => {
-    const t = {
+    const w = {
       segments: [
         { speed: 2.5, minutes: 3 },
         { speed: 4.5, minutes: 2 },
       ],
     }
-    const { segs, total } = timeline(t)
+    const { segs, total } = timeline(w)
     expect(segs).toEqual([
       { speed: 2.5, start: 0, end: 180 },
       { speed: 4.5, start: 180, end: 300 },
@@ -27,25 +27,25 @@ describe('timeline', () => {
   })
 })
 
-describe('trainingStats', () => {
-  const t = { segments: [{ speed: 3.0, minutes: 20 }] }
+describe('workoutStats', () => {
+  const w = { segments: [{ speed: 3.0, minutes: 20 }] }
 
   it('sums duration and integrates distance from speed x time', () => {
-    const s = trainingStats(t)
+    const s = workoutStats(w)
     expect(s.minutes).toBe(20)
     expect(s.distanceKm).toBeCloseTo(1.0, 5) // 3 km/h * (20/60) h
   })
 
   it('scales the calorie estimate with body weight', () => {
-    const light = trainingStats(t, 60).kcal
-    const heavy = trainingStats(t, 90).kcal
+    const light = workoutStats(w, 60).kcal
+    const heavy = workoutStats(w, 90).kcal
     expect(heavy).toBeGreaterThan(light)
     expect(heavy / light).toBeCloseTo(1.5, 1) // linear in weight
   })
 
   it('includes the cooldown in a real preset total', () => {
-    const fatburn = trainings.find((t) => t.id === 'fatburn30')
+    const fatburn = workouts.find((w) => w.id === 'fatburn30')
     // 3 + 24 + 3 warm/work/cool + 1.75 cooldown
-    expect(trainingStats(fatburn).minutes).toBeCloseTo(31.75, 5)
+    expect(workoutStats(fatburn).minutes).toBeCloseTo(31.75, 5)
   })
 })

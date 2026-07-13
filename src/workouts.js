@@ -1,8 +1,8 @@
-// Preset walking-pad trainings (device range 1.0-6.0 km/h), tuned for weight loss:
+// Preset walking-pad workouts (device range 1.0-6.0 km/h), tuned for weight loss:
 // sustained fat-burn zones plus intervals that raise calorie burn.
-// A training is a list of segments { speed (km/h), minutes }.
+// A workout is a list of segments { speed (km/h), minutes }.
 
-export const trainings = [
+export const workouts = [
   {
     id: 'fatburn30',
     name: 'Fat Burn 30',
@@ -68,9 +68,9 @@ export const trainings = [
   },
 ]
 
-// Every training ends with a fixed 1:45 (1.75 min) cooldown at 1 km/h.
+// Every workout ends with a fixed 1:45 (1.75 min) cooldown at 1 km/h.
 const COOLDOWN = { speed: 1.0, minutes: 1.75 }
-for (const t of trainings) t.segments.push({ ...COOLDOWN })
+for (const w of workouts) w.segments.push({ ...COOLDOWN })
 
 // Approx metabolic equivalent for a walking speed (km/h).
 export function metForSpeed(kmh) {
@@ -82,12 +82,12 @@ export function metForSpeed(kmh) {
   return 6.3
 }
 
-// Rolled-up stats for a training. weightKg used for the calorie estimate.
-export function trainingStats(t, weightKg = 70) {
+// Rolled-up stats for a workout. weightKg used for the calorie estimate.
+export function workoutStats(w, weightKg = 70) {
   let minutes = 0,
     distanceKm = 0,
     kcal = 0
-  for (const s of t.segments) {
+  for (const s of w.segments) {
     minutes += s.minutes
     distanceKm += (s.speed * s.minutes) / 60
     kcal += metForSpeed(s.speed) * weightKg * (s.minutes / 60)
@@ -96,10 +96,10 @@ export function trainingStats(t, weightKg = 70) {
 }
 
 // Segment boundaries in seconds, plus total, for driving playback.
-export function timeline(t) {
+export function timeline(w) {
   const segs = []
   let cum = 0
-  for (const s of t.segments) {
+  for (const s of w.segments) {
     const start = cum
     cum += s.minutes * 60
     segs.push({ speed: s.speed, start, end: cum })

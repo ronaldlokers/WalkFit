@@ -185,11 +185,11 @@ describe('HR workout', () => {
       .findAll('.hr-zone-opt')
       .find((b) => b.text().includes('Fat burn'))
       .trigger('click')
-    expect(w.find('.train-banner').exists()).toBe(true)
+    expect(w.find('.workout-banner').exists()).toBe(true)
 
     fakeHr.connected = false
     await w.vm.$nextTick()
-    expect(w.find('.train-banner').exists()).toBe(false)
+    expect(w.find('.workout-banner').exists()).toBe(false)
     fakeHr.connected = true // reset for other tests sharing the mocked reactive object
   })
 
@@ -206,13 +206,17 @@ describe('HR workout', () => {
     expect(light.text()).toContain('113')
   })
 
-  it('the header Workout button opens the weight-loss tab, not the HR tab', async () => {
+  it('the header Workout menu item opens the weight-loss tab, not the HR tab', async () => {
     const App = (await import('./App.vue')).default
     const w = mount(App)
     await toMain(w)
     await w
       .findAll('button')
-      .find((b) => b.text() === 'Workout')
+      .find((b) => b.text() === '☰')
+      .trigger('click')
+    await w
+      .findAll('button')
+      .find((b) => b.text().includes('Workout'))
       .trigger('click')
     expect(w.find('.tlist').exists()).toBe(true)
     expect(w.find('.hr-workout-pane').exists()).toBe(false)

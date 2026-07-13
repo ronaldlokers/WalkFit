@@ -73,25 +73,27 @@ export function useStrava() {
 
   // Call once on app load: picks up ?code=&state= left by the Strava redirect,
   // exchanges it via the proxy, and strips the query string back to a clean URL.
-  async function handleRedirect() {
-    if (!state.supported) return
+  // Returns true only when it consumed the callback: several OAuth flows (Strava, the
+  // health providers) share this redirect URI, so each flow claims a callback only
+  // when the returned `state` matches its OWN stored nonce and leaves the URL alone
+  // otherwise. The nonce doubles as the CSRF check.
+  async function handleRedirect(): Promise<boolean> {
+    if (!state.supported) return false
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
     const returnedState = params.get('state')
     const error = params.get('error')
-    if (!code && !error) return
+    if (!code && !error) return false
 
     const expected = sessionStorage.getItem(STATE_KEY)
+    if (!expected || returnedState !== expected) return false // not our callback
+
     sessionStorage.removeItem(STATE_KEY)
     history.replaceState(null, '', window.location.pathname) // drop ?code&state from the URL
 
     if (error) {
       state.error = error === 'access_denied' ? 'Strava authorization declined.' : error
-      return
-    }
-    if (!expected || returnedState !== expected) {
-      state.error = 'Strava sign-in state mismatch — try connecting again.'
-      return
+      return true
     }
 
     state.connecting = true
@@ -117,6 +119,7 @@ export function useStrava() {
     } finally {
       state.connecting = false
     }
+    return true
   }
 
   async function freshAccessToken(): Promise<string> {

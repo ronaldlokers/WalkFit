@@ -8,6 +8,8 @@ import { loadHistory, addSession, weeklyTotals, currentStreak } from './history'
 import type { Session } from './history'
 import { loadWeightLog, addWeighIn } from './weight'
 import type { WeightEntry } from './weight'
+import { syncProvider } from './health'
+import type { HealthProvider } from './health'
 import { useStrava } from './strava'
 import WorkoutPicker from './WorkoutPicker.vue'
 
@@ -311,7 +313,9 @@ const lapLength = 400 // metres per virtual lap — one athletics-track lap
 onMounted(() => {
   if (trackEl.value) pathLen.value = trackEl.value.getTotalLength()
   if (state.supported) connectAuto() // silent reconnect to remembered devices
-  strava.handleRedirect() // no-op unless we just came back from Strava's OAuth page
+  handleOAuthRedirects() // no-op unless we just came back from an OAuth page
+  // silent weigh-in sync for connected health services (fire-and-forget, like connectAuto)
+  for (const p of healthProviders) if (p.state.connected) syncHealth(p)
 })
 async function connectAuto() {
   await Promise.allSettled([tmAutoConnect(), hr.autoConnect()])
@@ -471,6 +475,25 @@ function weightSettingChanged() {
       kg: weightKg.value,
       source: 'manual',
     })
+}
+
+// --- health services (weigh-in sync providers — see health.ts) ---
+const healthProviders: HealthProvider[] = []
+async function syncHealth(p: HealthProvider) {
+  const updated = await syncProvider(p)
+  if (updated) {
+    weightLog.value = updated
+    syncWeightKg()
+  }
+}
+// One ?code&state callback lands here for every OAuth flow (they share the redirect
+// URI); each flow claims it only when the state nonce is its own, so probe in turn.
+async function handleOAuthRedirects() {
+  if (await strava.handleRedirect()) return
+  for (const p of healthProviders) if (await p.handleRedirect()) return
+}
+function fmtSynced(ms: number | null) {
+  return ms ? new Date(ms).toLocaleString() : 'never'
 }
 
 // --- Strava upload prompt ---
@@ -1353,6 +1376,39 @@ const pace = computed(() => {
             </div>
             <p v-if="strava.state.error" class="set-note warn-note">{{ strava.state.error }}</p>
             <p class="set-note">Prompts to upload each finished walk once connected.</p>
+          </template>
+
+          <template v-for="p in healthProviders" :key="p.id">
+            <template v-if="p.state.supported">
+              <h3>{{ p.name }}</h3>
+              <div class="set-row">
+                <span>{{
+                  p.state.connected ? p.state.accountLabel || 'Connected' : 'Not connected'
+                }}</span>
+                <div class="set-actions">
+                  <button
+                    v-if="!p.state.connected"
+                    class="btn ghost sm"
+                    :disabled="p.state.connecting"
+                    @click="p.connect"
+                  >
+                    {{ p.state.connecting ? 'Connecting…' : 'Connect' }}
+                  </button>
+                  <template v-else>
+                    <button class="btn ghost sm" :disabled="p.state.syncing" @click="syncHealth(p)">
+                      {{ p.state.syncing ? 'Syncing…' : 'Sync now' }}
+                    </button>
+                    <button class="btn ghost sm" @click="p.disconnect">Disconnect</button>
+                  </template>
+                </div>
+              </div>
+              <p v-if="p.state.error" class="set-note warn-note">{{ p.state.error }}</p>
+              <p class="set-note">
+                Weigh-ins sync into the weight log{{
+                  p.state.connected ? ` — last synced ${fmtSynced(p.state.lastSync)}` : ''
+                }}.
+              </p>
+            </template>
           </template>
 
           <h3>Sound</h3>

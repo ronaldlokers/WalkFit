@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { workouts, workoutStats, timeline } from './workouts.js'
+import { workouts, workoutStats, timeline } from './workouts'
 
 describe('workouts data', () => {
   it('every workout ends with the fixed 1:45 @ 1.0 km/h cooldown', () => {
@@ -44,7 +44,7 @@ describe('workoutStats', () => {
   })
 
   it('includes the cooldown in a real preset total', () => {
-    const fatburn = workouts.find((w) => w.id === 'fatburn30')
+    const fatburn = workouts.find((w) => w.id === 'fatburn30')!
     // 3 + 24 + 3 warm/work/cool + 1.75 cooldown
     expect(workoutStats(fatburn).minutes).toBeCloseTo(31.75, 5)
   })

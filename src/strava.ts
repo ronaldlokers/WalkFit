@@ -1,4 +1,5 @@
 import { reactive } from 'vue'
+import type { Session } from './history'
 
 // Strava OAuth2 + activity upload. The client_id below is public (it's part of the
 // authorize URL every user's browser sends), but client_secret is not — token exchange
@@ -12,19 +13,35 @@ const SCOPE = 'activity:write'
 const KEY = 'walkfit.strava'
 const STATE_KEY = 'walkfit.strava.state' // CSRF check across the redirect round-trip
 
-function loadTokens() {
+interface StravaTokens {
+  accessToken: string
+  refreshToken: string
+  expiresAt: number // unix seconds
+  athleteName: string
+}
+
+export interface StravaState {
+  supported: boolean
+  connected: boolean
+  athleteName: string
+  connecting: boolean
+  uploading: boolean
+  error: string
+}
+
+function loadTokens(): StravaTokens | null {
   try {
     return JSON.parse(localStorage.getItem(KEY) || 'null')
   } catch {
     return null
   }
 }
-function saveTokens(t) {
+function saveTokens(t: StravaTokens) {
   localStorage.setItem(KEY, JSON.stringify(t))
 }
 
 export function useStrava() {
-  const state = reactive({
+  const state = reactive<StravaState>({
     supported: !!(CLIENT_ID && PROXY_URL),
     connected: !!loadTokens(),
     athleteName: loadTokens()?.athleteName || '',
@@ -94,15 +111,15 @@ export function useStrava() {
         athleteName: [data.athlete?.firstname, data.athlete?.lastname].filter(Boolean).join(' '),
       })
       state.connected = true
-      state.athleteName = loadTokens().athleteName
+      state.athleteName = loadTokens()!.athleteName
     } catch (e) {
-      state.error = e.message || String(e)
+      state.error = (e as Error).message || String(e)
     } finally {
       state.connecting = false
     }
   }
 
-  async function freshAccessToken() {
+  async function freshAccessToken(): Promise<string> {
     const t = loadTokens()
     if (!t) throw new Error('Not connected to Strava.')
     if (t.expiresAt > Date.now() / 1000 + 60) return t.accessToken // still valid, 1 min margin
@@ -127,8 +144,8 @@ export function useStrava() {
     return next.accessToken
   }
 
-  // session: one entry from src/history.js — { date, distance (m), duration (s), kcal, avgHr }
-  async function uploadSession(session, name) {
+  // session: one entry from src/history.ts.
+  async function uploadSession(session: Session, name: string) {
     state.uploading = true
     state.error = ''
     try {
@@ -153,7 +170,7 @@ export function useStrava() {
       if (!res.ok) throw new Error(data.message || 'Upload failed.')
       return data
     } catch (e) {
-      state.error = e.message || String(e)
+      state.error = (e as Error).message || String(e)
       throw e
     } finally {
       state.uploading = false

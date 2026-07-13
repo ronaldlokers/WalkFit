@@ -4,7 +4,7 @@ import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill.js'
 import { useHeartRate } from './heartrate.js'
 import { workouts, timeline, metForSpeed } from './workouts'
 import { loadHistory, addSession, weeklyTotals, currentStreak } from './history'
-import { useStrava } from './strava.js'
+import { useStrava } from './strava'
 import WorkoutPicker from './WorkoutPicker.vue'
 
 const {

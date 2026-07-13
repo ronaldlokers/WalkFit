@@ -28,6 +28,13 @@ export function setSpeedFrame(kmh: number): Uint8Array<ArrayBuffer> {
 // fff2 elicits a running-data frame. Belt speed is unaffected.
 export const STATUS_QUERY = frame([0x51, 0x03, 0x00])
 
+// Sport-data query: a second FitShow read query family (0x52, "SPORT_DATA") seen in
+// other FitShow clients. It's meant to return the full running-data frame — time,
+// distance, calories, and the pedometer step count the belt shows on its display, which
+// the 0x51 status frame parsed here does not yet expose. Read-only (the 0x53 family is
+// the control channel), so safe to poll. Used only by the step-capture debug path.
+export const SPORT_DATA_QUERY = frame([0x52, 0x00])
+
 // Parse an fff1 notification (Uint8Array or number[]) into a typed event, or null.
 export function parseTelemetry(b: Bytes): TelemetryEvent | null {
   if (b.length < 4 || b[0] !== 0x02) return null

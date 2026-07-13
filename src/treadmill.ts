@@ -1,5 +1,11 @@
 import { reactive } from 'vue'
-import { setSpeedFrame, STATUS_QUERY, parseTelemetry, createSpeedFilter } from './protocol'
+import {
+  setSpeedFrame,
+  STATUS_QUERY,
+  SPORT_DATA_QUERY,
+  parseTelemetry,
+  createSpeedFilter,
+} from './protocol'
 
 // --- Dreaver Motion One (FitShow FS-BT-T4) BLE identifiers ---
 const FTMS_SERVICE = 0x1826 // Fitness Machine Service
@@ -88,10 +94,23 @@ export function useTreadmill() {
     dbg(v === min ? 'rx' : 'x2', v) // 'x2' = discarded phantom 2x frame
   }
 
+  // Step-capture debug: when localStorage['walkfit.capture']==='1', dump every raw fff1
+  // frame (including the ones parseTelemetry drops — the step count likely lives in one of
+  // those) to the console with a timestamp, and the poller additionally sends the 0x52
+  // SPORT_DATA query. Walk a known number of steps, then correlate the display's counter
+  // against the changing bytes to find the step field. Off by default — zero effect on
+  // normal use. See issue #43.
+  const capturing = () => localStorage.getItem('walkfit.capture') === '1'
+  function captureRaw(b: Uint8Array) {
+    const hex = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(' ')
+    console.log(`[fff1] ${(performance.now() / 1000).toFixed(2)}s len=${b.length} ${hex}`)
+  }
+
   function onTelemetry(event: Event) {
     const dv = (event.target as BluetoothRemoteGATTCharacteristic).value
     if (!dv) return
     const b = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)
+    if (capturing()) captureRaw(b)
     const ev = parseTelemetry(b)
     if (!ev) return
     // NB the device emits 02 53 01 03 "idle" even while running, so status frames must
@@ -137,6 +156,8 @@ export function useTreadmill() {
     poller = setInterval(() => {
       if (vendorWrite) {
         vendorWrite.writeValueWithoutResponse(STATUS_QUERY).catch(() => {})
+        // Also probe the SPORT_DATA query while capturing, in case steps arrive only there.
+        if (capturing()) vendorWrite.writeValueWithoutResponse(SPORT_DATA_QUERY).catch(() => {})
       }
     }, 1000)
   }

@@ -4,6 +4,7 @@ import {
   frame,
   setSpeedFrame,
   STATUS_QUERY,
+  SPORT_DATA_QUERY,
   parseTelemetry,
   createSpeedFilter,
   parseHeartRate,
@@ -29,6 +30,10 @@ describe('framing', () => {
 
   it('status query is a valid framed 02 51 03 00', () => {
     expect(hex(STATUS_QUERY)).toBe('02 51 03 00 52 03')
+  })
+
+  it('sport-data query is a valid framed 02 52 00', () => {
+    expect(hex(SPORT_DATA_QUERY)).toBe('02 52 00 52 03')
   })
 })
 

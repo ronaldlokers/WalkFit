@@ -8,7 +8,10 @@ export interface Session {
   distance: number // metres
   duration: number // seconds
   kcal: number
+  steps?: number // belt pedometer count; absent on logs from before step support (#43)
   avgHr: number | null // bpm, null when no HR sensor was connected
+  hrMin?: number // bpm low over the session; absent when no HR sensor / pre-#43 logs
+  hrMax?: number // bpm high over the session; absent when no HR sensor / pre-#43 logs
 }
 
 export interface WeekTotals {
@@ -18,6 +21,28 @@ export interface WeekTotals {
   duration: number // seconds
   kcal: number
 }
+
+// Per-calendar-day rollup for the activity rings + daily bar/HR charts (#43).
+export interface DayTotals {
+  date: string // "YYYY-MM-DD" local day key
+  sessions: number
+  distance: number // metres
+  duration: number // seconds
+  kcal: number
+  steps: number
+  hrMin: number | null // bpm low across the day's sessions (null when no HR data)
+  hrMax: number | null // bpm high across the day
+  hrAvg: number | null // duration-weighted mean of session avgHr
+}
+
+// Daily activity goals the rings fill against (issue #43). Configurable in Settings.
+export interface Goals {
+  kcal: number
+  steps: number
+  minutes: number
+}
+export const DEFAULT_GOALS: Goals = { kcal: 500, steps: 8000, minutes: 30 }
+const GOALS_KEY = 'walkfit.goals'
 
 export function loadStatistics(): Session[] {
   try {
@@ -59,6 +84,70 @@ export function weeklyTotals(sessions: Session[]): WeekTotals[] {
     byWeek.set(key, w)
   }
   return [...byWeek.values()].sort((a, b) => (a.week < b.week ? 1 : -1))
+}
+
+function localDayKey(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
+
+// Per-day rollups for the last `days` calendar days ending today (local time), oldest
+// first, zero-filled so days with no walk still get a (0) bucket for the bar charts. HR
+// fields are null on days with no HR data. Pre-#43 sessions have no steps/hrMin/hrMax;
+// they contribute 0 steps and fall back to avgHr for the day's HR range.
+export function dailyTotals(sessions: Session[], days: number, now = new Date()): DayTotals[] {
+  const byDay = new Map<string, Session[]>()
+  for (const s of sessions) {
+    const k = localDayKey(new Date(s.date))
+    const list = byDay.get(k)
+    if (list) list.push(s)
+    else byDay.set(k, [s])
+  }
+  const out: DayTotals[] = []
+  const cursor = new Date(now)
+  cursor.setHours(0, 0, 0, 0)
+  cursor.setDate(cursor.getDate() - (days - 1))
+  for (let i = 0; i < days; i++) {
+    const list = byDay.get(localDayKey(cursor)) ?? []
+    const lows = list.map((s) => s.hrMin ?? s.avgHr).filter((v): v is number => v != null)
+    const highs = list.map((s) => s.hrMax ?? s.avgHr).filter((v): v is number => v != null)
+    const withHr = list.filter((s) => s.avgHr != null)
+    const hrDuration = withHr.reduce((a, s) => a + s.duration, 0)
+    out.push({
+      date: localDayKey(cursor),
+      sessions: list.length,
+      distance: list.reduce((a, s) => a + s.distance, 0),
+      duration: list.reduce((a, s) => a + s.duration, 0),
+      kcal: list.reduce((a, s) => a + s.kcal, 0),
+      steps: list.reduce((a, s) => a + (s.steps ?? 0), 0),
+      hrMin: lows.length ? Math.min(...lows) : null,
+      hrMax: highs.length ? Math.max(...highs) : null,
+      hrAvg: hrDuration
+        ? Math.round(withHr.reduce((a, s) => a + (s.avgHr as number) * s.duration, 0) / hrDuration)
+        : null,
+    })
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return out
+}
+
+export function loadGoals(): Goals {
+  try {
+    const raw = JSON.parse(localStorage.getItem(GOALS_KEY) || '{}')
+    const pick = (v: unknown, fallback: number) => (Number(v) > 0 ? Number(v) : fallback)
+    return {
+      kcal: pick(raw.kcal, DEFAULT_GOALS.kcal),
+      steps: pick(raw.steps, DEFAULT_GOALS.steps),
+      minutes: pick(raw.minutes, DEFAULT_GOALS.minutes),
+    }
+  } catch {
+    return { ...DEFAULT_GOALS }
+  }
+}
+
+export function saveGoals(goals: Goals): void {
+  localStorage.setItem(GOALS_KEY, JSON.stringify(goals))
 }
 
 // Consecutive-day streak ending today or yesterday (a walk yesterday still counts

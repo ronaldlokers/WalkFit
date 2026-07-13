@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { loadStatistics, addSession, weeklyTotals, currentStreak } from './statistics'
+import {
+  loadStatistics,
+  addSession,
+  weeklyTotals,
+  currentStreak,
+  dailyTotals,
+  loadGoals,
+  saveGoals,
+  DEFAULT_GOALS,
+} from './statistics'
 
 beforeEach(() => localStorage.clear())
 
@@ -67,5 +76,69 @@ describe('currentStreak', () => {
 
   it('returns 0 for empty statistics', () => {
     expect(currentStreak([])).toBe(0)
+  })
+})
+
+describe('dailyTotals', () => {
+  const base = { distance: 1000, duration: 600, kcal: 50 }
+  it('zero-fills missing days, oldest first, ending today', () => {
+    const now = new Date('2026-01-07T12:00:00')
+    const days = dailyTotals(
+      [
+        { ...base, date: '2026-01-05T08:00:00', steps: 1200, avgHr: null },
+        { ...base, date: '2026-01-07T09:00:00', steps: 800, avgHr: null },
+      ],
+      3,
+      now,
+    )
+    expect(days.map((d) => d.date)).toEqual(['2026-01-05', '2026-01-06', '2026-01-07'])
+    expect(days.map((d) => d.steps)).toEqual([1200, 0, 800])
+    expect(days.map((d) => d.sessions)).toEqual([1, 0, 1])
+    expect(days[1]).toMatchObject({ kcal: 0, duration: 0, hrMin: null, hrMax: null, hrAvg: null })
+  })
+
+  it('sums two sessions on the same day and spans their HR min/max', () => {
+    const now = new Date('2026-01-07T12:00:00')
+    const [day] = dailyTotals(
+      [
+        { ...base, date: '2026-01-07T08:00:00', steps: 1000, avgHr: 110, hrMin: 95, hrMax: 130 },
+        { ...base, date: '2026-01-07T18:00:00', steps: 500, avgHr: 120, hrMin: 100, hrMax: 145 },
+      ],
+      1,
+      now,
+    )
+    expect(day).toMatchObject({
+      sessions: 2,
+      steps: 1500,
+      kcal: 100,
+      duration: 1200,
+      hrMin: 95,
+      hrMax: 145,
+      hrAvg: 115, // equal durations -> plain mean of 110/120
+    })
+  })
+
+  it('handles pre-#43 sessions: no steps -> 0, avgHr stands in for the HR range', () => {
+    const now = new Date('2026-01-07T12:00:00')
+    const [day] = dailyTotals([{ ...base, date: '2026-01-07T08:00:00', avgHr: 105 }], 1, now)
+    expect(day).toMatchObject({ steps: 0, hrMin: 105, hrMax: 105, hrAvg: 105 })
+  })
+})
+
+describe('goals', () => {
+  it('defaults to 500 kcal / 8000 steps / 30 min', () => {
+    expect(loadGoals()).toEqual(DEFAULT_GOALS)
+  })
+
+  it('round-trips saved goals', () => {
+    saveGoals({ kcal: 600, steps: 10000, minutes: 45 })
+    expect(loadGoals()).toEqual({ kcal: 600, steps: 10000, minutes: 45 })
+  })
+
+  it('falls back per-field on corrupt or non-positive values', () => {
+    localStorage.setItem('walkfit.goals', '{"kcal":-5,"steps":"junk","minutes":45}')
+    expect(loadGoals()).toEqual({ kcal: 500, steps: 8000, minutes: 45 })
+    localStorage.setItem('walkfit.goals', '{not json')
+    expect(loadGoals()).toEqual(DEFAULT_GOALS)
   })
 })

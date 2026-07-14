@@ -58,11 +58,15 @@ const PROVIDERS = {
   },
 }
 
-function corsHeaders(env, origin) {
-  const allowed = (env.ALLOWED_ORIGIN || '')
+function allowedOrigins(env) {
+  return (env.ALLOWED_ORIGIN || '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
+}
+
+function corsHeaders(env, origin) {
+  const allowed = allowedOrigins(env)
   const allow = allowed.includes(origin) ? origin : allowed[0] || ''
   return {
     'Access-Control-Allow-Origin': allow,
@@ -97,6 +101,14 @@ export default {
     }
     if (request.method !== 'POST') {
       return new Response('Method not allowed', { status: 405, headers })
+    }
+    // Enforce the origin allowlist (#58): CORS headers only restrict what browsers may
+    // READ — without this check any third-party page or script could use the worker
+    // (and its client_secrets / provider rate quota) for its own token exchanges. A
+    // non-browser caller can fake an Origin, but the secrets never leave the worker and
+    // this stops drive-by browser abuse cold.
+    if (!allowedOrigins(env).includes(origin)) {
+      return json({ error: 'origin not allowed' }, 403)
     }
 
     // "/withings/token" -> ["withings", "token"]; legacy "/token" -> strava.

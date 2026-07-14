@@ -37,6 +37,8 @@ mise exec -- wrangler secret put WITHINGS_CLIENT_SECRET
 
 `ALLOWED_ORIGIN` is preset in `wrangler.toml` to the app's origins (GitHub Pages +
 local dev), comma-separated exact origins — adjust it if yours differ, then:
+(requests from any other Origin are rejected with 403 — the list is enforcement,
+not just CORS)
 
 ```bash
 mise exec -- wrangler deploy

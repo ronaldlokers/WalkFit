@@ -9,13 +9,20 @@ type Listener = (ev: Event) => void
 
 function fakeDevice(id = 'dev1') {
   const listeners = new Map<string, Set<Listener>>()
+  const charListeners = new Set<Listener>()
   const char = {
     writeValueWithResponse: vi.fn(async () => {}),
     writeValueWithoutResponse: vi.fn(async () => {}),
     startNotifications: vi.fn(async () => {}),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    value: undefined,
+    addEventListener: vi.fn((_t: string, f: Listener) => charListeners.add(f)),
+    removeEventListener: vi.fn((_t: string, f: Listener) => charListeners.delete(f)),
+    value: undefined as DataView | undefined,
+  }
+  // deliver a raw fff1 frame to the subscribed telemetry handler
+  function emitFrame(bytes: number[]) {
+    const buf = Uint8Array.from(bytes)
+    char.value = new DataView(buf.buffer)
+    for (const f of [...charListeners]) f({ target: char } as unknown as Event)
   }
   const svc = { getCharacteristic: vi.fn(async () => char) }
   const gatt = {
@@ -44,7 +51,7 @@ function fakeDevice(id = 'dev1') {
   function dispatch(type: string) {
     for (const f of [...(listeners.get(type) ?? [])]) f(new Event(type))
   }
-  return { dev: dev as unknown as BluetoothDevice, gatt, svc, char, dispatch, listeners }
+  return { dev: dev as unknown as BluetoothDevice, gatt, svc, char, dispatch, listeners, emitFrame }
 }
 
 function stubBluetooth(impl: Partial<Bluetooth>) {
@@ -53,7 +60,10 @@ function stubBluetooth(impl: Partial<Bluetooth>) {
 
 beforeEach(() => {
   localStorage.clear()
-  vi.useFakeTimers()
+  // fake performance.now too — the ticker, staleness stop, and enforce window all read it
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+  })
   // jsdom reports no secure context; the composable gates on it at construction
   Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true })
 })
@@ -145,6 +155,88 @@ describe('treadmill connection lifecycle (#56)', () => {
     const tm = useTreadmill()
     await Promise.all([tm.connect(), tm.connect()])
     expect(requestDevice).toHaveBeenCalledTimes(1)
+    await tm.disconnect()
+  })
+})
+
+// The hard-won timing behaviors (#61): 3s staleness stop, dt-based distance
+// integration, and the bounded ~8s target-speed enforce window. Frames below are
+// checksum-valid (parseTelemetry now verifies them).
+describe('treadmill timing (#61)', () => {
+  const SPEED_2_0 = [0x02, 0x53, 0x02, 0x14, 0x45, 0x03] // 2.0 km/h
+  const SPEED_3_6 = [0x02, 0x53, 0x02, 0x24, 0x75, 0x03] // 3.6 km/h = 1 m/s
+
+  async function connected() {
+    const f = fakeDevice()
+    stubBluetooth({ requestDevice: vi.fn(async () => f.dev) } as Partial<Bluetooth>)
+    const tm = useTreadmill()
+    await tm.connect()
+    return { f, tm }
+  }
+
+  it('staleness: no speed frames for >3s stops the belt state', async () => {
+    const { f, tm } = await connected()
+    f.emitFrame(SPEED_2_0)
+    expect(tm.state.running).toBe(true)
+    expect(tm.state.speed).toBe(2.0)
+    await vi.advanceTimersByTimeAsync(3400) // ticker checks every 250ms
+    expect(tm.state.running).toBe(false)
+    expect(tm.state.speed).toBe(0)
+    await tm.disconnect()
+  })
+
+  it('integrates distance/elapsed from live speed over time', async () => {
+    const { f, tm } = await connected()
+    // keep frames fresher than the 3s staleness window while 4s pass
+    for (let i = 0; i < 4; i++) {
+      f.emitFrame(SPEED_3_6)
+      await vi.advanceTimersByTimeAsync(1000)
+    }
+    expect(tm.state.distance).toBeCloseTo(4, 1) // 1 m/s x 4s
+    expect(tm.state.elapsed).toBeCloseTo(4, 1)
+    await tm.disconnect()
+  })
+
+  it('enforce window: re-sends the target for ~8s while unmatched, throttled, then stops', async () => {
+    const { f, tm } = await connected()
+    const setSpeedWrites = () =>
+      f.char.writeValueWithoutResponse.mock.calls.filter((c) => {
+        const b = c[0] as Uint8Array
+        return b[1] === 0x53 && b[2] === 0x02
+      }).length
+
+    await tm.setSpeed(3.0)
+    expect(setSpeedWrites()).toBe(1) // the immediate write
+    // belt ignores it (start countdown): keeps reporting 2.0
+    for (let i = 0; i < 12; i++) {
+      f.emitFrame(SPEED_2_0)
+      await vi.advanceTimersByTimeAsync(1000)
+    }
+    const during = setSpeedWrites()
+    // ~8s window at >=900ms throttle: the initial write plus roughly 8 retries
+    expect(during).toBeGreaterThanOrEqual(6)
+    expect(during).toBeLessThanOrEqual(11)
+    // window closed: no further enforce writes however long we wait
+    for (let i = 0; i < 5; i++) {
+      f.emitFrame(SPEED_2_0)
+      await vi.advanceTimersByTimeAsync(1000)
+    }
+    expect(setSpeedWrites()).toBe(during)
+    await tm.disconnect()
+  })
+
+  it('enforce stops immediately once the belt matches the target', async () => {
+    const { f, tm } = await connected()
+    const setSpeedWrites = () =>
+      f.char.writeValueWithoutResponse.mock.calls.filter((c) => {
+        const b = c[0] as Uint8Array
+        return b[1] === 0x53 && b[2] === 0x02
+      }).length
+
+    await tm.setSpeed(2.0)
+    f.emitFrame(SPEED_2_0) // belt reaches the target right away
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(setSpeedWrites()).toBe(1) // no retries after the match
     await tm.disconnect()
   })
 })

@@ -153,7 +153,9 @@ same transition opens the upload-prompt popup.
 snapshot — reload resumes the session), `walkfit.weight.log` (weigh-ins),
 `walkfit.strava` / `walkfit.withings` (OAuth tokens), `walkfit.strava.autoUpload`, `walkfit.health.lastSync.<provider>`
 (display-only last-sync times), `walkfit.health.cursor.<provider>` (server-derived
-incremental sync cursors), `walkfit.view` (`track` | `scenic`), `walkfit.capture` (raw BLE frame
+incremental sync cursors), `walkfit.view` (`track` | `scenic`), `walkfit.scenic.time`
+(3D time-of-day override), `walkfit.bestLap` (all-time best 400 m lap — scenic ghost),
+`walkfit.capture` (raw BLE frame
 debug logging, off unless `'1'`).
 
 **Health sync** — `health.ts` defines `HealthProvider` (id doubles as

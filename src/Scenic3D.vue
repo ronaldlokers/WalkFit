@@ -52,10 +52,15 @@ onMounted(() => {
   // WebGL probe before any three.js setup — no WebGL (e.g. jsdom, old machines) means
   // the parent should fall back to the track view.
   const probe = document.createElement('canvas')
-  if (!(probe.getContext('webgl2') || probe.getContext('webgl'))) {
+  const probeCtx = (probe.getContext('webgl2') || probe.getContext('webgl')) as
+    WebGLRenderingContext | WebGL2RenderingContext | null
+  if (!probeCtx) {
     emit('unsupported')
     return
   }
+  // Release the probe's context slot immediately — browsers allow only ~8-16 live WebGL
+  // contexts, and leaking one per 2D↔3D toggle can evict the real renderer's (#60).
+  probeCtx.getExtension('WEBGL_lose_context')?.loseContext()
 
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(60, 1, 0.3, FOG_FAR + 60)
@@ -417,6 +422,25 @@ onMounted(() => {
   }
   document.addEventListener('visibilitychange', onVisibility)
 
+  // GPU context loss (#60): without these handlers the rAF loop keeps rendering to a
+  // dead context — frozen/black canvas for the rest of the session. preventDefault()
+  // tells the browser we want a restore; if it never comes (or comes repeatedly), the
+  // second loss falls back to the 2D track via `unsupported`.
+  let contextLosses = 0
+  function onContextLost(e: Event) {
+    e.preventDefault()
+    stopLoop()
+    contextLosses++
+    if (contextLosses > 1) emit('unsupported')
+  }
+  function onContextRestored() {
+    if (disposed) return
+    update(display)
+    startLoop()
+  }
+  renderer.domElement.addEventListener('webglcontextlost', onContextLost)
+  renderer.domElement.addEventListener('webglcontextrestored', onContextRestored)
+
   // reduced motion: no continuous animation loop — render discretely as distance ticks in.
   // watch() outside setup isn't auto-disposed, so keep the stop handle for cleanup.
   let stopDistanceWatch: (() => void) | null = null
@@ -434,6 +458,10 @@ onMounted(() => {
     const w = el.clientWidth
     const h = el.clientHeight
     if (!w || !h || !renderer) return
+    // DPR can change under us (window dragged to another monitor, zoom) — re-check it
+    // here rather than only at mount, or the canvas goes blurry/oversampled (#60)
+    const dpr = Math.min(window.devicePixelRatio, 2)
+    if (renderer.getPixelRatio() !== dpr) renderer.setPixelRatio(dpr)
     renderer.setSize(w, h)
     camera.aspect = w / h
     camera.updateProjectionMatrix()
@@ -448,6 +476,8 @@ onMounted(() => {
     stopLoop()
     stopDistanceWatch?.()
     document.removeEventListener('visibilitychange', onVisibility)
+    renderer?.domElement.removeEventListener('webglcontextlost', onContextLost)
+    renderer?.domElement.removeEventListener('webglcontextrestored', onContextRestored)
     ro.disconnect()
     scene.clear()
     disposables.forEach((g) => g.dispose())
@@ -465,6 +495,9 @@ onMounted(() => {
     Object.values(geo).forEach((g) => g.dispose())
     Object.values(mat).forEach((m) => m.dispose())
     renderer?.dispose()
+    // dispose() alone leaves the context slot occupied until GC — force-release it so
+    // repeated 2D↔3D toggles can't exhaust the browser's context budget (#60)
+    renderer?.forceContextLoss()
     renderer?.domElement.remove()
     renderer = null
   }

@@ -393,6 +393,32 @@ describe('workouts & goals (#68)', () => {
   })
 })
 
+describe('strava prompt queue (#140)', () => {
+  it('a second finished walk queues instead of clobbering the open prompt', async () => {
+    fakeStrava.connected = true
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    await walk(w, 300, 300)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('Upload to Strava?')
+    // second walk finishes while the first prompt is still open
+    await clickButton(w, 'Start')
+    await walk(w, 400, 300)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    // still the FIRST session's prompt (0.30 km)
+    expect(w.find('.strava-sheet').text()).toContain('0.30')
+    await clickButton(w, 'Skip')
+    await w.vm.$nextTick()
+    // dismissing surfaces the queued second prompt (0.40 km)
+    expect(w.find('.strava-sheet').text()).toContain('0.40')
+    await clickButton(w, 'Skip')
+    expect(w.find('.strava-sheet').exists()).toBe(false)
+    fakeStrava.connected = false
+  })
+})
+
 describe('screen wake lock (#19)', () => {
   it('requests the lock when the belt starts and releases it on stop', async () => {
     const release = vi.fn(async () => {})

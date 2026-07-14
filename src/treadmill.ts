@@ -11,6 +11,11 @@ import {
 // Canonical 128-bit UUID strings, not 0x… aliases: Bluefy (iOS Web Bluetooth
 // bridge) fails to parse numeric aliases in requestDevice ("request payload
 // could not be parsed"); strings work everywhere, including Chrome.
+// Sentinel error string — the protocol layer is framework-free, so the UI maps this
+// exact value to a translated message (#140) and shows anything else raw.
+export const NO_WEBBT_ERROR =
+  'Web Bluetooth not available. In Brave: enable brave://flags/#brave-web-bluetooth-api and relaunch. Otherwise use Chrome or Edge.'
+
 const FTMS_SERVICE = '00001826-0000-1000-8000-00805f9b34fb' // Fitness Machine Service
 const FTMS_CONTROL = '00002ad9-0000-1000-8000-00805f9b34fb' // Fitness Machine Control Point (write + indicate)
 const VENDOR_SERVICE = '0000fff0-0000-1000-8000-00805f9b34fb' // FitShow vendor service
@@ -255,8 +260,7 @@ export function useTreadmill() {
 
   async function connect() {
     if (!state.supported) {
-      state.error =
-        'Web Bluetooth not available. In Brave: enable brave://flags/#brave-web-bluetooth-api and relaunch. Otherwise use Chrome or Edge.'
+      state.error = NO_WEBBT_ERROR
       return
     }
     if (state.connecting) return // reentrancy guard: a connect is already in flight

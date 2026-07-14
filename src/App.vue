@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, nextTick, watch, defineAsyncComponent } from 'vue'
-import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill'
-import { useHeartRate } from './heartrate'
+import { useTreadmill, NO_WEBBT_ERROR, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill'
+import { useHeartRate, NO_WEBBT_HR_ERROR } from './heartrate'
 import {
   workouts,
   timeline,
@@ -578,7 +578,8 @@ watch(
 function beginSession() {
   sessionStart = new Date()
   sessionName =
-    active.value?.name || (hrTarget.value ? `${hrTarget.value.name} HR workout` : 'Free walk')
+    active.value?.name ||
+    (hrTarget.value ? t('session.hrWorkout', { name: hrTarget.value.name }) : t('session.freeWalk'))
   hrSum = 0
   hrCount = 0
   hrLo = 0
@@ -624,10 +625,10 @@ function finalizeSession() {
           .uploadSession(session, name)
           .then(() => showToast(t('strava.uploaded')))
           .catch(() => {
-            stravaPrompt.value = { session, name }
+            offerStravaPrompt({ session, name })
           })
       } else {
-        stravaPrompt.value = { session, name: sessionName }
+        offerStravaPrompt({ session, name: sessionName })
       }
     }
   }
@@ -753,7 +754,17 @@ async function handleOAuthRedirects() {
 }
 
 // --- Strava upload prompt ---
-const stravaPrompt = ref<{ session: Session; name: string } | null>(null) // set while the post-walk popup is open
+const stravaPrompt = ref<{ session: Session; name: string } | null>(null)
+// A second finished walk must not clobber a still-open prompt (#140): later prompts
+// queue and surface when the current one is dismissed.
+const stravaQueue: NonNullable<typeof stravaPrompt.value>[] = []
+function offerStravaPrompt(p: NonNullable<typeof stravaPrompt.value>) {
+  if (stravaPrompt.value) stravaQueue.push(p)
+  else stravaPrompt.value = p
+}
+function dismissStravaPrompt() {
+  stravaPrompt.value = stravaQueue.shift() ?? null
+} // set while the post-walk popup is open
 // Auto-upload finished sessions instead of prompting (#70) — Settings toggle.
 const stravaAutoUpload = ref(localStorage.getItem('walkfit.strava.autoUpload') === '1')
 watch(stravaAutoUpload, (v) => localStorage.setItem('walkfit.strava.autoUpload', v ? '1' : '0'))
@@ -770,7 +781,7 @@ async function uploadToStrava() {
   const { session, name } = stravaPrompt.value
   try {
     await strava.uploadSession(session, name)
-    stravaPrompt.value = null
+    dismissStravaPrompt()
   } catch {
     // strava.state.error already holds the message; leave the popup open so the
     // user sees it and can retry or dismiss.
@@ -1012,6 +1023,13 @@ const walkArea = computed(() => {
 })
 const peakSpeed = computed(() => (state.history.length ? Math.max(...state.history) : 0))
 
+// Composable error strings are English sentinels (protocol layer is framework-free);
+// map the known ones to translations, pass anything else through raw (#140).
+const tmError = computed(() => (state.error === NO_WEBBT_ERROR ? t('warn.noWebBtTm') : state.error))
+const hrError = computed(() =>
+  hr.state.error === NO_WEBBT_HR_ERROR ? t('warn.noWebBtHr') : hr.state.error,
+)
+
 // --- formatting ---
 const fmtDist = computed(() =>
   state.distance >= 1000
@@ -1124,7 +1142,7 @@ const pace = computed(() => {
       <b>{{ t('warn.insecureTitle') }}</b> {{ t('warn.insecure', { origin }) }}
     </p>
     <p v-else-if="!state.hasApi" class="warn">{{ t('warn.noApi') }}</p>
-    <p v-if="state.error" class="warn">{{ state.error }}</p>
+    <p v-if="state.error" class="warn">{{ tmError }}</p>
 
     <!-- virtual loop / scenic walk -->
     <section class="track-wrap">
@@ -1134,7 +1152,7 @@ const pace = computed(() => {
         <button
           :class="{ on: viewMode === 'scenic' }"
           :disabled="!scenicSupported"
-          :title="scenicSupported ? undefined : 'Needs WebGL'"
+          :title="scenicSupported ? undefined : t('settings.needsWebgl')"
           @click="viewMode = 'scenic'"
         >
           3D
@@ -1443,7 +1461,7 @@ const pace = computed(() => {
       </template>
     </div>
 
-    <p v-if="hr.state.error" class="warn">{{ t('warn.hrPrefix', { error: hr.state.error }) }}</p>
+    <p v-if="hr.state.error" class="warn">{{ t('warn.hrPrefix', { error: hrError }) }}</p>
 
     <transition name="toast">
       <div v-if="toast" class="toast">{{ toast }}</div>
@@ -1485,11 +1503,11 @@ const pace = computed(() => {
     </div>
 
     <!-- post-walk Strava upload prompt -->
-    <div v-if="stravaPrompt" class="overlay" @click.self="stravaPrompt = null">
+    <div v-if="stravaPrompt" class="overlay" @click.self="dismissStravaPrompt">
       <div class="sheet strava-sheet">
         <div class="sheet-head">
           <h2>{{ t('strava.uploadTitle') }}</h2>
-          <button class="x" @click="stravaPrompt = null">✕</button>
+          <button class="x" @click="dismissStravaPrompt">✕</button>
         </div>
         <div class="detail-tiles">
           <div>
@@ -1513,7 +1531,7 @@ const pace = computed(() => {
         </div>
         <p v-if="strava.state.error" class="hint warn-note">{{ strava.state.error }}</p>
         <div class="detail-actions">
-          <button class="btn ghost" :disabled="strava.state.uploading" @click="stravaPrompt = null">
+          <button class="btn ghost" :disabled="strava.state.uploading" @click="dismissStravaPrompt">
             {{ t('strava.skip') }}
           </button>
           <button class="btn go" :disabled="strava.state.uploading" @click="uploadToStrava">
@@ -1567,7 +1585,7 @@ const pace = computed(() => {
             {{ state.connecting ? t('header.connecting') : t('wizard.tmConnect') }}
           </button>
           <p v-else class="wiz-ok">{{ t('wizard.connected', { name: state.deviceName }) }}</p>
-          <p v-if="state.error" class="warn">{{ state.error }}</p>
+          <p v-if="state.error" class="warn">{{ tmError }}</p>
           <div class="wiz-nav">
             <span></span>
             <button class="btn ghost" @click="wizardStep = 2">
@@ -1590,7 +1608,7 @@ const pace = computed(() => {
             {{ hr.state.connecting ? t('header.connecting') : t('wizard.hrConnect') }}
           </button>
           <p v-else class="wiz-ok">{{ t('wizard.connected', { name: hr.state.deviceName }) }}</p>
-          <p v-if="hr.state.error" class="warn">{{ hr.state.error }}</p>
+          <p v-if="hr.state.error" class="warn">{{ hrError }}</p>
           <div class="wiz-nav">
             <button class="btn ghost" @click="wizardStep = 1">{{ t('wizard.back') }}</button>
             <button class="btn ghost" @click="wizardStep = 3">

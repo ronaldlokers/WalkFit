@@ -8,6 +8,7 @@ import { mmss } from './format'
 const props = defineProps<{
   sessions: Session[]
   weightLog: WeightEntry[]
+  goalWeight?: number | null // target kg (#71); null/0 = no goal set
   goals: Goals
   weightKg: number
 }>()
@@ -166,12 +167,20 @@ const weightDelta = computed(() => {
   return latest.kg - refEntry.kg
 })
 // Trend line, x proportional to time (weigh-ins are irregular — index-spacing would lie).
+// Distance to the goal weight (#71): positive = still to lose ("x kg to go").
+const toGoal = computed(() => {
+  if (!props.goalWeight || !latestWeight.value) return null
+  return Math.round((latestWeight.value.kg - props.goalWeight) * 10) / 10
+})
+
 const weightSpark = computed(() => {
   const log = props.weightLog
   if (log.length < 2) return null
   const W = 320,
     H = 80
   const kgs = log.map((e) => e.kg)
+  // the goal line participates in the domain so it's always visible on the chart (#71)
+  if (props.goalWeight) kgs.push(props.goalWeight)
   const min = Math.min(...kgs),
     max = Math.max(...kgs)
   const rng = Math.max(0.5, max - min) // floor so a flat log doesn't zoom into noise
@@ -181,7 +190,8 @@ const weightSpark = computed(() => {
     (e) =>
       `${(((new Date(e.date).getTime() - t0) / span) * W).toFixed(1)},${(H - 0.12 * H - ((e.kg - min) / rng) * 0.76 * H).toFixed(1)}`,
   )
-  return { line: pts.join(' '), area: `M0,${H} L${pts.join(' L')} L${W},${H} Z`, min, max }
+  const goalY = props.goalWeight ? H - 0.12 * H - ((props.goalWeight - min) / rng) * 0.76 * H : null
+  return { line: pts.join(' '), area: `M0,${H} L${pts.join(' L')} L${W},${H} Z`, min, max, goalY }
 })
 const weighInInput = ref<number | null>(null)
 function logWeighIn() {
@@ -410,10 +420,25 @@ function logWeighIn() {
           >
           <span class="k">vs ~30 days</span>
         </div>
+        <div v-if="toGoal !== null">
+          <span class="v"
+            >{{ (toGoal > 0 ? '' : '+') + Math.abs(toGoal).toFixed(1)
+            }}<span class="unit">kg</span></span
+          >
+          <span class="k">{{ toGoal > 0 ? 'to goal' : 'past goal' }}</span>
+        </div>
       </div>
       <template v-if="weightSpark">
         <svg class="weight-chart" viewBox="0 0 320 80" preserveAspectRatio="none">
           <path class="weight-area" :d="weightSpark.area" />
+          <line
+            v-if="weightSpark.goalY !== null"
+            class="weight-goal-line"
+            x1="0"
+            :y1="weightSpark.goalY"
+            x2="320"
+            :y2="weightSpark.goalY"
+          />
           <polyline class="weight-line" :points="weightSpark.line" />
         </svg>
         <div class="weight-range">
@@ -835,6 +860,12 @@ function logWeighIn() {
 }
 .weight-area {
   fill: rgba(46, 213, 115, 0.12);
+}
+.weight-goal-line {
+  stroke: #6ab0ff;
+  stroke-width: 1.2;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
 }
 .weight-line {
   fill: none;

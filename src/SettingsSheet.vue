@@ -70,6 +70,7 @@ const weightKg = defineModel<number>('weightKg', { required: true })
 const audioOn = defineModel<boolean>('audioOn', { required: true })
 const debugOn = defineModel<boolean>('debugOn', { required: true })
 const stravaAutoUpload = defineModel<boolean>('stravaAutoUpload', { required: true })
+const goalWeight = defineModel<number>('goalWeight', { required: true })
 const viewMode = defineModel<'track' | 'scenic'>('viewMode', { required: true })
 const goalKcal = defineModel<number>('goalKcal', { required: true })
 const goalSteps = defineModel<number>('goalSteps', { required: true })
@@ -157,6 +158,14 @@ function fmtSynced(ms: number | null) {
         </span>
       </div>
       <p class="set-note">Used to estimate calories burned.</p>
+      <div class="set-row">
+        <span>Goal weight</span>
+        <span class="set-inline">
+          <input v-model.number="goalWeight" type="number" min="0" max="250" placeholder="—" />
+          <span class="set-unit">kg</span>
+        </span>
+      </div>
+      <p class="set-note">Draws a target line on the weight trend. 0 = no goal.</p>
 
       <h3>Daily goals</h3>
       <div class="set-row">

@@ -61,6 +61,23 @@ export function addSession(entry: Session): Session[] {
   return list
 }
 
+// Merge imported sessions (#69): union by start date (the de-facto session id),
+// existing entries win, result stays date-sorted and bounded.
+export function mergeSessions(entries: Session[]): Session[] {
+  const list = loadStatistics()
+  const have = new Set(list.map((s) => s.date))
+  for (const e of entries) {
+    if (e && typeof e.date === 'string' && !have.has(e.date)) {
+      list.push(e)
+      have.add(e.date)
+    }
+  }
+  list.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+  if (list.length > MAX_ENTRIES) list.splice(0, list.length - MAX_ENTRIES)
+  localStorage.setItem(KEY, JSON.stringify(list))
+  return list
+}
+
 // Remove one session by its start timestamp (unique per walk in practice) — for
 // deleting accidental starts the 50 m filter let through (#67).
 export function removeSession(date: string): Session[] {

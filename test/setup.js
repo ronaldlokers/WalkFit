@@ -7,5 +7,9 @@ if (!globalThis.localStorage) {
     setItem: (k, v) => store.set(k, String(v)),
     removeItem: (k) => store.delete(k),
     clear: () => store.clear(),
+    key: (i) => [...store.keys()][i] ?? null,
+    get length() {
+      return store.size
+    },
   }
 }

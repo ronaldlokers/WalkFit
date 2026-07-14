@@ -60,6 +60,11 @@ const origin = window.location.origin
 // The onboarding wizard shows only until it's been completed or dismissed once —
 // returning users (and mid-walk reloads) go straight to the main screen (#63).
 const wizardOpen = ref(localStorage.getItem('walkfit.setupDone') !== '1')
+// After a backup import the persisted state is authoritative — reload rather than
+// hand-refreshing every ref (#69).
+function reloadApp() {
+  window.location.reload()
+}
 function markSetupDone() {
   localStorage.setItem('walkfit.setupDone', '1')
 }
@@ -1225,9 +1230,9 @@ const pace = computed(() => {
           :adjust-interval="HR_ADJUST_INTERVAL"
           :hr-connected="hr.state.connected"
           :custom-workouts="customWorkouts"
+          :start-tab="workoutTab"
           @save-custom="saveCustom"
           @delete-custom="deleteCustom"
-          :start-tab="workoutTab"
           @start-plan="startWorkout"
           @start-hr="startHrWorkout"
           @stop-hr="endHrWorkout"
@@ -1384,9 +1389,9 @@ const pace = computed(() => {
             :adjust-interval="HR_ADJUST_INTERVAL"
             :hr-connected="hr.state.connected"
             :custom-workouts="customWorkouts"
+            :closable="false"
             @save-custom="saveCustom"
             @delete-custom="deleteCustom"
-            :closable="false"
             @start-plan="wizardStartPlan"
             @start-hr="wizardStartHr"
           />
@@ -1417,6 +1422,7 @@ const pace = computed(() => {
         @close="settingsOpen = false"
         @weight-changed="weightSettingChanged"
         @sync-provider="syncHealth"
+        @imported="reloadApp"
       />
     </div>
   </div>

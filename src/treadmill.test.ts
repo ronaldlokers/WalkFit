@@ -12,7 +12,7 @@ function fakeDevice(id = 'dev1') {
   const charListeners = new Set<Listener>()
   const char = {
     writeValueWithResponse: vi.fn(async () => {}),
-    writeValueWithoutResponse: vi.fn(async () => {}),
+    writeValueWithoutResponse: vi.fn<(data: BufferSource) => Promise<void>>(async () => {}),
     startNotifications: vi.fn(async () => {}),
     addEventListener: vi.fn((_t: string, f: Listener) => charListeners.add(f)),
     removeEventListener: vi.fn((_t: string, f: Listener) => charListeners.delete(f)),

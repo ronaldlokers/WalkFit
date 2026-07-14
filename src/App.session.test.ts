@@ -393,6 +393,21 @@ describe('workouts & goals (#68)', () => {
   })
 })
 
+describe('screen wake lock (#19)', () => {
+  it('requests the lock when the belt starts and releases it on stop', async () => {
+    const release = vi.fn(async () => {})
+    const request = vi.fn(async () => ({ release }) as unknown as WakeLockSentinel)
+    Object.defineProperty(navigator, 'wakeLock', { value: { request }, configurable: true })
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    await w.vm.$nextTick()
+    expect(request).toHaveBeenCalledWith('screen')
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(release).toHaveBeenCalled()
+  })
+})
+
 describe('strava auto-upload (#70)', () => {
   it('uploads finished walks directly when the toggle is on, no prompt', async () => {
     localStorage.setItem('walkfit.strava.autoUpload', '1')

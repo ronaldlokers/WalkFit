@@ -72,7 +72,7 @@ describe('App happy path', () => {
     // header stat strip shows the live values, faded while idle (#46)
     expect(w.find('.stat-strip').exists()).toBe(true)
     expect(w.find('.stat-strip').classes()).toContain('idle')
-    expect(w.find('.stat-strip').text()).toContain('min/km')
+    expect(w.find('.stat-strip').text()).toContain('kcal')
     expect(w.find('.workout-banner').exists()).toBe(false)
   })
 
@@ -371,24 +371,6 @@ describe('App happy path', () => {
       .find((b) => b.text().includes('Back'))!
       .trigger('click')
     expect(w.find('.mode-grid').exists()).toBe(true)
-  })
-})
-
-describe('test themes (#173)', () => {
-  it('persisted theme applies to the document and switching persists', async () => {
-    localStorage.setItem('walkfit.setupDone', '1')
-    localStorage.setItem('walkfit.theme', 'glass')
-    const w = mount(App)
-    expect(document.documentElement.dataset.theme).toBe('glass')
-    await clickButton(w, '☰')
-    await clickButton(w, 'Settings')
-    const select = w
-      .findAll('select')
-      .find((s) => s.findAll('option').some((o) => o.attributes('value') === 'glass'))!
-    await select.setValue('glass')
-    expect(document.documentElement.dataset.theme).toBe('glass')
-    expect(localStorage.getItem('walkfit.theme')).toBe('glass')
-    await select.setValue('default')
   })
 })
 

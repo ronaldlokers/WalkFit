@@ -75,7 +75,6 @@ const goalWeight = defineModel<number>('goalWeight', { required: true })
 const scenicTime = defineModel<string>('scenicTime', { required: true })
 const viewMode = defineModel<'track' | 'scenic'>('viewMode', { required: true })
 const bigNumbers = defineModel<boolean>('bigNumbers', { required: true })
-const theme = defineModel<string>('theme', { required: true })
 const goalKcal = defineModel<number>('goalKcal', { required: true })
 const goalSteps = defineModel<number>('goalSteps', { required: true })
 const goalMinutes = defineModel<number>('goalMinutes', { required: true })
@@ -221,13 +220,6 @@ function fmtSynced(ms: number | null) {
       <div class="set-row">
         <span>{{ t('settings.bigNumbers') }}</span>
         <input v-model="bigNumbers" type="checkbox" />
-      </div>
-      <div class="set-row">
-        <span>{{ t('settings.theme') }}</span>
-        <select v-model="theme" class="set-select">
-          <option value="default">Default</option>
-          <option value="glass">Morning Glass</option>
-        </select>
       </div>
       <div class="set-row">
         <span>{{ t('settings.language') }}</span>

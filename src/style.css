@@ -78,10 +78,11 @@ input {
 }
 
 /* ============================================================================
-   Test themes (#173) — experimental identities selectable in Settings.
-   Keyed off html[data-theme]; plain class selectors reach into scoped
-   components on purpose so the prototypes don't churn every SFC. The athletic
-   track keeps every marking — themes only restyle chrome, sky and accents.
+   Morning Glass (#173) — the app's visual identity. index.html hard-sets
+   html[data-theme='glass']; the prefix stays on these selectors because plain
+   class selectors from a global sheet would lose the specificity fight against
+   the components' scoped styles. Reaching into scoped components from here is
+   deliberate — it keeps the identity in one file instead of churning every SFC.
    ========================================================================== */
 
 /* --- Morning Glass: daylight sky, frosted white pills --- */
@@ -163,12 +164,13 @@ html[data-theme='glass'] .menu-panel {
 html[data-theme='glass'] .menu-item {
   color: #17324d;
 }
+/* the mock has no 2D/3D pill on the visual — Settings → Display still switches */
 html[data-theme='glass'] .view-flip {
-  background: rgba(255, 255, 255, 0.6);
-  border-color: rgba(255, 255, 255, 0.9);
+  display: none;
 }
-html[data-theme='glass'] .view-flip button {
-  color: #7b8da1;
+/* mock header: brand left, stat pills gathered at the right edge */
+html[data-theme='glass'] .app.layout-immersive .stat-strip {
+  justify-content: flex-end;
 }
 html[data-theme='glass'] .lap-num {
   fill: #17324d;
@@ -189,39 +191,64 @@ html[data-theme='glass'] .goal-chip {
 /* --- per-theme LAYOUT changes (the mockups' compositions, not just palettes) --- */
 
 /* Glass: the speed pill and the action row visually fuse into the mockup's single
-   floating dock. */
+   floating dock — speed headline left, slider right, hero Start + outlined Stop below.
+   The mock's dock has no ± buttons, goal chips, pause or reset. */
 html[data-theme='glass'] .app.layout-immersive > .controls {
-  bottom: 92px;
-  width: min(560px, 94vw);
-  border-radius: 22px 22px 0 0;
+  /* flush against the action-row's top edge: 20px inset + its ~73px height */
+  bottom: 93px;
+  width: min(600px, 94vw);
+  border-radius: 24px 24px 0 0;
   border-bottom: 0;
   box-shadow: none;
+  padding: 18px 22px 8px;
 }
 html[data-theme='glass'] .app.layout-immersive > .action-row {
-  bottom: 18px;
-  width: min(560px, 94vw);
+  bottom: 20px;
+  width: min(600px, 94vw);
   justify-content: stretch;
-  border-radius: 0 0 22px 22px;
-  border-top: 1px solid rgba(23, 50, 77, 0.08);
+  border-radius: 0 0 24px 24px;
+  border-top: 0;
+  padding: 8px 22px 18px;
 }
 html[data-theme='glass'] .app.layout-immersive > .action-row .btn {
   flex: 1;
+  padding: 14px 16px;
+}
+/* workouts hide the speed card — the action row then stands alone, fully rounded */
+html[data-theme='glass'] .app.layout-immersive:not(:has(> .controls)) > .action-row {
+  border-radius: 24px;
+  padding: 14px 22px;
+}
+html[data-theme='glass'] .btn.round,
+html[data-theme='glass'] .app.layout-immersive > .controls .goal-row,
+html[data-theme='glass'] .app.layout-immersive > .controls .goal-progress,
+html[data-theme='glass'] .app.layout-immersive > .action-row .btn.ghost {
+  display: none;
+}
+html[data-theme='glass'] .speed-set {
+  flex-direction: row;
+  align-items: center;
+  gap: 18px;
+}
+html[data-theme='glass'] .speed-set .target {
+  white-space: nowrap;
+}
+html[data-theme='glass'] .speed-set input[type='range'] {
+  flex: 1;
 }
 
-/* --- Glass layout: the visual lives in a centred frosted card, dock beneath --- */
+/* --- Glass layout: the ring floats free on the sky (the mock has no card) --- */
 html[data-theme='glass'] .app.layout-immersive > .track-wrap {
   inset: auto;
   left: 50%;
-  top: 86px;
+  top: 64px;
   transform: translateX(-50%);
-  width: min(880px, 92vw);
-  height: min(56vh, 520px);
-  border-radius: 26px;
-  background: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 14px 40px rgba(23, 50, 77, 0.16);
-  overflow: hidden;
-  backdrop-filter: blur(10px);
+  width: min(640px, 92vw);
+  height: min(58vh, 460px);
+  background: none;
+  border: 0;
+  box-shadow: none;
+  overflow: visible;
 }
 html[data-theme='glass'] .app.layout-immersive .track,
 html[data-theme='glass'] .app.layout-immersive .scenic3d,
@@ -229,38 +256,38 @@ html[data-theme='glass'] .app.layout-immersive .scene3d-wrap {
   height: 100%;
   width: 100%;
 }
-html[data-theme='glass'] .app.layout-immersive .view-flip {
-  top: 10px;
-  right: 10px;
-}
 
 /* --- themed 2D tracks (#173): the mockups draw a minimal loop, not the surveyed
    athletics render — hide the detail layers and restyle band/progress/marker --- */
 
-/* Glass: soft translucent ring, blue progress with round caps, white marker with a
-   blue ring — the frosted-card diagram */
+/* Glass: the mock's minimal ring — white glow ring behind a soft grey band, thick
+   blue progress with round caps, white knob marker with a blue ring */
+html[data-theme='glass'] .track-glow {
+  stroke: rgba(255, 255, 255, 0.85);
+}
 html[data-theme='glass'] .track-band {
-  stroke: rgba(23, 50, 77, 0.1);
+  stroke: #dde2e8;
 }
 html[data-theme='glass'] .track-line {
   stroke: none;
 }
 html[data-theme='glass'] .track-progress {
   stroke: #0a84ff;
-  stroke-width: 26;
+  stroke-width: 30;
   filter: none;
 }
 html[data-theme='glass'] .startline {
   display: none;
 }
 html[data-theme='glass'] .runner .halo {
-  fill: rgba(255, 255, 255, 0.6);
+  fill: #fff;
+  r: 15;
 }
 html[data-theme='glass'] .runner .body {
   fill: #fff;
   stroke: #0a84ff;
-  stroke-width: 3.5;
-  r: 8;
+  stroke-width: 5;
+  r: 10;
 }
 
 /* --- Morning Glass, mockup-faithful pass (#173) --- */
@@ -275,16 +302,20 @@ html[data-theme='glass'] body {
   font-family: -apple-system, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
 }
 
-/* headline lap counter like the mock: bigger, bolder, tighter */
+/* headline lap counter like the mock: bold number, small quiet caption (sizes are
+   viewBox units — the svg scales them up ~1.6x at the rendered ring width) */
 html[data-theme='glass'] .lap-num {
   font-weight: 800;
-  font-size: 74px;
-  letter-spacing: -3px;
+  font-size: 58px;
+  letter-spacing: -2px;
 }
-html[data-theme='glass'] .lap-label,
+html[data-theme='glass'] .lap-label {
+  font-weight: 600;
+  font-size: 9px;
+}
 html[data-theme='glass'] .lap-times {
   font-weight: 600;
-  font-size: 15px;
+  font-size: 8px;
 }
 
 /* stat cards: bold values, soft shadow (mock's floating cards) */
@@ -308,14 +339,23 @@ html[data-theme='glass'] .app.layout-immersive > .controls .target small {
   font-weight: 600;
   color: #7b8da1;
 }
+/* the mock's slider: blue fill up to the value (--slider-fill bound in the template),
+   grey rest, floating white knob. appearance:none on the INPUT is what lets the
+   track/thumb pseudo-elements take styling at all. */
 html[data-theme='glass'] input[type='range'] {
-  accent-color: #0a84ff;
-  height: 10px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 26px;
 }
 html[data-theme='glass'] input[type='range']::-webkit-slider-runnable-track {
   height: 10px;
   border-radius: 5px;
-  background: rgba(23, 50, 77, 0.12);
+  background: linear-gradient(
+    90deg,
+    #0a84ff 0 var(--slider-fill, 0%),
+    rgba(23, 50, 77, 0.12) var(--slider-fill, 0%)
+  );
 }
 html[data-theme='glass'] input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;

@@ -304,22 +304,6 @@ function scenicUnsupported() {
 }
 // --- immersive layout (#103): the visual fills the viewport, HUD floats over it ---
 // Kiosk concept folded in as a big-numbers option.
-// Test themes (#173): experimental visual identities over the same immersive app.
-// Applied as html[data-theme] so the global theme stylesheets in style.css reach
-// body + every component without touching their scoped styles.
-const THEMES = ['default', 'glass'] as const
-type Theme = (typeof THEMES)[number]
-const storedTheme = localStorage.getItem('walkfit.theme')
-const theme = ref<Theme>(THEMES.includes(storedTheme as Theme) ? (storedTheme as Theme) : 'default')
-watch(
-  theme,
-  (v) => {
-    localStorage.setItem('walkfit.theme', v)
-    document.documentElement.dataset.theme = v
-  },
-  { immediate: true },
-)
-
 const bigNumbers = ref(localStorage.getItem('walkfit.layout.big') === '1')
 watch(bigNumbers, (v) => localStorage.setItem('walkfit.layout.big', v ? '1' : '0'))
 // Immersive HUD fades after 5 s untouched while walking; any interaction wakes it.
@@ -1084,11 +1068,6 @@ const fmtDist = computed(() =>
     ? (state.distance / 1000).toFixed(2) + ' km'
     : Math.round(state.distance) + ' m',
 )
-const pace = computed(() => {
-  if (state.speed <= 0) return '—'
-  const s = 3600 / state.speed
-  return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
-})
 </script>
 
 <template>
@@ -1115,14 +1094,6 @@ const pace = computed(() => {
         <div class="sstat">
           <span class="sv">{{ liveKcal }}</span>
           <span class="sk">{{ t('stat.kcal') }}</span>
-        </div>
-        <div class="sstat speed">
-          <span class="sv">{{ state.speed.toFixed(1) }}</span>
-          <span class="sk">{{ t('stat.kmh') }}</span>
-        </div>
-        <div class="sstat">
-          <span class="sv">{{ pace }}</span>
-          <span class="sk">{{ t('stat.pace') }}</span>
         </div>
       </div>
       <div class="head-actions">
@@ -1210,6 +1181,7 @@ const pace = computed(() => {
         <!-- top-down render of the same 400 m track model the 3D view walks (scenic.ts):
              six lanes, common finish line, staggered starts -->
 
+        <path class="track-glow" :d="track2d.band" :stroke-width="track2d.bandW + 16" />
         <path class="track-band" :d="track2d.band" :stroke-width="track2d.bandW" />
         <path v-for="(d, i) in track2d.laneLines" :key="`lane-${i}`" class="track-lane" :d="d" />
         <line
@@ -1334,6 +1306,9 @@ const pace = computed(() => {
             :max="SPEED_MAX"
             :step="SPEED_STEP"
             :disabled="!state.connected"
+            :style="{
+              '--slider-fill': ((speedInput - SPEED_MIN) / (SPEED_MAX - SPEED_MIN)) * 100 + '%',
+            }"
             @change="applySpeed"
           />
         </div>
@@ -1709,7 +1684,6 @@ const pace = computed(() => {
         v-model:debug-on="debugOn"
         v-model:view-mode="viewMode"
         v-model:big-numbers="bigNumbers"
-        v-model:theme="theme"
         v-model:goal-kcal="goals.kcal"
         v-model:goal-steps="goals.steps"
         v-model:goal-minutes="goals.minutes"
@@ -1819,6 +1793,11 @@ code {
 .track-band {
   fill: none;
   stroke: #83392d; /* tartan red; width bound from the lane count so lanes stay true */
+}
+/* soft outer ring behind the band — painted by the theme stylesheet */
+.track-glow {
+  fill: none;
+  stroke: none;
 }
 .track-lane {
   fill: none;

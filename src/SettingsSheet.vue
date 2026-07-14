@@ -28,10 +28,41 @@ defineProps<{
   providers: HealthProvider[]
   scenicSupported: boolean
 }>()
+import { exportData, importData } from './backup'
+import { ref } from 'vue'
+
+// --- backup & restore (#69) ---
+const includeTokens = ref(false)
+const dataMsg = ref('')
+const fileInput = ref<HTMLInputElement | null>(null)
+function doExport() {
+  const blob = new Blob([exportData(includeTokens.value)], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `walkfit-backup-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(a.href)
+  dataMsg.value = 'Backup downloaded.'
+}
+async function doImport(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  try {
+    const applied = importData(await file.text())
+    dataMsg.value = `Restored ${applied} entries — reloading…`
+    emit('imported')
+  } catch (err) {
+    dataMsg.value = (err as Error).message
+  } finally {
+    ;(e.target as HTMLInputElement).value = ''
+  }
+}
+
 const emit = defineEmits<{
   close: []
   'weight-changed': []
   'sync-provider': [p: HealthProvider]
+  imported: []
 }>()
 
 const maxHr = defineModel<number>('maxHr', { required: true })
@@ -227,6 +258,29 @@ function fmtSynced(ms: number | null) {
         </template>
       </template>
 
+      <h3>Data</h3>
+      <div class="set-row">
+        <span>Backup</span>
+        <div class="set-actions">
+          <button class="btn ghost sm" @click="doExport">Export</button>
+          <button class="btn ghost sm" @click="fileInput?.click()">Import</button>
+          <input
+            ref="fileInput"
+            type="file"
+            accept="application/json,.json"
+            class="file-hidden"
+            @change="doImport"
+          />
+        </div>
+      </div>
+      <label class="set-note tokens-opt">
+        <input v-model="includeTokens" type="checkbox" />
+        include connection tokens (device-specific secrets)
+      </label>
+      <p class="set-note">
+        {{ dataMsg || 'Sessions and weigh-ins merge on import; settings overwrite.' }}
+      </p>
+
       <h3>Sound</h3>
       <label class="set-row toggle">
         <span>Audio cues</span>
@@ -352,5 +406,14 @@ function fmtSynced(ms: number | null) {
 .set-actions {
   display: flex;
   gap: 8px;
+}
+.file-hidden {
+  display: none;
+}
+.tokens-opt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
 }
 </style>

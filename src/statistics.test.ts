@@ -3,6 +3,7 @@ import {
   loadStatistics,
   addSession,
   removeSession,
+  mergeSessions,
   weeklyTotals,
   currentStreak,
   dailyTotals,
@@ -174,5 +175,22 @@ describe('removeSession (#67)', () => {
       avgHr: null,
     })
     expect(removeSession('1999-01-01T00:00:00.000Z')).toHaveLength(1)
+  })
+})
+
+describe('mergeSessions (#69)', () => {
+  it('unions by date with existing entries winning, sorted', () => {
+    addSession({
+      date: '2026-07-13T08:00:00.000Z',
+      distance: 900,
+      duration: 600,
+      kcal: 40,
+      avgHr: null,
+    })
+    const merged = mergeSessions([
+      { date: '2026-07-13T08:00:00.000Z', distance: 111, duration: 1, kcal: 1, avgHr: null },
+      { date: '2026-07-12T08:00:00.000Z', distance: 700, duration: 500, kcal: 30, avgHr: null },
+    ])
+    expect(merged.map((s) => s.distance)).toEqual([700, 900])
   })
 })

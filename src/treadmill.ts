@@ -31,6 +31,9 @@ export interface TreadmillState {
   targetSpeed: number // last speed we asked for (km/h)
   distance: number // metres, integrated client-side from live speed
   steps: number // step count reported by the belt's own pedometer (fff1 running frame)
+  beltDistance: number // metres, the belt's own session counter (survives OUR reloads, #66)
+  beltKcal: number
+  beltTime: number // seconds, belt-side
   elapsed: number // seconds the belt has been moving
   error: string
   history: number[] // speed (km/h) sampled once per second since connect
@@ -51,6 +54,9 @@ export function useTreadmill() {
     targetSpeed: SPEED_MIN,
     distance: 0,
     steps: 0,
+    beltDistance: 0,
+    beltKcal: 0,
+    beltTime: 0,
     elapsed: 0,
     error: '',
     history: [],
@@ -120,6 +126,9 @@ export function useTreadmill() {
     if (ev.type === 'speed') {
       onSpeedReading(ev.speed)
       if (ev.steps !== undefined) state.steps = ev.steps // belt's own pedometer count
+      if (ev.beltDistance !== undefined) state.beltDistance = ev.beltDistance
+      if (ev.beltKcal !== undefined) state.beltKcal = ev.beltKcal
+      if (ev.beltTime !== undefined) state.beltTime = ev.beltTime
     } else if (ev.type === 'status') dbg('st1', ev.running ? 0 : 3)
     else if (ev.type === 'stop') dbg('st3', 0)
   }
@@ -343,6 +352,16 @@ export function useTreadmill() {
     state.speed = 0
   }
 
+  // FTMS Pause (08 02): spec-standard, but — unlike start/stop — NOT yet verified on
+  // this belt's firmware. If the FW ignores it the belt just keeps moving and state
+  // recovers from telemetry; if it stops the belt like Stop, resume (07) restarts it.
+  async function pause() {
+    if (!control) return
+    await control.writeValueWithResponse(Uint8Array.of(0x08, 0x02))
+    state.running = false
+    state.speed = 0
+  }
+
   // Speed control goes through the vendor channel (FTMS set-speed is ignored by this FW).
   function writeSpeed(kmh: number) {
     if (!vendorWrite) return
@@ -364,5 +383,16 @@ export function useTreadmill() {
     state.history = []
   }
 
-  return { state, connect, autoConnect, disconnect, forget, start, stop, setSpeed, resetStats }
+  return {
+    state,
+    connect,
+    autoConnect,
+    disconnect,
+    forget,
+    start,
+    stop,
+    pause,
+    setSpeed,
+    resetStats,
+  }
 }

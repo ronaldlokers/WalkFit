@@ -4,7 +4,14 @@
 export type Bytes = Uint8Array | number[]
 
 export type TelemetryEvent =
-  | { type: 'speed'; speed: number; steps?: number }
+  | {
+      type: 'speed'
+      speed: number
+      steps?: number
+      beltDistance?: number // metres, the belt's own session counter
+      beltKcal?: number
+      beltTime?: number // seconds
+    }
   | { type: 'status'; running: boolean }
   | { type: 'stop' }
 
@@ -64,7 +71,13 @@ export function parseTelemetry(b: Bytes): TelemetryEvent | null {
     // for now (#43); the distance/calories/time offsets are documented for later, since the
     // app currently derives those client-side. The shorter 02 51 03 response carries only
     // speed, so gate on the full 17-byte length.
-    if (b.length >= 17) ev.steps = b[5] | (b[6] << 8)
+    if (b.length >= 17) {
+      ev.steps = b[5]! | (b[6]! << 8)
+      // the belt's own session counters (#66) — they survive a page reload on our side
+      ev.beltDistance = b[7]! | (b[8]! << 8)
+      ev.beltKcal = b[9]! | (b[10]! << 8)
+      ev.beltTime = b[11]! | (b[12]! << 8)
+    }
     return ev
   }
   return null

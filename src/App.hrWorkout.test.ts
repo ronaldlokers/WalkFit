@@ -18,6 +18,9 @@ const fakeTm = reactive<TreadmillState>({
   targetSpeed: 3.0,
   distance: 0,
   steps: 0,
+  beltDistance: 0,
+  beltKcal: 0,
+  beltTime: 0,
   elapsed: 0,
   error: '',
   history: [],
@@ -54,6 +57,9 @@ vi.mock('./treadmill', () => ({
       fakeTm.running = true
     }),
     stop: vi.fn(async () => {
+      fakeTm.running = false
+    }),
+    pause: vi.fn(async () => {
       fakeTm.running = false
     }),
     setSpeed: vi.fn(async (kmh: number) => {

@@ -25,6 +25,40 @@ describe('App happy path', () => {
     expect(w.text()).toContain('Connect your treadmill')
   })
 
+  it('skips the wizard for returning users (#63)', () => {
+    localStorage.setItem('walkfit.setupDone', '1')
+    const w = mount(App)
+    expect(w.text()).not.toContain('Connect your treadmill')
+    expect(w.find('.stat-strip').exists()).toBe(true)
+  })
+
+  it('completing the wizard once persists setup-done (#63)', async () => {
+    const w = mount(App)
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Free walk')
+    expect(localStorage.getItem('walkfit.setupDone')).toBe('1')
+  })
+
+  it('Settings weight edits in one day collapse to a single weigh-in (#63)', async () => {
+    const w = mount(App)
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Free walk')
+    await clickButton(w, '☰')
+    await clickButton(w, 'Settings')
+    const input = w
+      .findAll('input[type="number"]')
+      .find((i) => i.attributes('max') === '250' && i.attributes('min') === '30')!
+    await input.setValue(83)
+    await input.trigger('change')
+    await input.setValue(82.5)
+    await input.trigger('change')
+    const log = JSON.parse(localStorage.getItem('walkfit.weight.log') || '[]')
+    expect(log).toHaveLength(1) // overwritten, not appended
+    expect(log[0].kg).toBe(82.5)
+  })
+
   it('wizard → Free walk reaches the main screen (no workout active)', async () => {
     const w = mount(App)
     await clickButton(w, 'Skip') // step 1 treadmill -> 2

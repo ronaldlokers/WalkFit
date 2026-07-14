@@ -134,7 +134,8 @@ staleness-timeout auto-stop, so doesn't matter which one ends walk. If Strava co
 same transition opens the upload-prompt popup.
 
 `localStorage` keys: `walkfit.treadmill.id`, `walkfit.hr.id` (remembered device ids),
-`walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.history`,
+`walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.setupDone`,
+`walkfit.history`,
 `walkfit.goals` (daily activity goals), `walkfit.weight.log` (weigh-ins),
 `walkfit.strava` / `walkfit.withings` (OAuth tokens), `walkfit.health.lastSync.<provider>`
 (display-only last-sync times), `walkfit.health.cursor.<provider>` (server-derived

@@ -180,26 +180,63 @@ export function useTreadmill() {
     }
   }
 
-  // Wire up a chosen device: connect GATT, resolve characteristics, subscribe, start loops.
+  // Attach attempts carry a generation (#56): bumping it invalidates any still-running
+  // attempt (an autoConnect whose 8s timeout already fired, a connect superseded by a
+  // newer one), so a slow device finishing late can't hijack state from the winner.
+  let attachGen = 0
+
+  // Unhook + null everything belonging to the current device, so stale characteristics
+  // can't be written after a disconnect (start() on a powered-off belt used to pass the
+  // `if (!control)` guard and reject unhandled) and an old device's late
+  // gattserverdisconnected event can't kill a newer connection.
+  function detach() {
+    if (vendorNotify) vendorNotify.removeEventListener('characteristicvaluechanged', onTelemetry)
+    if (device) device.removeEventListener('gattserverdisconnected', onDisconnected)
+    control = null
+    vendorWrite = null
+    vendorNotify = null
+    device = null
+  }
+
+  // Wire up a chosen device: connect GATT, resolve characteristics, subscribe, start
+  // loops. State/listeners are committed only at the end, once everything resolved and
+  // the attempt is still the current generation — a throw mid-way leaves no half-wired
+  // device behind (the GATT link is released so re-pairing starts clean).
   async function attach(dev: BluetoothDevice) {
-    device = dev
-    device.addEventListener('gattserverdisconnected', onDisconnected)
-    const gatt = await device.gatt!.connect()
-
-    const ftms = await gatt.getPrimaryService(FTMS_SERVICE)
-    control = await ftms.getCharacteristic(FTMS_CONTROL)
-
-    const vendor = await gatt.getPrimaryService(VENDOR_SERVICE)
-    vendorWrite = await vendor.getCharacteristic(VENDOR_WRITE)
-    vendorNotify = await vendor.getCharacteristic(VENDOR_NOTIFY)
-    await vendorNotify.startNotifications()
-    vendorNotify.addEventListener('characteristicvaluechanged', onTelemetry)
-
-    state.deviceName = device.name || 'Dreaver Motion One'
-    state.connected = true
-    state.remembered = true
-    localStorage.setItem('walkfit.treadmill.id', device.id)
-    startTicker()
+    const gen = ++attachGen
+    try {
+      const gatt = await dev.gatt!.connect()
+      const ftms = await gatt.getPrimaryService(FTMS_SERVICE)
+      const ctl = await ftms.getCharacteristic(FTMS_CONTROL)
+      const vendor = await gatt.getPrimaryService(VENDOR_SERVICE)
+      const vw = await vendor.getCharacteristic(VENDOR_WRITE)
+      const vn = await vendor.getCharacteristic(VENDOR_NOTIFY)
+      await vn.startNotifications()
+      if (gen !== attachGen) {
+        // superseded while connecting — release the link instead of hijacking state
+        try {
+          dev.gatt?.disconnect()
+        } catch {}
+        return
+      }
+      detach() // drop any previous device's wiring before adopting this one
+      device = dev
+      control = ctl
+      vendorWrite = vw
+      vendorNotify = vn
+      dev.addEventListener('gattserverdisconnected', onDisconnected)
+      vn.addEventListener('characteristicvaluechanged', onTelemetry)
+      state.deviceName = dev.name || 'Dreaver Motion One'
+      state.connected = true
+      state.remembered = true
+      localStorage.setItem('walkfit.treadmill.id', dev.id)
+      startTicker()
+    } catch (e) {
+      try {
+        dev.gatt?.disconnect()
+      } catch {}
+      throw e
+    }
   }
 
   async function connect() {
@@ -208,6 +245,7 @@ export function useTreadmill() {
         'Web Bluetooth not available. In Brave: enable brave://flags/#brave-web-bluetooth-api and relaunch. Otherwise use Chrome or Edge.'
       return
     }
+    if (state.connecting) return // reentrancy guard: a connect is already in flight
     state.error = ''
     state.connecting = true
     try {
@@ -217,7 +255,10 @@ export function useTreadmill() {
       })
       await attach(dev)
     } catch (e) {
-      state.error = (e as Error).message || String(e)
+      // cancelling the chooser is a normal action, not an error to banner
+      if ((e as DOMException).name !== 'NotFoundError') {
+        state.error = (e as Error).message || String(e)
+      }
     } finally {
       state.connecting = false
     }
@@ -236,6 +277,7 @@ export function useTreadmill() {
       return
     }
     if (!dev) return
+    if (state.connecting) return // a manual connect is already in flight
     state.connecting = true
     try {
       await Promise.race([
@@ -243,13 +285,16 @@ export function useTreadmill() {
         new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
       ])
     } catch {
-      /* not in range / off — user can connect manually */
+      // not in range / off — user can connect manually. Invalidate the still-running
+      // attach so it can't finish late and hijack state (#56); it releases its own link.
+      attachGen++
     } finally {
       state.connecting = false
     }
   }
 
   function onDisconnected() {
+    detach() // stale characteristics must not be writable after this point
     state.connected = false
     state.running = false
     state.speed = 0
@@ -257,6 +302,7 @@ export function useTreadmill() {
   }
 
   async function disconnect() {
+    attachGen++ // user intent: also invalidate any in-flight attach
     try {
       if (device?.gatt?.connected) device.gatt.disconnect()
     } catch {}
@@ -266,6 +312,7 @@ export function useTreadmill() {
   // Forget: disconnect, drop the saved id, and revoke the Web Bluetooth permission so it
   // won't silently reconnect. Works whether or not it's currently connected this session.
   async function forget() {
+    attachGen++ // user intent: also invalidate any in-flight attach
     const id = localStorage.getItem('walkfit.treadmill.id')
     try {
       let d = device

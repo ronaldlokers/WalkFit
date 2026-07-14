@@ -20,8 +20,21 @@ export const LANE_W = 1.22
 export const LANES = 6
 // track band, as lateral offsets from the lane-1 walking line (positive = outward,
 // away from the infield): inner edge half a lane in, outer edge LANES out.
-export const TRACK_IN = -LANE_W / 2
+// Official World Athletics measurement convention (#54): lane 1 is measured 0.30 m
+// out from the kerb, lanes 2+ at 0.20 m from their inner lane line. o = 0 is the
+// lane-1 measurement line (the walking line), so the kerb sits at o = −0.30 and the
+// BEND_R above (≈36.80 m) is exactly the official measurement-line radius
+// (36.50 m kerb + 0.30 m).
+export const KERB_INSET = 0.3 // lane-1 measurement line → kerb
+export const LANE_MEAS_INSET = 0.2 // lanes 2+ measurement line → inner lane line
+export const TRACK_IN = -KERB_INSET // track inner edge = the kerb line
 export const TRACK_OUT = TRACK_IN + LANES * LANE_W
+
+// Lane k's measurement line as a lateral offset. This is what staggers, relay zones,
+// hurdle marks and the waterfall are surveyed along on a real track.
+export function laneMeasurementO(lane: number): number {
+  return lane === 1 ? 0 : TRACK_IN + (lane - 1) * LANE_W + LANE_MEAS_INSET
+}
 
 export interface TrackPoint {
   x: number
@@ -118,11 +131,12 @@ export function distanceSigns(): DistanceSign[] {
   return [100, 200, 300].map((m) => ({ s: m, label: `${m} m` }))
 }
 
-// Staggered start lines, one per lane beyond lane 1: lane k+1's centreline sits at
-// radius R + k·LANE_W, so its lap is 2π·k·LANE_W longer than lane 1's 400 m. Placing
-// its start mark that far past the common finish makes every lane's lap to the finish
-// line measure exactly 400 m — the classic athletics stagger. All staggers land on the
-// home straight (2π·5·LANE_W ≈ 38 m < STRAIGHT_M).
+// Staggered start lines, one per lane beyond lane 1: lane k's measurement line sits
+// at radius R + laneMeasurementO(k), so its lap is 2π·laneMeasurementO(k) longer than
+// lane 1's 400 m. Placing its start mark that far past the common finish makes every
+// lane's lap to the finish line measure exactly 400 m — and with the official
+// measurement insets the values match published tables (lane 2 ≈ 7.04 m, not the
+// naive centreline 7.67 m). All staggers land on the home straight.
 export interface LaneStagger {
   lane: number // 2..LANES
   s: number
@@ -131,19 +145,19 @@ export interface LaneStagger {
 }
 export function laneStaggers(): LaneStagger[] {
   const out: LaneStagger[] = []
-  for (let k = 1; k < LANES; k++) {
+  for (let k = 2; k <= LANES; k++) {
     out.push({
-      lane: k + 1,
-      s: 2 * Math.PI * k * LANE_W,
-      o0: TRACK_IN + k * LANE_W,
-      o1: TRACK_IN + (k + 1) * LANE_W,
+      lane: k,
+      s: 2 * Math.PI * laneMeasurementO(k),
+      o0: TRACK_IN + (k - 1) * LANE_W,
+      o1: TRACK_IN + k * LANE_W,
     })
   }
   return out
 }
 
 // Painted lane numbers just past the finish line, one per lane, like a real track.
-// Lane k's centreline sits at offset (k-1)·LANE_W (lane 1 = the walking line at 0).
+// The digits are paint, not measurement — they stay centred in each lane.
 export interface LaneNumber {
   lane: number
   s: number
@@ -154,7 +168,7 @@ export function laneNumbers(): LaneNumber[] {
   return Array.from({ length: LANES }, (_, k) => ({
     lane: k + 1,
     s: LANE_NUMBER_S,
-    o: k * LANE_W,
+    o: TRACK_IN + (k + 0.5) * LANE_W,
   }))
 }
 
@@ -201,14 +215,14 @@ export interface LaneLineMark {
 }
 export function relayZoneLines(): LaneLineMark[] {
   const out: LaneLineMark[] = []
-  for (let k = 0; k < LANES; k++) {
-    const oCentre = k * LANE_W
+  for (let k = 1; k <= LANES; k++) {
+    const oMeas = laneMeasurementO(k)
     for (const leg of [100, 200, 300]) {
       for (const d of [leg - 20, leg + 10]) {
         out.push({
-          s: laneDistanceToS(oCentre, d),
-          o0: TRACK_IN + k * LANE_W,
-          o1: TRACK_IN + (k + 1) * LANE_W,
+          s: laneDistanceToS(oMeas, d),
+          o0: TRACK_IN + (k - 1) * LANE_W,
+          o1: TRACK_IN + k * LANE_W,
         })
       }
     }
@@ -225,11 +239,11 @@ export interface TrackTick {
 }
 export function hurdleTicks(): TrackTick[] {
   const out: TrackTick[] = []
-  for (let k = 0; k < LANES; k++) {
-    const oCentre = k * LANE_W
+  for (let k = 1; k <= LANES; k++) {
+    const oMeas = laneMeasurementO(k)
     for (let h = 0; h < 10; h++) {
-      const s = laneDistanceToS(oCentre, 45 + h * 35)
-      out.push({ s, o: TRACK_IN + k * LANE_W }, { s, o: TRACK_IN + (k + 1) * LANE_W })
+      const s = laneDistanceToS(oMeas, 45 + h * 35)
+      out.push({ s, o: TRACK_IN + (k - 1) * LANE_W }, { s, o: TRACK_IN + k * LANE_W })
     }
   }
   return out

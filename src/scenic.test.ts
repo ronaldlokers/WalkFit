@@ -6,11 +6,13 @@ import {
   STRAIGHT_M,
   BEND_R,
   LANE_W,
+  TRACK_IN,
   TRACK_OUT,
   SCENERY_CLEAR_M,
   surroundings,
   distanceSigns,
   laneStaggers,
+  laneMeasurementO,
   laneNumbers,
   LANE_NUMBER_S,
   BREAK_LINE_S,
@@ -121,9 +123,17 @@ describe('track markings', () => {
     const nums = laneNumbers()
     expect(nums.map((n) => n.lane)).toEqual([1, 2, 3, 4, 5, 6])
     for (const n of nums) {
-      expect(n.o).toBeCloseTo((n.lane - 1) * LANE_W, 10) // lane centreline
+      expect(n.o).toBeCloseTo(TRACK_IN + (n.lane - 0.5) * LANE_W, 10) // lane centre (paint)
       expect(n.s).toBe(LANE_NUMBER_S)
     }
+  })
+
+  it('measurement lines follow the official convention (#54)', () => {
+    expect(TRACK_IN).toBeCloseTo(-0.3, 10) // kerb 0.30 m inside the lane-1 line
+    expect(laneMeasurementO(1)).toBe(0)
+    // lanes 2+: 0.20 m out from their inner lane line
+    expect(laneMeasurementO(2)).toBeCloseTo(-0.3 + LANE_W + 0.2, 10)
+    expect(laneMeasurementO(6)).toBeCloseTo(-0.3 + 5 * LANE_W + 0.2, 10)
   })
 
   it('break line sits at the 200 m point (end of the first bend)', () => {
@@ -132,8 +142,8 @@ describe('track markings', () => {
 
   it('laneDistanceToS: identity in lane 1, and every lane finishes its 400 m at the line', () => {
     for (const d of [0, 45, 100, 250, 399]) expect(laneDistanceToS(0, d)).toBeCloseTo(d, 8)
-    for (let k = 0; k < 6; k++) {
-      expect(laneDistanceToS(k * LANE_W, 400) % 400).toBeCloseTo(0, 6)
+    for (let k = 1; k <= 6; k++) {
+      expect(laneDistanceToS(laneMeasurementO(k), 400) % 400).toBeCloseTo(0, 6)
     }
   })
 
@@ -159,9 +169,9 @@ describe('track markings', () => {
     // edge lines carry one lane's marks; interior lines are shared, so they carry the
     // marks of BOTH adjacent lanes (at that lane's own positions) — like a real track
     const onLine = (o: number) => ticks.filter((t) => Math.abs(t.o - o) < 1e-9).length
-    expect(onLine(-LANE_W / 2)).toBe(10) // inner edge: lane 1 only
-    expect(onLine(-LANE_W / 2 + 6 * LANE_W)).toBe(10) // outer edge: lane 6 only
-    expect(onLine(LANE_W / 2)).toBe(20) // lane1/lane2 shared line
+    expect(onLine(TRACK_IN)).toBe(10) // inner edge: lane 1 only
+    expect(onLine(TRACK_IN + 6 * LANE_W)).toBe(10) // outer edge: lane 6 only
+    expect(onLine(TRACK_IN + LANE_W)).toBe(20) // lane1/lane2 shared line
   })
 
   it('waterfall start: the tangent path from every point measures exactly 300 m home', () => {
@@ -194,15 +204,17 @@ describe('track markings', () => {
     ])
   })
 
-  it('staggers make every lane lap exactly 400 m to the common finish', () => {
+  it('staggers match the published World Athletics tables (#54)', () => {
     const staggers = laneStaggers()
     expect(staggers.map((st) => st.lane)).toEqual([2, 3, 4, 5, 6])
-    for (const st of staggers) {
-      const k = st.lane - 1
-      const centre = (st.o0 + st.o1) / 2
-      expect(centre).toBeCloseTo(k * LANE_W, 10) // lane centreline offset
-      // lane lap = 400 + 2π·o(centre); stagger equals the surplus, so lap-to-finish = 400
-      expect(st.s).toBeCloseTo(2 * Math.PI * centre, 10)
+    // official one-lap staggers for 1.22 m lanes, measured at 0.20 m from the inner
+    // line: 2π·((k−1)·1.22 − 0.10) — the numbers painted on real tracks
+    const published = [7.04, 14.7, 22.37, 30.03, 37.7]
+    for (const [i, st] of staggers.entries()) {
+      expect(st.s).toBeCloseTo(2 * Math.PI * laneMeasurementO(st.lane), 10)
+      expect(st.s).toBeCloseTo(published[i]!, 1)
+      // walking the lane's 400 m from its stagger ends exactly on the finish line
+      expect(laneDistanceToS(laneMeasurementO(st.lane), 400) % 400).toBeCloseTo(0, 6)
       // and every stagger sits on the home straight (constant-s strip is perpendicular)
       expect(st.s).toBeLessThan(STRAIGHT_M)
     }

@@ -83,6 +83,10 @@ vi.mock('./heartrate', () => ({
   }),
 }))
 
+// These tests drive a full App mount through dozens of elapsed-tick nextTicks; under
+// a loaded parallel run they can exceed vitest's 5 s default. Generous, not a wait.
+vi.setConfig({ testTimeout: 20000 })
+
 type SvgGeometryStub = { getTotalLength(): number; getPointAtLength(d: number): DOMPoint }
 beforeAll(() => {
   const proto = SVGElement.prototype as unknown as SvgGeometryStub

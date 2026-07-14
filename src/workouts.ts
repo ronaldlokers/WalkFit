@@ -166,6 +166,10 @@ const CUSTOM_MAX_SEGMENTS = 24
 function sanitizeCustom(w: Workout): Workout | null {
   if (!w || typeof w.id !== 'string' || typeof w.name !== 'string') return null
   if (!Array.isArray(w.segments) || !w.segments.length) return null
+  // Guard each element: a null/garbage segment (corrupt storage, edited backup) must
+  // drop THIS workout, not throw — a throw escapes loadCustomWorkouts' map and the
+  // next save would persist [] and wipe every stored plan (#136).
+  if (w.segments.some((s) => !s || typeof s !== 'object')) return null
   const segments = w.segments.slice(0, CUSTOM_MAX_SEGMENTS).map((s) => ({
     speed:
       Math.round(

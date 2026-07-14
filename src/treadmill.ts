@@ -5,7 +5,11 @@ import {
   SPORT_DATA_QUERY,
   parseTelemetry,
   createSpeedFilter,
+  SPEED_MIN,
+  SPEED_MAX,
+  SPEED_STEP,
 } from './protocol'
+import { isDemo, demoTreadmill } from './demo'
 
 // --- Dreaver Motion One (FitShow FS-BT-T4) BLE identifiers ---
 // Canonical 128-bit UUID strings, not 0x… aliases: Bluefy (iOS Web Bluetooth
@@ -13,8 +17,7 @@ import {
 // could not be parsed"); strings work everywhere, including Chrome.
 // Sentinel error string — the protocol layer is framework-free, so the UI maps this
 // exact value to a translated message (#140) and shows anything else raw.
-export const NO_WEBBT_ERROR =
-  'Web Bluetooth not available. In Brave: enable brave://flags/#brave-web-bluetooth-api and relaunch. Otherwise use Chrome or Edge.'
+export const NO_WEBBT_ERROR = 'Web Bluetooth not available — use Chrome or Edge.'
 
 const FTMS_SERVICE = '00001826-0000-1000-8000-00805f9b34fb' // Fitness Machine Service
 const FTMS_CONTROL = '00002ad9-0000-1000-8000-00805f9b34fb' // Fitness Machine Control Point (write + indicate)
@@ -24,9 +27,8 @@ const VENDOR_NOTIFY = '0000fff1-0000-1000-8000-00805f9b34fb' // vendor telemetry
 const DIS_SERVICE = '0000180a-0000-1000-8000-00805f9b34fb' // Device Information
 const HR_SERVICE_TM = '0000180d-0000-1000-8000-00805f9b34fb' // some units expose HR too
 
-export const SPEED_MIN = 1.0 // km/h  (from FTMS supported-speed range 2ad4)
-export const SPEED_MAX = 6.0 // km/h
-export const SPEED_STEP = 0.1
+// re-exported from protocol.ts (the pure hub) so demo.ts can share them cycle-free
+export { SPEED_MIN, SPEED_MAX, SPEED_STEP } from './protocol'
 
 export interface TreadmillState {
   secure: boolean
@@ -51,6 +53,12 @@ export interface TreadmillState {
 }
 
 export function useTreadmill() {
+  // Demo mode (#169): simulated belt behind the same interface — explicit opt-in only.
+  if (isDemo()) return demoTreadmill()
+  return realTreadmill()
+}
+
+function realTreadmill() {
   const state = reactive<TreadmillState>({
     secure: window.isSecureContext,
     hasApi: 'bluetooth' in navigator,

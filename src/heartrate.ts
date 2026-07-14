@@ -1,4 +1,5 @@
 import { reactive } from 'vue'
+import { isDemo, demoHeartRate } from './demo'
 import { parseHeartRate } from './protocol'
 
 // Standard Bluetooth Heart Rate Service (works with Garmin "Broadcast Heart Rate",
@@ -22,6 +23,12 @@ export interface HeartRateState {
 }
 
 export function useHeartRate() {
+  // Demo mode (#169): simulated strap behind the same interface — explicit opt-in only.
+  if (isDemo()) return demoHeartRate()
+  return realHeartRate()
+}
+
+function realHeartRate() {
   const state = reactive<HeartRateState>({
     supported: 'bluetooth' in navigator && window.isSecureContext,
     connecting: false,

@@ -1,6 +1,12 @@
 // Pure, framework-free protocol helpers for the Dreaver / FitShow treadmill and
 // standard BLE heart rate. No Web Bluetooth or Vue here so it's unit-testable.
 
+// Device speed limits (from the FTMS supported-speed range 2ad4). Live here — the
+// pure, import-free hub — so treadmill.ts and demo.ts can share them without a cycle.
+export const SPEED_MIN = 1.0 // km/h
+export const SPEED_MAX = 6.0 // km/h
+export const SPEED_STEP = 0.1
+
 export type Bytes = Uint8Array | number[]
 
 export type TelemetryEvent =

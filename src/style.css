@@ -478,3 +478,145 @@ html[data-theme='alpine'] .goal-chip {
   color: #2e2a22;
   border-color: #c9b489;
 }
+
+/* --- per-theme LAYOUT changes (the mockups' compositions, not just palettes) --- */
+
+/* Swiss: the stat strip becomes the mockup's full-width meet-sheet banner with huge
+   numerals and rules; the actions become a flush, square, full-width bottom bar. */
+html[data-theme='swiss'] .app.layout-immersive > header {
+  flex-wrap: wrap;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 22px 0;
+  background: rgba(244, 244, 242, 0.96);
+  border-bottom: 3px solid #111;
+}
+html[data-theme='swiss'] .app.layout-immersive .stat-strip {
+  order: 5;
+  flex: 1 1 100%;
+  margin: 10px 0 0;
+  gap: 0;
+  border-top: 3px solid #111;
+}
+html[data-theme='swiss'] .app.layout-immersive .sstat {
+  flex: 1 1 0;
+  border-bottom: 0;
+  border-right: 1px solid #ddd;
+  border-radius: 0;
+  align-items: flex-start;
+  padding: 12px 0 14px 16px;
+  backdrop-filter: none;
+  white-space: nowrap;
+  overflow: visible;
+}
+html[data-theme='swiss'] .app.layout-immersive .sstat:last-child {
+  border-right: 0;
+}
+html[data-theme='swiss'] .app.layout-immersive .sstat .sv {
+  font-size: 38px;
+  letter-spacing: -2px;
+  line-height: 1;
+}
+html[data-theme='swiss'] .app.layout-immersive .sstat.speed .sv {
+  color: #e63312;
+}
+html[data-theme='swiss'] .app.layout-immersive > .action-row {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  transform: none;
+  padding: 0;
+  gap: 1px;
+  background: #111;
+  display: flex;
+}
+html[data-theme='swiss'] .app.layout-immersive > .action-row .btn {
+  flex: 1;
+  padding: 22px 0;
+  font-size: 15px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+html[data-theme='swiss'] .app.layout-immersive > .controls {
+  left: auto;
+  right: 0;
+  bottom: 72px;
+  transform: none;
+  width: min(420px, 92vw);
+  border-right: 0;
+}
+html[data-theme='swiss'] .app.layout-immersive > .controls .target {
+  font-size: 56px;
+  font-weight: 700;
+  letter-spacing: -3px;
+}
+html[data-theme='swiss'] .app.layout-immersive > .controls .target small {
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  margin-left: 10px;
+}
+html[data-theme='swiss'] .app.layout-immersive .view-flip {
+  top: 150px;
+}
+html[data-theme='swiss'] .app.layout-immersive > .warn {
+  top: 156px;
+}
+
+/* Glass: the speed pill and the action row visually fuse into the mockup's single
+   floating dock. */
+html[data-theme='glass'] .app.layout-immersive > .controls {
+  bottom: 92px;
+  width: min(560px, 94vw);
+  border-radius: 22px 22px 0 0;
+  border-bottom: 0;
+  box-shadow: none;
+}
+html[data-theme='glass'] .app.layout-immersive > .action-row {
+  bottom: 18px;
+  width: min(560px, 94vw);
+  justify-content: stretch;
+  border-radius: 0 0 22px 22px;
+  border-top: 1px solid rgba(23, 50, 77, 0.08);
+}
+html[data-theme='glass'] .app.layout-immersive > .action-row .btn {
+  flex: 1;
+}
+
+/* Alpine: the stat cells join into the mockup's single wooden plank with carved
+   dividers. */
+html[data-theme='alpine'] .app.layout-immersive .stat-strip {
+  gap: 0;
+  background: #8a6a48;
+  border-radius: 10px;
+  border-bottom: 3px solid #6d5238;
+  box-shadow: 0 6px 18px rgba(46, 42, 34, 0.35);
+  overflow: hidden;
+}
+html[data-theme='alpine'] .app.layout-immersive .sstat {
+  background: transparent;
+  border-bottom: 0;
+  border-right: 2px solid #6d5238;
+  border-radius: 0;
+}
+html[data-theme='alpine'] .app.layout-immersive .sstat:last-child {
+  border-right: 0;
+}
+
+/* Neon: lap info moves to the mockup's bottom-left glow block (the 2D SVG keeps its
+   centre counter; this styles the workout ribbon + pills placement). */
+html[data-theme='neon'] .app.layout-immersive > .controls {
+  width: min(620px, 94vw);
+}
+html[data-theme='neon'] .app.layout-immersive > .controls .target {
+  font-size: 40px;
+  text-shadow: 0 0 16px rgba(0, 240, 255, 0.8);
+}
+html[data-theme='neon'] .app.layout-immersive > .action-row .btn {
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-size: 13px;
+  padding: 12px 32px;
+}

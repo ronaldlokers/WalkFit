@@ -788,6 +788,17 @@ const curSegIndex = computed(() => {
 const curSeg = computed(() =>
   curSegIndex.value >= 0 ? activeTl.value!.segs[curSegIndex.value] : null,
 )
+const nextSeg = computed(() =>
+  activeTl.value && curSegIndex.value >= 0
+    ? (activeTl.value.segs[curSegIndex.value + 1] ?? null)
+    : null,
+)
+// 0..1 progress through the current segment — drives the ribbon's countdown ring
+const segProgress = computed(() => {
+  const sg = curSeg.value
+  if (!sg) return 0
+  return Math.min(1, Math.max(0, (state.elapsed - sg.start) / (sg.end - sg.start)))
+})
 const remaining = computed(() =>
   activeTl.value ? Math.max(0, activeTl.value.total - state.elapsed) : 0,
 )
@@ -797,11 +808,22 @@ const timeToNext = computed(() =>
 
 // Countdown beeps in the last 3 s of a segment, then announce the new speed at the
 // switch. Elapsed ticks at ~1 Hz, so track the last-beeped second to fire each once.
+// At 5 s a spoken heads-up names the upcoming change (#110) so a jump never surprises.
 let lastCountdown = 0
+let warnedSeg = -1
 watch(
   () => Math.ceil(timeToNext.value),
   (s) => {
     if (!active.value || !state.running) return
+    if (s === 5 && curSeg.value && nextSeg.value && warnedSeg !== curSegIndex.value) {
+      warnedSeg = curSegIndex.value
+      const delta = nextSeg.value.speed - curSeg.value.speed
+      if (Math.abs(delta) >= 0.05) {
+        speak(
+          `${delta > 0 ? 'speeding up' : 'slowing down'} to ${nextSeg.value.speed.toFixed(1)} in 5 seconds`,
+        )
+      }
+    }
     if (s >= 1 && s <= 3 && s !== lastCountdown) {
       lastCountdown = s
       beep(s === 1 ? 1175 : 880, 110)
@@ -1298,21 +1320,50 @@ const pace = computed(() => {
          so mid-workout state (segments / HR target) gets a compact always-visible strip -->
     <div v-if="active || hrTarget" class="imm-workout">
       <template v-if="active">
-        <div class="imm-segs">
-          <div
-            v-for="(sg, i) in activeTl!.segs"
-            :key="i"
-            class="imm-seg"
-            :class="{ done: i < curSegIndex, cur: i === curSegIndex }"
-            :style="immSegStyle(sg, i)"
-          ></div>
-        </div>
-        <div class="imm-meta">
-          <span class="imm-name">
-            {{ active.name }} · seg {{ curSegIndex + 1 }}/{{ activeTl!.segs.length
-            }}<template v-if="curSeg"> · {{ curSeg.speed.toFixed(1) }} km/h</template>
-          </span>
-          <span class="imm-time">next {{ mmss(timeToNext) }} · {{ mmss(remaining) }} left</span>
+        <div class="imm-row">
+          <!-- hero countdown: time left in the current segment, ring = segment progress -->
+          <div class="imm-ring">
+            <svg viewBox="0 0 72 72">
+              <circle class="imm-ring-track" cx="36" cy="36" r="31" />
+              <circle
+                class="imm-ring-fill"
+                cx="36"
+                cy="36"
+                r="31"
+                :stroke-dasharray="`${(segProgress * 194.8).toFixed(1)} 194.8`"
+              />
+            </svg>
+            <span class="imm-ring-val">{{ mmss(timeToNext) }}</span>
+          </div>
+          <div class="imm-mid">
+            <div class="imm-segs">
+              <div
+                v-for="(sg, i) in activeTl!.segs"
+                :key="i"
+                class="imm-seg"
+                :class="{ done: i < curSegIndex, cur: i === curSegIndex }"
+                :style="immSegStyle(sg, i)"
+              ></div>
+            </div>
+            <div class="imm-meta">
+              <span class="imm-name">
+                {{ active.name }} · seg {{ curSegIndex + 1 }}/{{ activeTl!.segs.length }}
+              </span>
+              <span class="imm-time">{{ mmss(remaining) }} left</span>
+            </div>
+          </div>
+          <!-- now → next speeds (#110): see the change coming before the belt moves -->
+          <div class="imm-nownext">
+            <div class="imm-now">
+              <span class="imm-nn-k">now</span>
+              <span class="imm-nn-v">{{ curSeg?.speed.toFixed(1) ?? '–' }}</span>
+            </div>
+            <span class="imm-nn-arrow">›</span>
+            <div class="imm-next">
+              <span class="imm-nn-k">next</span>
+              <span class="imm-nn-v">{{ nextSeg ? nextSeg.speed.toFixed(1) : '✓' }}</span>
+            </div>
+          </div>
           <button class="btn halt sm" @click="endWorkout">End</button>
         </div>
       </template>
@@ -2491,6 +2542,73 @@ input[type='range'] {
 .app.layout-immersive.hud-big > .imm-workout {
   bottom: 130px;
 }
+.imm-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.imm-ring {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  flex: none;
+}
+.imm-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.imm-ring-track,
+.imm-ring-fill {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.imm-ring-track {
+  stroke: #2a3140;
+}
+.imm-ring-fill {
+  stroke: var(--accent);
+  transition: stroke-dasharray 0.9s linear;
+}
+.imm-ring-val {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.imm-mid {
+  flex: 1;
+  min-width: 0;
+}
+.imm-nownext {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.imm-nn-k {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #8a93a3;
+}
+.imm-nn-v {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.imm-next .imm-nn-v {
+  color: var(--accent);
+}
+.imm-nn-arrow {
+  color: #8a93a3;
+  font-size: 18px;
+}
 .imm-segs {
   display: flex;
   align-items: flex-end;
@@ -2541,6 +2659,12 @@ input[type='range'] {
 }
 .app.layout-immersive.hud-big > .controls .target {
   font-size: 28px;
+}
+.app.layout-immersive.hud-big .imm-ring-val {
+  font-size: 20px;
+}
+.app.layout-immersive.hud-big .imm-nn-v {
+  font-size: 24px;
 }
 /* the bigger buttons need more clearance below the speed pill */
 .app.layout-immersive.hud-big > .controls {

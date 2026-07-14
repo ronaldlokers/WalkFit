@@ -78,3 +78,21 @@ describe('grpid keying (#57)', () => {
     expect(loadWeightLog()).toHaveLength(2)
   })
 })
+
+describe('body-composition fields (#42)', () => {
+  it('merge preserves and overwrites fatPct/muscleKg with the entry', () => {
+    mergeWeighIns([{ date: '2026-07-13T07:00:00.000Z', kg: 82.4, source: 'withings', grpid: 9 }])
+    const [e] = mergeWeighIns([
+      {
+        date: '2026-07-13T07:00:00.000Z',
+        kg: 82.4,
+        source: 'withings',
+        grpid: 9,
+        fatPct: 24.5,
+        muscleKg: 55.3,
+      },
+    ])
+    expect(e).toMatchObject({ kg: 82.4, fatPct: 24.5, muscleKg: 55.3 })
+    expect(loadWeightLog()).toHaveLength(1)
+  })
+})

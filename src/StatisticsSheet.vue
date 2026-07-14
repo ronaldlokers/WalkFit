@@ -211,6 +211,27 @@ const weightSpark = computed(() => {
   const goalY = props.goalWeight ? H - 0.12 * H - ((props.goalWeight - min) / rng) * 0.76 * H : null
   return { line: pts.join(' '), area: `M0,${H} L${pts.join(' L')} L${W},${H} Z`, min, max, goalY }
 })
+// body composition (#42): shown only when the provider reports them
+const latestFat = computed(() => [...props.weightLog].reverse().find((e) => e.fatPct != null))
+const latestMuscle = computed(() => [...props.weightLog].reverse().find((e) => e.muscleKg != null))
+const fatSpark = computed(() => {
+  const log = props.weightLog.filter((e) => e.fatPct != null)
+  if (log.length < 2) return null
+  const W = 320,
+    H = 56
+  const vals = log.map((e) => e.fatPct!)
+  const min = Math.min(...vals),
+    max = Math.max(...vals)
+  const rng = Math.max(0.5, max - min)
+  const t0 = new Date(log[0]!.date).getTime()
+  const span = Math.max(1, new Date(log[log.length - 1]!.date).getTime() - t0)
+  const pts = log.map(
+    (e) =>
+      `${(((new Date(e.date).getTime() - t0) / span) * W).toFixed(1)},${(H - 0.15 * H - ((e.fatPct! - min) / rng) * 0.7 * H).toFixed(1)}`,
+  )
+  return { line: pts.join(' '), min, max }
+})
+
 const weighInInput = ref<number | null>(null)
 function logWeighIn() {
   if (!weighInInput.value) return
@@ -377,6 +398,18 @@ function logWeighIn() {
             <span class="k">{{ toGoal > 0 ? 'to goal' : 'past goal' }}</span>
           </div>
         </div>
+        <div v-if="latestFat || latestMuscle" class="detail-tiles hist-tiles comp-tiles">
+          <div v-if="latestFat">
+            <span class="v">{{ latestFat.fatPct!.toFixed(1) }}<span class="unit">%</span></span>
+            <span class="k">body fat</span>
+          </div>
+          <div v-if="latestMuscle">
+            <span class="v"
+              >{{ latestMuscle.muscleKg!.toFixed(1) }}<span class="unit">kg</span></span
+            >
+            <span class="k">muscle</span>
+          </div>
+        </div>
         <template v-if="weightSpark">
           <svg class="weight-chart" viewBox="0 0 320 80" preserveAspectRatio="none">
             <path class="weight-area" :d="weightSpark.area" />
@@ -392,6 +425,14 @@ function logWeighIn() {
           </svg>
           <div class="weight-range">
             {{ weightSpark.min.toFixed(1) }}–{{ weightSpark.max.toFixed(1) }} kg
+          </div>
+        </template>
+        <template v-if="fatSpark">
+          <svg class="weight-chart fat-chart" viewBox="0 0 320 56" preserveAspectRatio="none">
+            <polyline class="fat-line" :points="fatSpark.line" />
+          </svg>
+          <div class="weight-range">
+            body fat {{ fatSpark.min.toFixed(1) }}–{{ fatSpark.max.toFixed(1) }} %
           </div>
         </template>
         <p v-if="!weightLog.length" class="hint">No weigh-ins yet — log one to start the trend.</p>
@@ -846,6 +887,21 @@ function logWeighIn() {
   font-size: 11px;
   color: #8a93a3;
   margin-top: 4px;
+}
+.comp-tiles {
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 12px;
+}
+.fat-chart {
+  height: 56px;
+  margin-top: 12px;
+}
+.fat-line {
+  fill: none;
+  stroke: #f5a623;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
 }
 .weigh-row {
   margin-top: 12px;

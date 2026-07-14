@@ -37,6 +37,23 @@ describe('parseWeighIns', () => {
     )
     expect(parseWeighIns([grp({ measures: [{ value: 82, unit: 0, type: 1 }] })])[0]!.kg).toBe(82)
   })
+  it('carries body fat % and muscle mass when the group has them (#42)', () => {
+    const e = parseWeighIns([
+      grp({
+        measures: [
+          { value: 82400, unit: -3, type: 1 },
+          { value: 245, unit: -1, type: 6 }, // 24.5 % body fat
+          { value: 55300, unit: -3, type: 76 }, // 55.3 kg muscle
+        ],
+      }),
+    ])[0]!
+    expect(e.kg).toBe(82.4)
+    expect(e.fatPct).toBe(24.5)
+    expect(e.muscleKg).toBe(55.3)
+    // weight-only group: extras stay absent
+    expect(parseWeighIns([grp()])[0]!.fatPct).toBeUndefined()
+  })
+
   it('skips user objectives (category 2) and groups without a weight measure', () => {
     expect(
       parseWeighIns([

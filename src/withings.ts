@@ -55,15 +55,22 @@ export interface MeasureGroup {
 // type 1 = weight; kg = value * 10^unit (e.g. value 82400, unit -3 -> 82.4 kg)
 export function parseWeighIns(groups: MeasureGroup[]): WeightEntry[] {
   const entries: WeightEntry[] = []
+  const val = (g: MeasureGroup, type: number) => {
+    const m = g.measures.find((m) => m.type === type)
+    return m ? Math.round(m.value * 10 ** m.unit * 100) / 100 : undefined
+  }
   for (const g of groups) {
     if (g.category !== 1) continue
-    const m = g.measures.find((m) => m.type === 1)
-    if (!m) continue
+    const kg = val(g, 1)
+    if (kg === undefined) continue // weight is the anchor; fat-only groups are skipped
     entries.push({
       date: new Date(g.date * 1000).toISOString(),
-      kg: Math.round(m.value * 10 ** m.unit * 100) / 100,
+      kg,
       source: ID,
       grpid: g.grpid, // stable id: timestamp corrections replace instead of duplicate (#57)
+      // body composition (#42): fat % (type 6) and muscle mass kg (type 76)
+      fatPct: val(g, 6),
+      muscleKg: val(g, 76),
     })
   }
   return entries
@@ -223,7 +230,7 @@ export function useWithings(): HealthProvider {
     const groups: MeasureGroup[] = []
     let offset: number | undefined
     for (let page = 0; page < 50; page++) {
-      const params = new URLSearchParams({ action: 'getmeas', meastype: '1', category: '1' })
+      const params = new URLSearchParams({ action: 'getmeas', meastypes: '1,6,76', category: '1' })
       if (cursor) params.set('lastupdate', String(Math.floor(cursor / 1000)))
       if (offset) params.set('offset', String(offset))
       const res = await fetch(MEASURE_URL, {

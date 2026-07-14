@@ -19,3 +19,5 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # guard the lazy three.js split — a static import would bloat the main bundle (#65)
+      - run: node scripts/check-bundle-size.mjs

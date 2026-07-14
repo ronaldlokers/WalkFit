@@ -17,11 +17,32 @@
 // provider you enable (see README). A provider's routes 404 until its secrets are set.
 // Set ALLOWED_ORIGIN in wrangler.toml (or as a var) to the app's exact origin(s).
 
+/**
+ * @typedef {object} Env
+ * @property {string} [ALLOWED_ORIGIN]
+ * @property {string} [STRAVA_CLIENT_ID]
+ * @property {string} [STRAVA_CLIENT_SECRET]
+ * @property {string} [WITHINGS_CLIENT_ID]
+ * @property {string} [WITHINGS_CLIENT_SECRET]
+ *
+ * @typedef {object} TokenBody
+ * @property {string} [code]
+ * @property {string} [refresh_token]
+ * @property {string} [redirect_uri]
+ *
+ * @typedef {object} Provider
+ * @property {string} tokenUrl
+ * @property {(env: Env, grant: string, body: TokenBody) => Record<string, string | undefined>} params
+ * @property {(env: Env) => boolean} enabled
+ */
+
+/** @type {Record<string, Provider>} */
 const PROVIDERS = {
   strava: {
     tokenUrl: 'https://www.strava.com/oauth/token',
     // Strava: plain OAuth params, secrets from env.
     params(env, grant, body) {
+      /** @type {Record<string, string | undefined>} */
       const p = {
         client_id: env.STRAVA_CLIENT_ID,
         client_secret: env.STRAVA_CLIENT_SECRET,
@@ -40,6 +61,7 @@ const PROVIDERS = {
     // is a {status, body} envelope (status != 0 = error even on HTTP 200) — passed
     // through as-is; the client interprets it.
     params(env, grant, body) {
+      /** @type {Record<string, string | undefined>} */
       const p = {
         action: 'requesttoken',
         client_id: env.WITHINGS_CLIENT_ID,
@@ -58,6 +80,7 @@ const PROVIDERS = {
   },
 }
 
+/** @param {Env} env */
 function allowedOrigins(env) {
   return (env.ALLOWED_ORIGIN || '')
     .split(',')
@@ -65,6 +88,7 @@ function allowedOrigins(env) {
     .filter(Boolean)
 }
 
+/** @param {Env} env  @param {string} origin */
 function corsHeaders(env, origin) {
   const allowed = allowedOrigins(env)
   const allow = allowed.includes(origin) ? origin : allowed[0] || ''
@@ -76,21 +100,30 @@ function corsHeaders(env, origin) {
   }
 }
 
+/** @param {Provider} provider  @param {Env} env  @param {string} grant  @param {TokenBody} body */
 async function exchangeToken(provider, env, grant, body) {
   const res = await fetch(provider.tokenUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams(provider.params(env, grant, body)),
+    // drop undefined values — URLSearchParams wants Record<string, string>
+    body: new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(provider.params(env, grant, body)).filter(
+          /** @returns {e is [string, string]} */ (e) => e[1] !== undefined,
+        ),
+      ),
+    ),
   })
   const data = await res.json()
   return { ok: res.ok, status: res.status, data }
 }
 
 export default {
+  /** @param {Request} request  @param {Env} env */
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || ''
     const headers = corsHeaders(env, origin)
-    const json = (data, status = 200) =>
+    const json = (/** @type {unknown} */ data, status = 200) =>
       new Response(JSON.stringify(data), {
         status,
         headers: { ...headers, 'content-type': 'application/json' },

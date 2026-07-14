@@ -3,8 +3,9 @@ import { parseHeartRate } from './protocol'
 
 // Standard Bluetooth Heart Rate Service (works with Garmin "Broadcast Heart Rate",
 // chest straps, etc.) — separate GATT device from the treadmill.
-const HR_SERVICE = 0x180d
-const HR_MEASUREMENT = 0x2a37
+// 128-bit UUID strings, not 0x… aliases — see treadmill.ts (Bluefy compat)
+const HR_SERVICE = '0000180d-0000-1000-8000-00805f9b34fb'
+const HR_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb'
 
 export interface HeartRateState {
   supported: boolean

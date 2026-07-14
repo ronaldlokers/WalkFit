@@ -8,11 +8,16 @@ import {
 } from './protocol'
 
 // --- Dreaver Motion One (FitShow FS-BT-T4) BLE identifiers ---
-const FTMS_SERVICE = 0x1826 // Fitness Machine Service
-const FTMS_CONTROL = 0x2ad9 // Fitness Machine Control Point (write + indicate)
-const VENDOR_SERVICE = 0xfff0 // FitShow vendor service
-const VENDOR_WRITE = 0xfff2 // vendor command channel (write w/o response)
-const VENDOR_NOTIFY = 0xfff1 // vendor telemetry stream (notify)
+// Canonical 128-bit UUID strings, not 0x… aliases: Bluefy (iOS Web Bluetooth
+// bridge) fails to parse numeric aliases in requestDevice ("request payload
+// could not be parsed"); strings work everywhere, including Chrome.
+const FTMS_SERVICE = '00001826-0000-1000-8000-00805f9b34fb' // Fitness Machine Service
+const FTMS_CONTROL = '00002ad9-0000-1000-8000-00805f9b34fb' // Fitness Machine Control Point (write + indicate)
+const VENDOR_SERVICE = '0000fff0-0000-1000-8000-00805f9b34fb' // FitShow vendor service
+const VENDOR_WRITE = '0000fff2-0000-1000-8000-00805f9b34fb' // vendor command channel (write w/o response)
+const VENDOR_NOTIFY = '0000fff1-0000-1000-8000-00805f9b34fb' // vendor telemetry stream (notify)
+const DIS_SERVICE = '0000180a-0000-1000-8000-00805f9b34fb' // Device Information
+const HR_SERVICE_TM = '0000180d-0000-1000-8000-00805f9b34fb' // some units expose HR too
 
 export const SPEED_MIN = 1.0 // km/h  (from FTMS supported-speed range 2ad4)
 export const SPEED_MAX = 6.0 // km/h
@@ -260,7 +265,7 @@ export function useTreadmill() {
     try {
       const dev = await navigator.bluetooth.requestDevice({
         filters: [{ namePrefix: 'Dreaver' }, { namePrefix: 'Motion' }],
-        optionalServices: [FTMS_SERVICE, VENDOR_SERVICE, 0x180a, 0x180d],
+        optionalServices: [FTMS_SERVICE, VENDOR_SERVICE, DIS_SERVICE, HR_SERVICE_TM],
       })
       await attach(dev)
     } catch (e) {

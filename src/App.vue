@@ -2476,10 +2476,14 @@ input[type='range'] {
   bottom: 104px;
   width: min(520px, 92vw);
 }
-/* the header row is the HUD now: hide the brand, keep Connect/HR/menu on the right,
-   and drop the fullscreen badges below the header bar */
+/* the header row is the HUD now: the brand gets its own translucent chip so it
+   stays readable over the sky; the fullscreen badges drop below the header bar */
 .app.layout-immersive > header .brand {
-  display: none;
+  background: rgba(10, 12, 16, 0.62);
+  backdrop-filter: blur(6px);
+  border: 1px solid #232833;
+  border-radius: 12px;
+  padding: 4px 12px;
 }
 .app.layout-immersive .view-flip {
   top: 64px;

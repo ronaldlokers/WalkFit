@@ -40,6 +40,18 @@ function saveTokens(t: StravaTokens) {
   localStorage.setItem(KEY, JSON.stringify(t))
 }
 
+// Strava interprets start_date_local as the athlete's LOCAL wall time; session.date is
+// a UTC ISO string, so sending it verbatim shifted every walk by the UTC offset (a
+// 21:00 CEST walk showed as 19:00 on Strava, #59). Format the local wall time, no zone.
+export function localWallTime(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  )
+}
+
 export function useStrava() {
   const state = reactive<StravaState>({
     supported: !!(CLIENT_ID && PROXY_URL),
@@ -174,7 +186,7 @@ export function useStrava() {
         body: JSON.stringify({
           name,
           type: 'Walk',
-          start_date_local: session.date,
+          start_date_local: localWallTime(session.date),
           elapsed_time: session.duration,
           distance: session.distance,
           trainer: 1, // indoor/treadmill — no GPS track

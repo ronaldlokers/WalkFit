@@ -306,6 +306,37 @@ describe('HR workout', () => {
     expect(w.find('.hr-zone-tag').exists()).toBe(false)
   })
 
+  it('locale switch mid-workout keeps the picker highlight and re-renders the name (#130)', async () => {
+    const { locale } = await import('./i18n')
+    const App = (await import('./App.vue')).default
+    const w = mount(App)
+    mounted = w
+    await toMain(w)
+    // start a Cardio HR workout via the badge
+    await w
+      .findAll('button')
+      .find((b) => b.attributes('title')?.includes('tap for HR workout'))!
+      .trigger('click')
+    await w
+      .findAll('.hr-zone-opt')
+      .find((b) => b.text().includes('Cardio'))!
+      .trigger('click')
+    expect(w.find('.imm-workout').text()).toContain('Cardio')
+
+    locale.value = 'nl'
+    await w.vm.$nextTick()
+    // ribbon shows the NL name (live lookup by id, not the pick-time object)
+    expect(w.find('.imm-workout').text()).toContain('Cardio') // same word in NL
+    // reopen the picker: the active target still highlights (id match, not identity)
+    await w
+      .findAll('button')
+      .find((b) => b.attributes('title')?.includes('tik om te wijzigen'))!
+      .trigger('click')
+    const on = w.findAll('.hr-zone-opt').filter((b) => b.classes().includes('on'))
+    expect(on).toHaveLength(1)
+    locale.value = 'en'
+  })
+
   it('the header Workout menu item opens the weight-loss tab, not the HR tab', async () => {
     const App = (await import('./App.vue')).default
     const w = (mounted = mount(App))

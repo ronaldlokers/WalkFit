@@ -202,6 +202,13 @@ const HR_TARGETS = computed<HrTarget[]>(() => [
 const HR_NUDGE_STEP = 0.3 // km/h per adjustment
 const HR_ADJUST_INTERVAL = 20 // seconds between nudges (issue #18 calls for 15–30s)
 const hrTarget = ref<HrTarget | null>(null) // active HR_TARGETS entry while the autopilot is steering speed
+// The stored object carries its pick-time locale; look the name up live by id so a
+// language switch mid-workout re-renders it (#130).
+const hrTargetName = computed(() =>
+  hrTarget.value
+    ? (HR_TARGETS.value.find((x) => x.id === hrTarget.value!.id)?.name ?? hrTarget.value.name)
+    : '',
+)
 let lastHrAdjustElapsed = 0
 function startHrWorkout(t: HrTarget) {
   if (!hr.state.connected) return // nothing to steer by (#63) — the picker disables these too
@@ -1381,7 +1388,7 @@ const pace = computed(() => {
     <section v-else class="chart-wrap">
       <div v-if="hrTarget" class="workout-banner">
         <div>
-          <span class="workout-name">{{ t('workout.hrTitle', { name: hrTarget.name }) }}</span>
+          <span class="workout-name">{{ t('workout.hrTitle', { name: hrTargetName }) }}</span>
           <span class="workout-seg">
             {{
               t('workout.hrStatus', {
@@ -1467,7 +1474,7 @@ const pace = computed(() => {
       <template v-else>
         <div class="imm-meta">
           <span class="imm-name">
-            HR · {{ hrTarget!.name }} · {{ hrTargetRange(hrTarget!, maxHr).lo }}–{{
+            HR · {{ hrTargetName }} · {{ hrTargetRange(hrTarget!, maxHr).lo }}–{{
               hrTargetRange(hrTarget!, maxHr).hi
             }}
             bpm

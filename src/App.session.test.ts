@@ -393,6 +393,24 @@ describe('workouts & goals (#68)', () => {
   })
 })
 
+describe('wake lock race (#133)', () => {
+  it('a lock resolving after the walk ended is released immediately', async () => {
+    const release = vi.fn(async () => {})
+    let resolveReq: (s: WakeLockSentinel) => void
+    const request = vi.fn(() => new Promise<WakeLockSentinel>((r) => (resolveReq = r)))
+    Object.defineProperty(navigator, 'wakeLock', { value: { request }, configurable: true })
+    const w = await mountToMain()
+    await clickButton(w, 'Start') // acquire in flight, unresolved
+    await w.vm.$nextTick()
+    await clickButton(w, 'Stop') // walk ends before the sentinel arrives
+    await w.vm.$nextTick()
+    resolveReq!({ release } as unknown as WakeLockSentinel)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(release).toHaveBeenCalled() // late sentinel released, not leaked
+  })
+})
+
 describe('strava prompt queue (#140)', () => {
   it('a second finished walk queues instead of clobbering the open prompt', async () => {
     fakeStrava.connected = true

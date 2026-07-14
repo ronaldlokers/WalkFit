@@ -309,18 +309,18 @@ describe('App happy path', () => {
 })
 
 describe('experimental layouts (#103)', () => {
-  it('defaults to the current layout and persists a switch', async () => {
+  it('defaults to the immersive layout and persists a switch', async () => {
     localStorage.setItem('walkfit.setupDone', '1')
     const w = mount(App)
-    expect(w.find('.app').classes()).toContain('layout-current')
+    expect(w.find('.app').classes()).toContain('layout-immersive')
     await clickButton(w, '☰')
     await clickButton(w, 'Settings')
     const select = w
       .findAll('select')
-      .find((s) => s.findAll('option').some((o) => o.attributes('value') === 'immersive'))!
-    await select.setValue('immersive')
-    expect(w.find('.app').classes()).toContain('layout-immersive')
-    expect(localStorage.getItem('walkfit.layout')).toBe('immersive')
+      .find((s) => s.findAll('option').some((o) => o.attributes('value') === 'current'))!
+    await select.setValue('current')
+    expect(w.find('.app').classes()).toContain('layout-current')
+    expect(localStorage.getItem('walkfit.layout')).toBe('current')
   })
 
   it('persisted immersive layout applies on load, big-numbers option adds hud-big', () => {

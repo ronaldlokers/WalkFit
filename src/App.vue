@@ -297,10 +297,10 @@ function scenicUnsupported() {
   scenicSupported.value = false
   viewMode.value = 'track'
 }
-// --- experimental layouts (#103): 'current' (default) | 'immersive' | 'dashboard' ---
-// Prototypes behind a switcher (Settings → Display) so they can be compared on the
-// real treadmill without churning the default. Composition only — same components.
-const layout = ref(localStorage.getItem('walkfit.layout') || 'current')
+// --- layouts (#103): 'immersive' (default) | 'current' | 'dashboard' ---
+// The immersive layout won the on-treadmill comparison; the switcher stays
+// (Settings → Display) while it gets polished. Composition only — same components.
+const layout = ref(localStorage.getItem('walkfit.layout') || 'immersive')
 watch(layout, (v) => localStorage.setItem('walkfit.layout', v))
 // kiosk concept folded into immersive as a big-numbers option
 const bigNumbers = ref(localStorage.getItem('walkfit.layout.big') === '1')

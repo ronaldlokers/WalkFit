@@ -329,6 +329,10 @@ describe('immersive layout (#103)', () => {
     expect(ribbon.exists()).toBe(true)
     expect(ribbon.text()).toContain('seg 1/')
     expect(ribbon.findAll('.imm-seg').length).toBeGreaterThan(1)
+    // hero countdown ring + now→next speeds (#110)
+    expect(ribbon.find('.imm-ring-val').text()).toMatch(/^\d{2}:\d{2}$/)
+    expect(ribbon.find('.imm-now .imm-nn-v').text()).toMatch(/^\d\.\d$/)
+    expect(ribbon.find('.imm-next .imm-nn-v').text()).toMatch(/^\d\.\d$/) // seg 1 of several
     await clickButton(w, 'End')
     expect(w.find('.imm-workout').exists()).toBe(false)
   })

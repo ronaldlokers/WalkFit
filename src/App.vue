@@ -1463,8 +1463,8 @@ const pace = computed(() => {
       </div>
     </div>
 
-    <!-- session statistics -->
-    <div v-if="statisticsOpen" class="overlay" @click.self="statisticsOpen = false">
+    <!-- session statistics — full-page dashboard (#115), no overlay chrome needed -->
+    <div v-if="statisticsOpen">
       <StatisticsSheet
         :sessions="sessions"
         :weight-log="weightLog"

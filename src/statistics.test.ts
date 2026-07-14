@@ -7,6 +7,7 @@ import {
   weeklyTotals,
   currentStreak,
   dailyTotals,
+  weekStart,
   loadGoals,
   saveGoals,
   DEFAULT_GOALS,
@@ -124,6 +125,25 @@ describe('dailyTotals', () => {
     const now = new Date('2026-01-07T12:00:00')
     const [day] = dailyTotals([{ ...base, date: '2026-01-07T08:00:00', avgHr: 105 }], 1, now)
     expect(day).toMatchObject({ steps: 0, hrMin: 105, hrMax: 105, hrAvg: 105 })
+  })
+})
+
+describe('weekStart', () => {
+  it('returns the Monday of the containing week at local midnight', () => {
+    // 2026-07-15 is a Wednesday; its week starts Monday 2026-07-13
+    const mon = weekStart(new Date('2026-07-15T17:30:00'))
+    expect(mon.getFullYear()).toBe(2026)
+    expect(mon.getMonth()).toBe(6)
+    expect(mon.getDate()).toBe(13)
+    expect(mon.getHours()).toBe(0)
+  })
+
+  it('Sunday belongs to the week that started the previous Monday', () => {
+    expect(weekStart(new Date('2026-07-19T09:00:00')).getDate()).toBe(13)
+  })
+
+  it('Monday maps to itself', () => {
+    expect(weekStart(new Date('2026-07-13T00:00:00')).getDate()).toBe(13)
   })
 })
 

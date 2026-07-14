@@ -61,6 +61,14 @@ export function addSession(entry: Session): Session[] {
   return list
 }
 
+// Remove one session by its start timestamp (unique per walk in practice) — for
+// deleting accidental starts the 50 m filter let through (#67).
+export function removeSession(date: string): Session[] {
+  const list = loadStatistics().filter((s) => s.date !== date)
+  localStorage.setItem(KEY, JSON.stringify(list))
+  return list
+}
+
 function isoWeekKey(date: Date): string {
   // ISO week (Mon-start), keyed as "YYYY-Www" so it sorts/groups correctly across year ends.
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))

@@ -14,7 +14,29 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   'weigh-in': [kg: number]
+  'delete-session': [date: string]
 }>()
+
+// Recent walks (#67): newest first, tappable for a per-session detail + delete.
+const RECENT_LIMIT = 14
+const recentWalks = computed(() => [...props.sessions].reverse().slice(0, RECENT_LIMIT))
+const expandedWalk = ref<string | null>(null) // session date of the open detail row
+function toggleWalk(date: string) {
+  expandedWalk.value = expandedWalk.value === date ? null : date
+}
+function walkDay(iso: string) {
+  return new Date(iso).toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  })
+}
+function walkTime(iso: string) {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+function fmtKm(m: number) {
+  return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m'
+}
 
 const weekly = computed(() => weeklyTotals(props.sessions))
 const streak = computed(() => currentStreak(props.sessions))
@@ -305,6 +327,44 @@ function logWeighIn() {
             No heart-rate data in this range — connect a HR sensor during a walk.
           </p>
         </div>
+      </div>
+
+      <div class="hist-section">
+        <h3>Recent walks</h3>
+        <ul class="walklist">
+          <li v-for="w in recentWalks" :key="w.date">
+            <button class="walk-row" @click="toggleWalk(w.date)">
+              <span class="walk-when">
+                <span class="walk-day">{{ walkDay(w.date) }}</span>
+                <span class="walk-time">{{ walkTime(w.date) }}</span>
+              </span>
+              <span class="walk-stats">
+                <span class="walk-stat">{{ fmtKm(w.distance) }}</span>
+                <span class="walk-stat">{{ mmss(w.duration) }}</span>
+                <span class="walk-stat">~{{ Math.round(w.kcal) }} kcal</span>
+              </span>
+            </button>
+            <div v-if="expandedWalk === w.date" class="walk-detail">
+              <div class="detail-tiles hist-tiles walk-tiles">
+                <div>
+                  <span class="v">{{ w.steps ?? '—' }}</span>
+                  <span class="k">steps</span>
+                </div>
+                <div>
+                  <span class="v">{{ w.avgHr ?? '—' }}</span>
+                  <span class="k">avg bpm</span>
+                </div>
+                <div>
+                  <span class="v">{{ w.hrMin != null ? `${w.hrMin}–${w.hrMax}` : '—' }}</span>
+                  <span class="k">bpm range</span>
+                </div>
+              </div>
+              <button class="btn ghost sm walk-delete" @click="emit('delete-session', w.date)">
+                Delete this walk
+              </button>
+            </div>
+          </li>
+        </ul>
       </div>
 
       <div class="hist-section">
@@ -693,6 +753,62 @@ function logWeighIn() {
   margin: 4px 0 0;
   font-size: 12px;
 }
+.walklist {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.walk-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: #171a21;
+  border: 1px solid #232833;
+  border-radius: 12px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.walk-row:hover {
+  border-color: #333a46;
+}
+.walk-when {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.walk-day {
+  font-weight: 700;
+  font-size: 13.5px;
+}
+.walk-time {
+  font-size: 11px;
+  color: #8a93a3;
+}
+.walk-stats {
+  display: flex;
+  gap: 12px;
+}
+.walk-stat {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: #cbd3df;
+}
+.walk-detail {
+  padding: 10px 6px 4px;
+}
+.walk-tiles {
+  margin-bottom: 10px;
+}
+.walk-delete {
+  color: #ff7f7f;
+}
+
 .weeklist {
   list-style: none;
   display: flex;

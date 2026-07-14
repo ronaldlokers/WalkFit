@@ -307,7 +307,7 @@ function scenicUnsupported() {
 // Test themes (#173): experimental visual identities over the same immersive app.
 // Applied as html[data-theme] so the global theme stylesheets in style.css reach
 // body + every component without touching their scoped styles.
-const THEMES = ['default', 'neon', 'swiss', 'glass'] as const
+const THEMES = ['default', 'swiss', 'glass'] as const
 type Theme = (typeof THEMES)[number]
 const storedTheme = localStorage.getItem('walkfit.theme')
 const theme = ref<Theme>(THEMES.includes(storedTheme as Theme) ? (storedTheme as Theme) : 'default')

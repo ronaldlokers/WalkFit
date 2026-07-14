@@ -84,65 +84,6 @@ input {
    track keeps every marking — themes only restyle chrome, sky and accents.
    ========================================================================== */
 
-/* --- Night Circuit: synthwave violet night, cyan/magenta glow --- */
-html[data-theme='neon'] {
-  --accent: #00f0ff;
-}
-html[data-theme='neon'] body {
-  background: radial-gradient(120% 100% at 50% 0%, #1a0b2e 0%, #0d0517 55%, #060210 100%);
-}
-html[data-theme='neon'] .sstat,
-html[data-theme='neon'] .app.layout-immersive .sstat {
-  background: rgba(20, 8, 40, 0.6);
-  border-color: rgba(0, 240, 255, 0.35);
-  border-radius: 4px;
-}
-html[data-theme='neon'] .sstat .sv {
-  color: #00f0ff;
-  text-shadow: 0 0 10px rgba(0, 240, 255, 0.7);
-}
-html[data-theme='neon'] .sstat .sk {
-  color: #8f86b8;
-  letter-spacing: 2px;
-}
-html[data-theme='neon'] .app.layout-immersive > .controls,
-html[data-theme='neon'] .app.layout-immersive > .action-row,
-html[data-theme='neon'] .app.layout-immersive > .imm-workout {
-  background: rgba(13, 5, 26, 0.75);
-  border-color: rgba(0, 240, 255, 0.4);
-  border-radius: 6px;
-  box-shadow: 0 0 26px rgba(0, 240, 255, 0.14);
-}
-html[data-theme='neon'] .btn.go {
-  background: transparent;
-  color: #00ff9d;
-  border: 1px solid #00ff9d;
-  box-shadow: 0 0 16px rgba(0, 255, 157, 0.35);
-  border-radius: 4px;
-}
-html[data-theme='neon'] .btn.halt {
-  background: transparent;
-  color: #ff2ec4;
-  border: 1px solid #ff2ec4;
-  box-shadow: 0 0 16px rgba(255, 46, 196, 0.3);
-  border-radius: 4px;
-}
-html[data-theme='neon'] .menu-panel {
-  background: rgba(13, 5, 26, 0.95);
-  border-color: rgba(0, 240, 255, 0.35);
-}
-html[data-theme='neon'] .hr-badge {
-  border-color: rgba(255, 46, 196, 0.5);
-  background: rgba(20, 8, 40, 0.7);
-}
-html[data-theme='neon'] .track-lane {
-  stroke: rgba(0, 240, 255, 0.55);
-}
-html[data-theme='neon'] .lap-num,
-html[data-theme='neon'] .lap-label {
-  text-shadow: 0 0 14px rgba(0, 240, 255, 0.6);
-}
-
 /* --- Swiss Meet Sheet: light, Helvetica, hard rules, red accent --- */
 html[data-theme='swiss'] {
   --accent: #e63312;
@@ -484,65 +425,9 @@ html[data-theme='glass'] .app.layout-immersive > .action-row .btn {
   flex: 1;
 }
 
-/* Neon: lap info moves to the mockup's bottom-left glow block (the 2D SVG keeps its
-   centre counter; this styles the workout ribbon + pills placement). */
-html[data-theme='neon'] .app.layout-immersive > .controls {
-  width: min(620px, 94vw);
-}
-html[data-theme='neon'] .app.layout-immersive > .controls .target {
-  font-size: 40px;
-  text-shadow: 0 0 16px rgba(0, 240, 255, 0.8);
-}
-html[data-theme='neon'] .app.layout-immersive > .action-row .btn {
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  font-size: 13px;
-  padding: 12px 32px;
-}
-
 /* movable lap readout for themed layouts — hidden unless a theme places it */
 .theme-lap {
   display: none;
-}
-
-/* --- Night Circuit layout: synthwave backdrop, lap block bottom-left, SVG centre text off --- */
-html[data-theme='neon'] body {
-  background:
-    radial-gradient(
-      circle at 50% 44%,
-      rgba(255, 46, 196, 0.5) 0%,
-      rgba(255, 138, 0, 0.28) 9%,
-      transparent 15%
-    ),
-    repeating-linear-gradient(90deg, rgba(0, 240, 255, 0.12) 0 2px, transparent 2px 110px),
-    repeating-linear-gradient(0deg, rgba(255, 46, 196, 0.1) 0 2px, transparent 2px 78px),
-    radial-gradient(120% 100% at 50% 0%, #1a0b2e 0%, #0d0517 55%, #060210 100%);
-}
-html[data-theme='neon'] .lap-num,
-html[data-theme='neon'] .lap-label,
-html[data-theme='neon'] .lap-times {
-  display: none;
-}
-html[data-theme='neon'] .theme-lap {
-  display: block;
-  position: fixed;
-  left: 30px;
-  bottom: 34px;
-  z-index: 10;
-}
-html[data-theme='neon'] .theme-lap b {
-  display: block;
-  font-size: 46px;
-  font-weight: 800;
-  color: #fff;
-  text-shadow: 0 0 16px rgba(0, 240, 255, 0.9);
-  line-height: 1;
-}
-html[data-theme='neon'] .theme-lap span {
-  font-size: 11px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: #8f86b8;
 }
 
 /* --- Swiss layout: track boxed left, right rail with giant speed + stacked controls --- */
@@ -641,4 +526,75 @@ html[data-theme='glass'] .app.layout-immersive .scene3d-wrap {
 html[data-theme='glass'] .app.layout-immersive .view-flip {
   top: 10px;
   right: 10px;
+}
+
+/* --- themed 2D tracks (#173): the mockups draw a minimal loop, not the surveyed
+   athletics render — hide the detail layers and restyle band/progress/marker --- */
+html[data-theme='swiss'] .track-lane,
+html[data-theme='swiss'] .stagger,
+html[data-theme='swiss'] .breakline,
+html[data-theme='swiss'] .relay-line,
+html[data-theme='swiss'] .hurdle-tick,
+html[data-theme='swiss'] .waterfall,
+html[data-theme='swiss'] .lane-num,
+html[data-theme='glass'] .track-lane,
+html[data-theme='glass'] .stagger,
+html[data-theme='glass'] .breakline,
+html[data-theme='glass'] .relay-line,
+html[data-theme='glass'] .hurdle-tick,
+html[data-theme='glass'] .waterfall,
+html[data-theme='glass'] .lane-num {
+  display: none;
+}
+
+/* Swiss: light gray band, thin black measurement loop, red progress + red runner,
+   black finish tick — the result-sheet diagram */
+html[data-theme='swiss'] .track-band {
+  stroke: #ddd;
+}
+html[data-theme='swiss'] .track-line {
+  stroke: #111;
+  stroke-width: 1.4;
+}
+html[data-theme='swiss'] .track-progress {
+  stroke: #e63312;
+  stroke-width: 30;
+  filter: none;
+}
+html[data-theme='swiss'] .startline {
+  stroke: #111;
+  stroke-width: 2.5;
+}
+html[data-theme='swiss'] .runner .halo {
+  display: none;
+}
+html[data-theme='swiss'] .runner .body {
+  fill: #e63312;
+  r: 8;
+}
+
+/* Glass: soft translucent ring, blue progress with round caps, white marker with a
+   blue ring — the frosted-card diagram */
+html[data-theme='glass'] .track-band {
+  stroke: rgba(23, 50, 77, 0.1);
+}
+html[data-theme='glass'] .track-line {
+  stroke: none;
+}
+html[data-theme='glass'] .track-progress {
+  stroke: #0a84ff;
+  stroke-width: 26;
+  filter: none;
+}
+html[data-theme='glass'] .startline {
+  display: none;
+}
+html[data-theme='glass'] .runner .halo {
+  fill: rgba(255, 255, 255, 0.6);
+}
+html[data-theme='glass'] .runner .body {
+  fill: #fff;
+  stroke: #0a84ff;
+  stroke-width: 3.5;
+  r: 8;
 }

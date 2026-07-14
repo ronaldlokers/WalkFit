@@ -384,10 +384,10 @@ describe('test themes (#173)', () => {
     await clickButton(w, 'Settings')
     const select = w
       .findAll('select')
-      .find((s) => s.findAll('option').some((o) => o.attributes('value') === 'neon'))!
-    await select.setValue('neon')
-    expect(document.documentElement.dataset.theme).toBe('neon')
-    expect(localStorage.getItem('walkfit.theme')).toBe('neon')
+      .find((s) => s.findAll('option').some((o) => o.attributes('value') === 'glass'))!
+    await select.setValue('glass')
+    expect(document.documentElement.dataset.theme).toBe('glass')
+    expect(localStorage.getItem('walkfit.theme')).toBe('glass')
     await select.setValue('default')
   })
 })

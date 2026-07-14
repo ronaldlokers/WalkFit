@@ -226,7 +226,6 @@ function fmtSynced(ms: number | null) {
         <span>{{ t('settings.theme') }}</span>
         <select v-model="theme" class="set-select">
           <option value="default">Default</option>
-          <option value="neon">Night Circuit</option>
           <option value="swiss">Swiss Meet Sheet</option>
           <option value="glass">Morning Glass</option>
         </select>

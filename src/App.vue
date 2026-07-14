@@ -423,7 +423,7 @@ function restoreSnapshot() {
   rebaseWatermarks()
   // if the belt hasn't come back running within the auto-reconnect window, close it out
   setTimeout(() => {
-    if (sessionStart && !state.running) finalizeSession()
+    if (sessionStart && !state.running && !pausedWalk.value) finalizeSession()
   }, 30_000)
 }
 
@@ -594,6 +594,7 @@ watch(
   },
 )
 function beginSession() {
+  pausedWalk.value = false // a genuinely new session is never paused (#128)
   sessionStart = new Date()
   sessionName =
     active.value?.name ||
@@ -694,7 +695,11 @@ watch(
   () => state.running,
   (running, was) => {
     if (running && !was) {
-      pausedWalk.value = false
+      // NOTE: pausedWalk is NOT cleared here. The belt's deceleration bounce fires a
+      // phantom running=true right after Pause; clearing the flag on that edge turned
+      // Pause into Stop (the following staleness stop finalized the session) (#128).
+      // Only explicit user actions clear it: Start (resume), Stop, or a new session
+      // beginning (beginSession below).
       // a restored (or paused) session stays open: rebase against the fresh counters
       // and keep accumulating instead of starting a new session (#66)
       if (sessionStart) rebaseWatermarks()

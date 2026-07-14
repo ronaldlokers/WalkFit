@@ -307,6 +307,29 @@ describe('session resilience (#66)', () => {
     expect(logged()[0]!.duration).toBe(420)
   })
 
+  it("the belt's deceleration bounce after Pause keeps the walk paused (#128)", async () => {
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    await walk(w, 500, 300, 600)
+    await clickButton(w, 'Pause')
+    await w.vm.$nextTick()
+    // belt coasts: telemetry flips running back on for a few metres, then the
+    // staleness timeout drops it again — this must NOT finalize the paused session
+    fakeTm.running = true
+    await w.vm.$nextTick() // running edge lands first (like real telemetry), then coast
+    await walk(w, 6, 4)
+    fakeTm.running = false
+    await w.vm.$nextTick()
+    expect(logged()).toHaveLength(0) // still paused, nothing logged
+    expect(w.text()).toContain('Resume') // Start still offers Resume
+    // resuming continues the same session, coast metres included
+    await clickButton(w, 'Resume')
+    await walk(w, 200, 120, 240)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(logged().map((s) => s.distance)).toEqual([706])
+  })
+
   it('Stop while paused logs the banked progress', async () => {
     const w = await mountToMain()
     await clickButton(w, 'Start')

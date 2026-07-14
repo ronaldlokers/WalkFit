@@ -4,6 +4,7 @@ import { currentStreak, dailyTotals, weekStart } from './statistics'
 import type { Session, Goals } from './statistics'
 import type { WeightEntry } from './weight'
 import { mmss } from './format'
+import Logo from './Logo.vue'
 
 const props = defineProps<{
   sessions: Session[]
@@ -223,6 +224,7 @@ function logWeighIn() {
   <div class="statspage">
     <div class="stats-topbar">
       <button class="x" @click="emit('close')">‹</button>
+      <Logo :size="19" />
       <h2>Statistics</h2>
       <div class="week-nav">
         <button class="x wk-btn" title="Previous week" @click="shiftWeek(-1)">‹</button>
@@ -482,9 +484,12 @@ function logWeighIn() {
   z-index: 2;
 }
 .stats-topbar h2 {
-  font-size: 19px;
-  font-weight: 800;
+  font-size: 15px;
+  font-weight: 600;
+  color: #8a93a3;
   margin-right: auto;
+  padding-left: 10px;
+  border-left: 1px solid #232833;
 }
 .x {
   background: #1b1f27;

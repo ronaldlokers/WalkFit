@@ -45,7 +45,7 @@ describe('parseTelemetry', () => {
     })
   })
   it('decodes the short running-data variant (02 51 03) as speed only, no steps', () => {
-    expect(parseTelemetry([0x02, 0x51, 0x03, 0x0a, 0x00, 0x74])).toEqual({
+    expect(parseTelemetry([0x02, 0x51, 0x03, 0x0a, 0x58, 0x03])).toEqual({
       type: 'speed',
       speed: 1.0,
     })
@@ -66,7 +66,7 @@ describe('parseTelemetry', () => {
       // prettier-ignore
       parseTelemetry([
         0x02, 0x51, 0x03, 0x0a, 0x00, 0x2c, 0x01, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x03,
       ]),
     ).toEqual({ type: 'speed', speed: 1.0, steps: 300 })
   })
@@ -83,6 +83,29 @@ describe('parseTelemetry', () => {
   it('rejects malformed / non-frame input', () => {
     expect(parseTelemetry([0x00, 0x53, 0x02, 0x19])).toBeNull()
     expect(parseTelemetry([0x02, 0x99])).toBeNull()
+  })
+
+  it('rejects a frame whose checksum does not match (#61)', () => {
+    // valid speed frame with the speed byte corrupted: 2.5 -> 0.1 would pin the
+    // min-filter absurdly low for a whole window if it were accepted
+    expect(parseTelemetry([0x02, 0x53, 0x02, 0x01, 0x00, 0x48, 0x03])).toBeNull()
+    // and a corrupted checksum byte itself
+    expect(parseTelemetry([0x02, 0x53, 0x02, 0x19, 0x00, 0x49, 0x03])).toBeNull()
+  })
+
+  it('rejects a frame without the 0x03 terminator', () => {
+    expect(parseTelemetry([0x02, 0x53, 0x02, 0x19, 0x00, 0x48, 0x00])).toBeNull()
+  })
+
+  it('a 16-byte running frame stays speed-only (no garbage steps past the gate)', () => {
+    // one byte short of the full 17-byte running frame: steps must not be read
+    const inner = [0x51, 0x03, 0x0a, 0x00, 0x64, 0x00, 0x14, 0x00, 0x13, 0x00, 0x64, 0x00, 0x00]
+    const ck = inner.reduce((a, b) => a ^ b, 0)
+    expect(parseTelemetry([0x02, ...inner, ck, 0x03])).toEqual({ type: 'speed', speed: 1.0 })
+  })
+
+  it('an unknown 0x53 subcode returns null instead of misparsing', () => {
+    expect(parseTelemetry([0x02, 0x53, 0x04, 0x00, 0x57, 0x03])).toBeNull()
   })
 })
 

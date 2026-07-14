@@ -38,8 +38,16 @@ export const STATUS_QUERY = frame([0x51, 0x03, 0x00])
 export const SPORT_DATA_QUERY = frame([0x52, 0x00])
 
 // Parse an fff1 notification (Uint8Array or number[]) into a typed event, or null.
+// The XOR checksum the framing defines is verified (#61): a corrupted low speed byte
+// would otherwise feed the min-filter and pin displayed speed (and the distance
+// integration) wrong for a whole ~1.6s window. Every frame shape captured on-device —
+// idle, countdown, status, stop, the phantom-2x speed frame, and the 17-byte running
+// frame — carries a valid checksum, so rejection only ever drops genuine corruption.
 export function parseTelemetry(b: Bytes): TelemetryEvent | null {
-  if (b.length < 4 || b[0] !== 0x02) return null
+  if (b.length < 4 || b[0] !== 0x02 || b[b.length - 1] !== 0x03) return null
+  let ck = 0
+  for (let i = 1; i < b.length - 2; i++) ck ^= b[i]!
+  if (ck !== b[b.length - 2]) return null
   if (b[1] === 0x53) {
     if (b[2] === 0x02) return { type: 'speed', speed: b[3] / 10 } // + phantom 2x frame
     if (b[2] === 0x01) return { type: 'status', running: b[3] === 0x00 }

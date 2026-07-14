@@ -2501,8 +2501,7 @@ input[type='range'] {
 .app.layout-immersive > .dash-widget {
   display: none;
 }
-/* fade the HUD while walking untouched; the lap badge stays */
-.app.layout-immersive.hud-hidden > header,
+/* fade the controls while walking untouched; the top bar and lap badge stay */
 .app.layout-immersive.hud-hidden > .action-row,
 .app.layout-immersive.hud-hidden > .controls {
   opacity: 0;

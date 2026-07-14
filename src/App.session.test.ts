@@ -296,3 +296,78 @@ describe('session resilience (#66)', () => {
     expect(logged().map((s) => s.distance)).toEqual([300])
   })
 })
+
+describe('workouts & goals (#68)', () => {
+  it('a paused plan resumes as the same session and the workout stays active', async () => {
+    const w = await mountToMain()
+    await clickButton(w, '☰')
+    await clickButton(w, 'Workout')
+    await w.findAll('.tcard')[0]!.trigger('click')
+    await clickButton(w, 'Start workout')
+    await walk(w, 600, 360)
+    await clickButton(w, 'Pause')
+    await w.vm.$nextTick()
+    expect(logged()).toHaveLength(0)
+    expect(w.find('.workout-banner').exists()).toBe(true) // plan not cancelled by pause
+    await clickButton(w, 'Resume')
+    await walk(w, 400, 240)
+    // the banner's own stop control ends the plan and finalizes one combined session
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(logged().map((s) => s.distance)).toEqual([1000])
+  })
+
+  it('building a custom workout persists it and it can be started', async () => {
+    const w = await mountToMain()
+    await clickButton(w, '☰')
+    await clickButton(w, 'Workout')
+    await clickButton(w, '+ New workout')
+    await w.find('.builder-name').setValue('Lunch loop')
+    const inputs = w.findAll('.builder-seg input')
+    await inputs[0]!.setValue(4.5)
+    await inputs[1]!.setValue(15)
+    await clickButton(w, 'Save workout')
+    const stored = JSON.parse(localStorage.getItem('walkfit.workouts.custom')!)
+    expect(stored).toHaveLength(1)
+    expect(stored[0].name).toBe('Lunch loop')
+    expect(stored[0].segments).toEqual([{ speed: 4.5, minutes: 15 }])
+    // the new card is in the list and startable
+    const card = w.findAll('.tcard').find((c) => c.text().includes('Lunch loop'))!
+    await card.trigger('click')
+    await clickButton(w, 'Start workout')
+    expect(w.find('.workout-banner').text()).toContain('Lunch loop')
+  })
+
+  it('deleting a custom workout removes it from storage', async () => {
+    localStorage.setItem(
+      'walkfit.workouts.custom',
+      JSON.stringify([
+        { id: 'custom-1', name: 'Old plan', focus: '', segments: [{ speed: 3, minutes: 10 }] },
+      ]),
+    )
+    const w = await mountToMain()
+    await clickButton(w, '☰')
+    await clickButton(w, 'Workout')
+    await w
+      .findAll('.tcard')
+      .find((c) => c.text().includes('Old plan'))!
+      .trigger('click')
+    await clickButton(w, 'Delete')
+    expect(JSON.parse(localStorage.getItem('walkfit.workouts.custom')!)).toHaveLength(0)
+    expect(w.findAll('.tcard').some((c) => c.text().includes('Old plan'))).toBe(false)
+  })
+
+  it('a distance goal tracks progress and marks reached (#68)', async () => {
+    const w = await mountToMain()
+    await w
+      .findAll('.goal-chip')
+      .find((c) => c.text() === '1 km')!
+      .trigger('click')
+    await clickButton(w, 'Start')
+    await walk(w, 600, 360)
+    expect(w.find('.goal-pct').text()).toBe('60%')
+    await walk(w, 450, 270)
+    expect(w.find('.goal-pct').text()).toBe('✓ reached')
+    await clickButton(w, 'Stop')
+  })
+})

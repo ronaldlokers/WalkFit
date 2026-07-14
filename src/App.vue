@@ -2,7 +2,15 @@
 import { ref, reactive, computed, onMounted, nextTick, watch, defineAsyncComponent } from 'vue'
 import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill'
 import { useHeartRate } from './heartrate'
-import { workouts, timeline, metForSpeed, hrTargetRange } from './workouts'
+import {
+  workouts,
+  timeline,
+  metForSpeed,
+  hrTargetRange,
+  loadCustomWorkouts,
+  saveCustomWorkout,
+  deleteCustomWorkout,
+} from './workouts'
 import type { Workout, HrTarget } from './workouts'
 import { loadStatistics, addSession, removeSession, loadGoals, saveGoals } from './statistics'
 import type { Session } from './statistics'
@@ -226,6 +234,43 @@ watch(
     if (!connected && hrTarget.value) endHrWorkout()
   },
 )
+
+// --- free-walk target goal (#68): distance or duration, with audio milestones ---
+interface WalkGoal {
+  type: 'distance' | 'time'
+  value: number // metres or seconds
+  label: string
+}
+const GOAL_PRESETS: WalkGoal[] = [
+  { type: 'distance', value: 1000, label: '1 km' },
+  { type: 'distance', value: 2000, label: '2 km' },
+  { type: 'distance', value: 5000, label: '5 km' },
+  { type: 'time', value: 20 * 60, label: '20 min' },
+  { type: 'time', value: 30 * 60, label: '30 min' },
+]
+const walkGoal = ref<WalkGoal | null>(null)
+let goalAnnounced = 0 // 0 none · 1 halfway · 2 reached
+function toggleGoal(g: WalkGoal) {
+  walkGoal.value = walkGoal.value === g ? null : g
+  goalAnnounced = 0
+}
+const goalProgress = computed(() => {
+  const g = walkGoal.value
+  if (!g) return 0
+  const t = sessionTotals()
+  return Math.min(1, (g.type === 'distance' ? t.distance : t.elapsed) / g.value)
+})
+watch(goalProgress, (p) => {
+  if (!walkGoal.value || !state.running) return
+  if (p >= 1 && goalAnnounced < 2) {
+    goalAnnounced = 2
+    beep(1320, 300)
+    speak('Goal reached!')
+  } else if (p >= 0.5 && goalAnnounced < 1) {
+    goalAnnounced = 1
+    speak('Halfway there')
+  }
+})
 
 // --- view mode: athletics track loop, or the first-person 3D scenic walk (#51) ---
 // Scenic3D pulls in three.js, so it's an async component: the chunk only downloads the
@@ -492,6 +537,7 @@ function beginSession() {
   carryKcal = 0
   carrySteps = 0
   lastSnapshotDistance = -Infinity
+  goalAnnounced = 0
 }
 function rebaseWatermarks() {
   baseDistance = state.distance
@@ -655,6 +701,14 @@ function openWorkoutMenu(tab: 'plans' | 'hr' = 'plans') {
   workoutTab.value = tab
 }
 const active = ref<Workout | null>(null) // weight-loss workout currently running
+// user-built plans (#68) — rendered by the picker alongside the presets
+const customWorkouts = ref<Workout[]>(loadCustomWorkouts())
+function saveCustom(w: Workout) {
+  customWorkouts.value = saveCustomWorkout(w)
+}
+function deleteCustom(id: string) {
+  customWorkouts.value = deleteCustomWorkout(id)
+}
 const activeTl = computed(() => (active.value ? timeline(active.value) : null))
 const curSegIndex = computed(() => {
   if (!activeTl.value) return -1
@@ -1065,6 +1119,27 @@ const pace = computed(() => {
         </div>
         <button class="btn round" :disabled="!state.connected" @click="bump(SPEED_STEP)">+</button>
       </div>
+      <!-- free-walk goal (#68): tap to set/clear; announces halfway + reached -->
+      <div class="goal-row">
+        <span class="goal-label">🎯 Goal</span>
+        <button
+          v-for="g in GOAL_PRESETS"
+          :key="g.label"
+          class="goal-chip"
+          :class="{ on: walkGoal === g }"
+          @click="toggleGoal(g)"
+        >
+          {{ g.label }}
+        </button>
+      </div>
+      <div v-if="walkGoal" class="goal-progress">
+        <div class="goal-bar">
+          <div class="goal-fill" :style="{ width: goalProgress * 100 + '%' }"></div>
+        </div>
+        <span class="goal-pct">{{
+          goalProgress >= 1 ? '✓ reached' : Math.round(goalProgress * 100) + '%'
+        }}</span>
+      </div>
     </section>
 
     <!-- workout banner + profile, OR free-walk speed chart -->
@@ -1149,6 +1224,9 @@ const pace = computed(() => {
           :active-hr-target="hrTarget"
           :adjust-interval="HR_ADJUST_INTERVAL"
           :hr-connected="hr.state.connected"
+          :custom-workouts="customWorkouts"
+          @save-custom="saveCustom"
+          @delete-custom="deleteCustom"
           :start-tab="workoutTab"
           @start-plan="startWorkout"
           @start-hr="startHrWorkout"
@@ -1305,6 +1383,9 @@ const pace = computed(() => {
             :active-hr-target="hrTarget"
             :adjust-interval="HR_ADJUST_INTERVAL"
             :hr-connected="hr.state.connected"
+            :custom-workouts="customWorkouts"
+            @save-custom="saveCustom"
+            @delete-custom="deleteCustom"
             :closable="false"
             @start-plan="wizardStartPlan"
             @start-hr="wizardStartHr"
@@ -2096,5 +2177,58 @@ input[type='range'] {
 }
 .detail-actions .btn.ghost {
   flex: 0 0 auto;
+}
+.goal-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.goal-label {
+  font-size: 12px;
+  color: #8a93a3;
+  margin-right: 2px;
+}
+.goal-chip {
+  background: #1b1f27;
+  border: 1px solid #232833;
+  color: #cbd3df;
+  border-radius: 999px;
+  padding: 3px 11px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.goal-chip.on {
+  background: var(--accent);
+  border-color: transparent;
+  color: #05210f;
+  font-weight: 700;
+}
+.goal-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.goal-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: #1b1f27;
+  overflow: hidden;
+}
+.goal-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+.goal-pct {
+  font-size: 12px;
+  color: #8a93a3;
+  font-variant-numeric: tabular-nums;
+  min-width: 62px;
+  text-align: right;
 }
 </style>

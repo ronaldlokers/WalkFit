@@ -10,6 +10,7 @@ import { mmss } from './format'
 const props = withDefaults(
   defineProps<{
     workouts: Workout[]
+    customWorkouts?: Workout[] // user-built plans (#68)
     weightKg: number
     maxHr: number
     connected?: boolean
@@ -20,10 +21,19 @@ const props = withDefaults(
     startTab?: 'plans' | 'hr' // 'plans' (weight loss) | 'hr' (heart rate)
     closable?: boolean
   }>(),
-  { connected: false, hrConnected: false, activeHrTarget: null, startTab: 'plans', closable: true },
+  {
+    connected: false,
+    hrConnected: false,
+    activeHrTarget: null,
+    startTab: 'plans',
+    closable: true,
+    customWorkouts: () => [],
+  },
 )
 const emit = defineEmits<{
   'start-plan': [w: Workout]
+  'save-custom': [w: Workout]
+  'delete-custom': [id: string]
   'start-hr': [t: HrTarget]
   'stop-hr': []
   close: []
@@ -31,6 +41,32 @@ const emit = defineEmits<{
 
 const tab = ref<'plans' | 'hr'>(props.startTab)
 const preview = ref<Workout | null>(null) // weight-loss workout shown in the detail view
+
+// --- custom workout builder (#68) ---
+const building = ref(false)
+const buildName = ref('')
+const buildSegs = ref<Segment[]>([{ speed: 3.0, minutes: 10 }])
+function openBuilder() {
+  buildName.value = ''
+  buildSegs.value = [{ speed: 3.0, minutes: 10 }]
+  building.value = true
+}
+function addSeg() {
+  if (buildSegs.value.length < 24)
+    buildSegs.value.push({ ...buildSegs.value[buildSegs.value.length - 1]! })
+}
+function removeSeg(i: number) {
+  if (buildSegs.value.length > 1) buildSegs.value.splice(i, 1)
+}
+function saveBuild() {
+  emit('save-custom', {
+    id: `custom-${crypto.randomUUID()}`,
+    name: buildName.value.trim() || 'My workout',
+    focus: 'Custom plan',
+    segments: buildSegs.value.map((s) => ({ ...s })),
+  })
+  building.value = false
+}
 
 function stats(w: Workout) {
   return workoutStats(w, props.weightKg)
@@ -91,7 +127,26 @@ function segDur(min: number) {
       </button>
     </div>
 
-    <div v-if="!preview && tab === 'plans'" class="tlist">
+    <div v-if="building" class="builder">
+      <input v-model="buildName" class="builder-name" placeholder="Workout name" maxlength="40" />
+      <div v-for="(seg, i) in buildSegs" :key="i" class="builder-seg">
+        <span class="seg-i">{{ i + 1 }}</span>
+        <input v-model.number="seg.speed" type="number" min="1" max="6" step="0.1" />
+        <span class="builder-unit">km/h</span>
+        <input v-model.number="seg.minutes" type="number" min="1" max="120" />
+        <span class="builder-unit">min</span>
+        <button class="x builder-x" :disabled="buildSegs.length <= 1" @click="removeSeg(i)">
+          ✕
+        </button>
+      </div>
+      <button class="btn ghost sm" @click="addSeg">+ Add segment</button>
+      <div class="detail-actions">
+        <button class="btn ghost" @click="building = false">Cancel</button>
+        <button class="btn go" @click="saveBuild">Save workout</button>
+      </div>
+    </div>
+
+    <div v-else-if="!preview && tab === 'plans'" class="tlist">
       <button v-for="w in workouts" :key="w.id" class="tcard" @click="preview = w">
         <div class="tcard-main">
           <span class="tname">{{ w.name }}</span>
@@ -107,6 +162,26 @@ function segDur(min: number) {
           <path :d="miniPath(w)" />
         </svg>
       </button>
+
+      <template v-if="customWorkouts.length">
+        <h3 class="tlist-heading">My workouts</h3>
+        <button v-for="w in customWorkouts" :key="w.id" class="tcard" @click="preview = w">
+          <div class="tcard-main">
+            <span class="tname">{{ w.name }}</span>
+            <span class="tfocus">{{ w.focus }}</span>
+            <span class="tmeta"
+              >{{ mmss(stats(w).minutes * 60) }} · {{ stats(w).distanceKm.toFixed(1) }} km · ~{{
+                stats(w).kcal
+              }}
+              kcal</span
+            >
+          </div>
+          <svg class="mini" viewBox="0 0 100 34">
+            <path :d="miniPath(w)" />
+          </svg>
+        </button>
+      </template>
+      <button class="btn ghost sm tlist-new" @click="openBuilder">+ New workout</button>
     </div>
 
     <div v-else-if="!preview" class="hr-workout-pane">
@@ -174,6 +249,13 @@ function segDur(min: number) {
       </ol>
       <div class="detail-actions">
         <button class="btn ghost" @click="preview = null">Back</button>
+        <button
+          v-if="preview.id.startsWith('custom-')"
+          class="btn ghost delete-custom"
+          @click="(emit('delete-custom', preview.id), (preview = null))"
+        >
+          Delete
+        </button>
         <button class="btn go" @click="emit('start-plan', preview)">Start workout</button>
       </div>
       <p v-if="!connected" class="hint">
@@ -431,5 +513,55 @@ function segDur(min: number) {
 }
 .detail-actions .btn.ghost {
   flex: 0 0 auto;
+}
+.tlist-heading {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #8a93a3;
+  margin: 10px 0 2px 2px;
+}
+.tlist-new {
+  align-self: flex-start;
+}
+.builder {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 0 14px;
+}
+.builder-name {
+  background: #171a21;
+  border: 1px solid #232833;
+  border-radius: 10px;
+  color: inherit;
+  font: inherit;
+  padding: 9px 12px;
+}
+.builder-seg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.builder-seg input {
+  width: 72px;
+  background: #171a21;
+  border: 1px solid #232833;
+  border-radius: 8px;
+  color: inherit;
+  font: inherit;
+  padding: 6px 8px;
+  text-align: right;
+}
+.builder-unit {
+  font-size: 12px;
+  color: #8a93a3;
+}
+.builder-x {
+  margin-left: auto;
+}
+.delete-custom {
+  color: #ff7f7f;
 }
 </style>

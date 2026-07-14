@@ -2669,6 +2669,37 @@ input[type='range'] {
   white-space: nowrap;
 }
 
+/* narrow screens (#113): the stat strip gets its own header row instead of
+   fighting the badges; fullscreen overlays drop below the taller header */
+@media (max-width: 700px) {
+  .app.layout-immersive > header {
+    flex-wrap: wrap;
+  }
+  .app.layout-immersive .stat-strip {
+    order: 5;
+    flex: 1 1 100%;
+    margin: 6px 0 0;
+  }
+  .app.layout-immersive .sstat {
+    flex: 1 1 0;
+    padding: 4px 2px 3px;
+  }
+  .app.layout-immersive .sstat .sv {
+    font-size: 13px;
+  }
+  .app.layout-immersive .sstat .sk {
+    font-size: 8.5px;
+  }
+  .app.layout-immersive .view-flip,
+  .app.layout-immersive .scene-badge3d {
+    top: 118px;
+  }
+  .app.layout-immersive > .warn {
+    top: 168px;
+    width: 92vw;
+  }
+}
+
 /* kiosk fold-in: big numbers for treadmill-distance reading */
 .app.layout-immersive.hud-big .sstat .sv {
   font-size: 30px;

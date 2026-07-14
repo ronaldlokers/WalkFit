@@ -214,8 +214,8 @@ function fmtSynced(ms: number | null) {
       <div class="set-row">
         <span>Layout (experimental)</span>
         <select v-model="layout" class="set-select">
-          <option value="current">Current</option>
           <option value="immersive">Immersive</option>
+          <option value="current">Classic</option>
           <option value="dashboard">Dashboard</option>
         </select>
       </div>

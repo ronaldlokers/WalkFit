@@ -132,10 +132,22 @@ export function useStrava() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ refresh_token: t.refreshToken }),
     })
-    const data = await res.json()
+    // Transient trouble (proxy 5xx, non-JSON body) must NOT destroy a valid token pair —
+    // only a definitive auth rejection may disconnect (#57).
+    let data
+    try {
+      data = await res.json()
+    } catch {
+      throw new Error('Strava refresh returned an invalid response — will retry later.')
+    }
     if (!res.ok) {
-      disconnect() // refresh token itself expired/revoked — needs a fresh connect
-      throw new Error(data.message || 'Strava session expired — reconnect in Settings.')
+      if (res.status === 400 || res.status === 401) {
+        disconnect() // refresh token itself expired/revoked — needs a fresh connect
+        throw new Error(data?.message || 'Strava session expired — reconnect in Settings.')
+      }
+      throw new Error(
+        data?.message || `Strava refresh failed (HTTP ${res.status}) — will retry later.`,
+      )
     }
     const next = {
       ...t,

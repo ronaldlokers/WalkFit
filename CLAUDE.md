@@ -137,7 +137,8 @@ same transition opens the upload-prompt popup.
 `walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.history`,
 `walkfit.goals` (daily activity goals), `walkfit.weight.log` (weigh-ins),
 `walkfit.strava` / `walkfit.withings` (OAuth tokens), `walkfit.health.lastSync.<provider>`
-(sync cursors), `walkfit.view` (`track` | `scenic`), `walkfit.capture` (raw BLE frame
+(display-only last-sync times), `walkfit.health.cursor.<provider>` (server-derived
+incremental sync cursors), `walkfit.view` (`track` | `scenic`), `walkfit.capture` (raw BLE frame
 debug logging, off unless `'1'`).
 
 **Health sync** — `health.ts` defines `HealthProvider` (id doubles as

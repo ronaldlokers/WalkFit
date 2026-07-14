@@ -51,3 +51,30 @@ describe('mergeWeighIns', () => {
     expect(loadWeightLog()).toHaveLength(2)
   })
 })
+
+describe('grpid keying (#57)', () => {
+  it('a timestamp correction with the same grpid replaces instead of duplicating', () => {
+    mergeWeighIns([{ date: '2026-07-01T07:00:00.000Z', kg: 82.6, source: 'withings', grpid: 9 }])
+    // user corrects the reading's time in the Withings app -> same grpid, new date
+    mergeWeighIns([{ date: '2026-07-01T08:30:00.000Z', kg: 82.6, source: 'withings', grpid: 9 }])
+    expect(loadWeightLog()).toEqual([
+      { date: '2026-07-01T08:30:00.000Z', kg: 82.6, source: 'withings', grpid: 9 },
+    ])
+  })
+
+  it('adopts a grpid onto a legacy same-date entry instead of duplicating', () => {
+    mergeWeighIns([{ date: '2026-07-01T07:00:00.000Z', kg: 82.6, source: 'withings' }]) // pre-grpid
+    mergeWeighIns([{ date: '2026-07-01T07:00:00.000Z', kg: 82.6, source: 'withings', grpid: 9 }])
+    expect(loadWeightLog()).toEqual([
+      { date: '2026-07-01T07:00:00.000Z', kg: 82.6, source: 'withings', grpid: 9 },
+    ])
+  })
+
+  it('distinct grpids at the same instant stay two entries', () => {
+    mergeWeighIns([
+      { date: '2026-07-01T07:00:00.000Z', kg: 82.6, source: 'withings', grpid: 1 },
+      { date: '2026-07-01T07:00:00.000Z', kg: 90.1, source: 'withings', grpid: 2 },
+    ])
+    expect(loadWeightLog()).toHaveLength(2)
+  })
+})

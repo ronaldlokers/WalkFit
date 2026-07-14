@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
 import type { HealthProvider } from './health'
-import { loadLastSync, clearLastSync } from './health'
+import { loadLastSync, clearLastSync, loadCursor, clearCursor } from './health'
+import type { WeighInSync } from './health'
 import type { WeightEntry } from './weight'
 
 // Withings weight sync (HealthProvider — see health.ts). OAuth2 like strava.ts: the
@@ -46,6 +47,7 @@ export function unwrapEnvelope<T>(data: Envelope<T>): T {
 export interface MeasureGroup {
   grpid: number
   date: number // unix seconds the measurement was taken
+  modified?: number // unix seconds the measurement was last edited server-side
   category: number // 1 = real measurement, 2 = user objective
   measures: { value: number; unit: number; type: number }[]
 }
@@ -61,6 +63,7 @@ export function parseWeighIns(groups: MeasureGroup[]): WeightEntry[] {
       date: new Date(g.date * 1000).toISOString(),
       kg: Math.round(m.value * 10 ** m.unit * 100) / 100,
       source: ID,
+      grpid: g.grpid, // stable id: timestamp corrections replace instead of duplicate (#57)
     })
   }
   return entries
@@ -108,6 +111,7 @@ export function useWithings(): HealthProvider {
   function disconnect() {
     localStorage.removeItem(KEY)
     clearLastSync(ID) // reconnect re-syncs from scratch; the merge is idempotent anyway
+    clearCursor(ID)
     state.connected = false
     state.accountLabel = ''
     state.lastSync = null
@@ -164,7 +168,7 @@ export function useWithings(): HealthProvider {
     return true
   }
 
-  async function freshAccessToken(): Promise<string> {
+  async function freshAccessToken(retried = false): Promise<string> {
     const t = loadTokens()
     if (!t) throw new Error('Not connected to Withings.')
     if (t.expiresAt > Date.now() / 1000 + 60) return t.accessToken // still valid, 1 min margin
@@ -174,13 +178,30 @@ export function useWithings(): HealthProvider {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ refresh_token: t.refreshToken }),
     })
+    // Transient trouble (proxy 5xx, non-JSON body from an intermediary) must NOT destroy
+    // a valid token pair — only a definitive rejection from Withings may disconnect (#57).
+    if (!res.ok) {
+      throw new Error(`Withings refresh failed (HTTP ${res.status}) — will retry later.`)
+    }
+    let data
+    try {
+      data = await res.json()
+    } catch {
+      throw new Error('Withings refresh returned an invalid response — will retry later.')
+    }
     let body
     try {
       body = unwrapEnvelope<{ access_token: string; refresh_token: string; expires_in: number }>(
-        await res.json(),
+        data,
       )
     } catch (e) {
-      disconnect() // refresh token expired/revoked — needs a fresh connect
+      // Withings rotates refresh tokens: another tab may have refreshed (and rotated)
+      // while we held the now-stale token. Re-read before destroying the pair (#57).
+      const current = loadTokens()
+      if (!retried && current && current.refreshToken !== t.refreshToken) {
+        return freshAccessToken(true)
+      }
+      disconnect() // definitive: refresh token expired/revoked — needs a fresh connect
       throw new Error(`Withings session expired — reconnect in Settings. (${(e as Error).message})`)
     }
     applyTokenResponse(body)
@@ -188,23 +209,37 @@ export function useWithings(): HealthProvider {
   }
 
   // Incremental: lastupdate returns groups created OR modified since the cursor, so
-  // corrections made in the Withings app flow through (the merge overwrites by
-  // source+date). First sync (no cursor) pulls the full history.
-  async function syncWeight(): Promise<WeightEntry[]> {
+  // corrections made in the Withings app flow through (the merge overwrites by grpid).
+  // First sync (no cursor) pulls the full history, following pagination — a multi-year
+  // scale history spans several pages and truncating would lose the tail forever (#57).
+  // The next cursor derives from the response's own timestamps, never the client clock.
+  async function syncWeight(): Promise<WeighInSync> {
     const accessToken = await freshAccessToken()
-    const params = new URLSearchParams({ action: 'getmeas', meastype: '1', category: '1' })
-    const cursor = loadLastSync(ID)
-    if (cursor) params.set('lastupdate', String(Math.floor(cursor / 1000)))
-    const res = await fetch(MEASURE_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      body: params,
-    })
-    const body = unwrapEnvelope<{ measuregrps?: MeasureGroup[] }>(await res.json())
-    return parseWeighIns(body.measuregrps ?? [])
+    // pre-cursor installs stored only the wall-clock lastSync — fall back to it once
+    const cursor = loadCursor(ID) ?? loadLastSync(ID)
+    const groups: MeasureGroup[] = []
+    let offset: number | undefined
+    for (let page = 0; page < 50; page++) {
+      const params = new URLSearchParams({ action: 'getmeas', meastype: '1', category: '1' })
+      if (cursor) params.set('lastupdate', String(Math.floor(cursor / 1000)))
+      if (offset) params.set('offset', String(offset))
+      const res = await fetch(MEASURE_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        body: params,
+      })
+      const body = unwrapEnvelope<{ measuregrps?: MeasureGroup[]; more?: number; offset?: number }>(
+        await res.json(),
+      )
+      groups.push(...(body.measuregrps ?? []))
+      if (!body.more || !body.offset) break
+      offset = body.offset
+    }
+    const newest = groups.reduce((max, g) => Math.max(max, g.modified ?? g.date), 0)
+    return { entries: parseWeighIns(groups), cursor: newest ? newest * 1000 : null }
   }
 
   return { id: ID, name: 'Withings', state, connect, disconnect, handleRedirect, syncWeight }

@@ -26,9 +26,9 @@ describe('unwrapEnvelope', () => {
 })
 
 describe('parseWeighIns', () => {
-  it('converts value x 10^unit to kg and unix date to ISO', () => {
+  it('converts value x 10^unit to kg, unix date to ISO, and carries the grpid', () => {
     expect(parseWeighIns([grp()])).toEqual([
-      { date: '2026-07-13T07:00:00.000Z', kg: 82.4, source: 'withings' },
+      { date: '2026-07-13T07:00:00.000Z', kg: 82.4, source: 'withings', grpid: 1 },
     ])
   })
   it('handles other unit exponents', () => {
@@ -61,7 +61,7 @@ describe('useWithings syncWeight', () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(measureEnvelope)))
     vi.stubGlobal('fetch', fetchMock)
 
-    const entries = await useWithings().syncWeight()
+    const { entries } = await useWithings().syncWeight()
     expect(entries).toHaveLength(1)
     const [url, init] = fetchMock.mock.calls[0]!
     expect(url).toBe('https://wbsapi.withings.net/measure')
@@ -70,7 +70,7 @@ describe('useWithings syncWeight', () => {
     expect(String(init!.body)).not.toContain('lastupdate') // no cursor -> full history
   })
 
-  it('sends the incremental cursor once a last sync exists', async () => {
+  it('sends the stored cursor incrementally (legacy lastSync as fallback)', async () => {
     localStorage.setItem('walkfit.withings', JSON.stringify(tokens()))
     localStorage.setItem('walkfit.health.lastSync.withings', '1783926000000')
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(measureEnvelope)))
@@ -78,6 +78,63 @@ describe('useWithings syncWeight', () => {
 
     await useWithings().syncWeight()
     expect(String(fetchMock.mock.calls[0]![1]!.body)).toContain('lastupdate=1783926000')
+
+    // a dedicated cursor takes precedence over the legacy wall-clock value
+    localStorage.setItem('walkfit.health.cursor.withings', '1783930000000')
+    await useWithings().syncWeight()
+    expect(String(fetchMock.mock.calls[1]![1]!.body)).toContain('lastupdate=1783930000')
+  })
+
+  it('derives the next cursor from the response timestamps, not the client clock (#57)', async () => {
+    localStorage.setItem('walkfit.withings', JSON.stringify(tokens()))
+    const envelope = {
+      status: 0,
+      body: {
+        measuregrps: [
+          grp({ grpid: 1, date: 1783926000 }),
+          grp({ grpid: 2, date: 1783930000, modified: 1783999999 }), // edited later
+        ],
+      },
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(envelope))),
+    )
+    const { cursor } = await useWithings().syncWeight()
+    expect(cursor).toBe(1783999999 * 1000) // max(modified ?? date), in ms
+  })
+
+  it('returns a null cursor when the sync had nothing new', async () => {
+    localStorage.setItem('walkfit.withings', JSON.stringify(tokens()))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ status: 0, body: { measuregrps: [] } }))),
+    )
+    const { entries, cursor } = await useWithings().syncWeight()
+    expect(entries).toEqual([])
+    expect(cursor).toBeNull()
+  })
+
+  it('follows pagination instead of truncating a multi-page history (#57)', async () => {
+    localStorage.setItem('walkfit.withings', JSON.stringify(tokens()))
+    const page1 = {
+      status: 0,
+      body: { measuregrps: [grp({ grpid: 1 })], more: 1, offset: 42 },
+    }
+    const page2 = {
+      status: 0,
+      body: { measuregrps: [grp({ grpid: 2, date: 1783930000 })], more: 0 },
+    }
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify(page1)))
+      .mockResolvedValueOnce(new Response(JSON.stringify(page2)))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { entries } = await useWithings().syncWeight()
+    expect(entries).toHaveLength(2)
+    expect(String(fetchMock.mock.calls[0]![1]!.body)).not.toContain('offset')
+    expect(String(fetchMock.mock.calls[1]![1]!.body)).toContain('offset=42')
   })
 
   it('refreshes an expired token and persists the ROTATED refresh token immediately', async () => {
@@ -95,7 +152,7 @@ describe('useWithings syncWeight', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(measureEnvelope)))
     vi.stubGlobal('fetch', fetchMock)
 
-    const entries = await useWithings().syncWeight()
+    const { entries } = await useWithings().syncWeight()
     expect(entries).toHaveLength(1)
     expect(JSON.parse(fetchMock.mock.calls[0]![1]!.body as string)).toEqual({
       refresh_token: 'rt-old',
@@ -122,5 +179,55 @@ describe('useWithings syncWeight', () => {
     await expect(p.syncWeight()).rejects.toThrow(/reconnect in Settings/)
     expect(p.state.connected).toBe(false)
     expect(localStorage.getItem('walkfit.withings')).toBeNull()
+  })
+
+  it('a transient proxy failure does NOT destroy the token pair (#57)', async () => {
+    const stored = tokens({ expiresAt: Math.floor(Date.now() / 1000) - 10 })
+    localStorage.setItem('walkfit.withings', JSON.stringify(stored))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('<html>502 Bad Gateway</html>', { status: 502 })),
+    )
+
+    const p = useWithings()
+    await expect(p.syncWeight()).rejects.toThrow(/will retry/)
+    expect(p.state.connected).toBe(true)
+    expect(JSON.parse(localStorage.getItem('walkfit.withings')!)).toEqual(stored) // pair intact
+  })
+
+  it('re-reads tokens rotated by another tab before giving up (#57)', async () => {
+    localStorage.setItem(
+      'walkfit.withings',
+      JSON.stringify(tokens({ expiresAt: Math.floor(Date.now() / 1000) - 10 })),
+    )
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+      if (!String(url).includes('/refresh')) {
+        return new Response(JSON.stringify({ status: 0, body: { measuregrps: [grp()] } }))
+      }
+      const body = JSON.parse(String(init!.body ?? '{}'))
+      if (body.refresh_token === 'rt-old') {
+        // simulate the race: another tab rotated the pair while we refreshed
+        localStorage.setItem(
+          'walkfit.withings',
+          JSON.stringify({
+            accessToken: 'at-tab2',
+            refreshToken: 'rt-tab2',
+            expiresAt: Math.floor(Date.now() / 1000) + 3600,
+          }),
+        )
+        return new Response(JSON.stringify({ status: 401, error: 'invalid_grant' }))
+      }
+      return new Response(JSON.stringify({ status: 0, body: { measuregrps: [grp()] } }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const p = useWithings()
+    const { entries } = await p.syncWeight()
+    expect(entries).toHaveLength(1) // recovered using the other tab's fresh pair
+    expect(p.state.connected).toBe(true)
+    expect(JSON.parse(localStorage.getItem('walkfit.withings')!).refreshToken).toBe('rt-tab2')
+    // the measure call used the other tab's still-valid access token
+    const measureCall = fetchMock.mock.calls.find(([u]) => String(u).includes('measure'))!
+    expect((measureCall[1]!.headers as Record<string, string>).Authorization).toBe('Bearer at-tab2')
   })
 })

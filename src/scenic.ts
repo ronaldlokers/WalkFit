@@ -261,6 +261,36 @@ export function waterfallPoints(samples = 25): TrackTick[] {
   return out
 }
 
+// --- weather (#72): a per-walk condition, deterministic from a session seed ---
+export type WeatherId = 'clear' | 'overcast' | 'mist'
+export function weatherFor(seed: number): WeatherId {
+  const r = worldHash(Math.floor(seed) % 100000)
+  if (r < 0.6) return 'clear'
+  if (r < 0.85) return 'overcast'
+  return 'mist'
+}
+// fog band per weather; the component applies these to THREE.Fog near/far
+export const WEATHER_FOG: Record<WeatherId, { near: number; far: number }> = {
+  clear: { near: 60, far: 230 },
+  overcast: { near: 45, far: 190 },
+  mist: { near: 15, far: 100 },
+}
+// how strongly the sky/fog colors pull toward gray, and the light dimming
+const WEATHER_GRAY: Record<WeatherId, { mix: number; gray: number; sun: number }> = {
+  clear: { mix: 0, gray: 0x9a9da6, sun: 1 },
+  overcast: { mix: 0.55, gray: 0x8a8d96, sun: 0.55 },
+  mist: { mix: 0.7, gray: 0xb9bcc4, sun: 0.45 },
+}
+
+// Fixed times of day for the Settings override (#72); 'auto' follows walked distance.
+export type TimeOfDay = 'auto' | 'dawn' | 'day' | 'sunset' | 'night'
+export const TIME_PHASES: Record<Exclude<TimeOfDay, 'auto'>, number> = {
+  dawn: 0.02,
+  day: 0.45,
+  sunset: 0.75,
+  night: 0.9,
+}
+
 // --- day/night from walked distance ---
 // Every walk gets its own sky: phase 0 (session start) is dawn; a full cycle takes
 // DAY_LENGTH_M, so a typical 2–3 km walk sees dawn → noon → golden hour → dusk.
@@ -310,17 +340,24 @@ function lerpColor(a: number, b: number, t: number): number {
   )
 }
 
-export function skyAt(phase: number): SkyState {
+export function skyAt(phase: number, weather: WeatherId = 'clear'): SkyState {
   let i = 0
   while (i < SKY_KEYS.length - 2 && SKY_KEYS[i + 1]!.at <= phase) i++
   const a = SKY_KEYS[i]!
   const b = SKY_KEYS[i + 1]!
   const t = (phase - a.at) / (b.at - a.at)
+  const w = WEATHER_GRAY[weather]
   return {
-    sky: lerpColor(a.sky, b.sky, t),
-    fog: lerpColor(a.fog, b.fog, t),
-    sunIntensity: lerp(a.sunIntensity, b.sunIntensity, t),
+    sky: lerpColor(lerpColor(a.sky, b.sky, t), w.gray, w.mix),
+    fog: lerpColor(lerpColor(a.fog, b.fog, t), w.gray, w.mix),
+    sunIntensity: lerp(a.sunIntensity, b.sunIntensity, t) * w.sun,
     sunColor: lerpColor(a.sunColor, b.sunColor, t),
-    ambient: lerp(a.ambient, b.ambient, t),
+    ambient: lerp(a.ambient, b.ambient, t) * (weather === 'clear' ? 1 : 0.85),
   }
+}
+
+// Night band (#72): floodlights switch on, path edges matter — shared so the component
+// and any future logic agree on what "night" means.
+export function isNight(phase: number): boolean {
+  return phase >= 0.82 || phase < 0.02
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   loadStatistics,
   addSession,
+  removeSession,
   weeklyTotals,
   currentStreak,
   dailyTotals,
@@ -140,5 +141,38 @@ describe('goals', () => {
     expect(loadGoals()).toEqual({ kcal: 500, steps: 8000, minutes: 45 })
     localStorage.setItem('walkfit.goals', '{not json')
     expect(loadGoals()).toEqual(DEFAULT_GOALS)
+  })
+})
+
+describe('removeSession (#67)', () => {
+  it('removes exactly the session with the given start date', () => {
+    addSession({
+      date: '2026-07-13T08:00:00.000Z',
+      distance: 900,
+      duration: 600,
+      kcal: 40,
+      avgHr: null,
+    })
+    addSession({
+      date: '2026-07-14T08:00:00.000Z',
+      distance: 1200,
+      duration: 800,
+      kcal: 55,
+      avgHr: null,
+    })
+    const left = removeSession('2026-07-13T08:00:00.000Z')
+    expect(left).toHaveLength(1)
+    expect(loadStatistics()[0]!.date).toBe('2026-07-14T08:00:00.000Z')
+  })
+
+  it('is a no-op for an unknown date', () => {
+    addSession({
+      date: '2026-07-14T08:00:00.000Z',
+      distance: 1200,
+      duration: 800,
+      kcal: 55,
+      avgHr: null,
+    })
+    expect(removeSession('1999-01-01T00:00:00.000Z')).toHaveLength(1)
   })
 })

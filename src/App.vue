@@ -4,7 +4,7 @@ import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill'
 import { useHeartRate } from './heartrate'
 import { workouts, timeline, metForSpeed, hrTargetRange } from './workouts'
 import type { Workout, HrTarget } from './workouts'
-import { loadStatistics, addSession, loadGoals, saveGoals } from './statistics'
+import { loadStatistics, addSession, removeSession, loadGoals, saveGoals } from './statistics'
 import type { Session } from './statistics'
 import { mmss } from './format'
 import {
@@ -1206,6 +1206,7 @@ const pace = computed(() => {
         :weight-kg="weightKg"
         @close="statisticsOpen = false"
         @weigh-in="handleWeighIn"
+        @delete-session="(date: string) => (sessions = removeSession(date))"
       />
     </div>
 

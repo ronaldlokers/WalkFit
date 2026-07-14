@@ -221,6 +221,45 @@ describe('App happy path', () => {
     expect(btn3d.attributes('title')).toBe('Needs WebGL')
   })
 
+  it('recent walks list expands to a detail view and deletes a session (#67)', async () => {
+    localStorage.setItem(
+      'walkfit.history',
+      JSON.stringify([
+        {
+          date: '2026-07-13T08:00:00.000Z',
+          distance: 900,
+          duration: 600,
+          kcal: 40,
+          steps: 1100,
+          avgHr: 105,
+          hrMin: 90,
+          hrMax: 120,
+        },
+        { date: '2026-07-14T08:00:00.000Z', distance: 1200, duration: 800, kcal: 55, avgHr: null },
+      ]),
+    )
+    const w = mount(App)
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Free walk')
+    await clickButton(w, '☰')
+    await clickButton(w, 'Statistics')
+
+    const rows = w.findAll('.walk-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]!.text()).toContain('1.20 km') // newest first
+    await rows[1]!.trigger('click') // expand the older walk
+    const detail = w.find('.walk-detail')
+    expect(detail.text()).toContain('1100') // steps
+    expect(detail.text()).toContain('90–120') // bpm range
+    await clickButton(w, 'Delete this walk')
+    expect(w.findAll('.walk-row')).toHaveLength(1)
+    expect(JSON.parse(localStorage.getItem('walkfit.history')!)).toHaveLength(1)
+    expect(JSON.parse(localStorage.getItem('walkfit.history')!)[0].date).toBe(
+      '2026-07-14T08:00:00.000Z',
+    )
+  })
+
   it('wizard step 4 embeds the same tabbed WorkoutPicker as the header menu, including HR targets', async () => {
     const w = mount(App)
     await clickButton(w, 'Skip')

@@ -234,6 +234,34 @@ describe('App happy path', () => {
     vi.useRealTimers()
   })
 
+  it('the dashboard clock ticks: Sunday-to-Monday rollover follows the new week (#134)', async () => {
+    // Sunday evening Jul 19; the open dashboard must roll to the new week at midnight
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval'], now: new Date('2026-07-19T23:59:50') })
+    localStorage.setItem('walkfit.setupDone', '1')
+    localStorage.setItem(
+      'walkfit.history',
+      JSON.stringify([
+        { date: '2026-07-19T10:00:00', distance: 900, duration: 600, kcal: 40, avgHr: null },
+      ]),
+    )
+    const w = mount(App)
+    await clickButton(w, '☰')
+    await w
+      .findAll('.menu-item')
+      .find((b) => b.text().includes('Statistics'))!
+      .trigger('click')
+    expect(w.find('.week-label span').text()).toContain('19') // week ends Sun 19 Jul
+    expect(w.find('.today-chip').exists()).toBe(false) // on the current week
+
+    // cross midnight; the 30s clock tick fires and the view follows the new week
+    vi.setSystemTime(new Date('2026-07-20T00:00:20'))
+    vi.advanceTimersByTime(30_000)
+    await w.vm.$nextTick()
+    expect(w.find('.week-label span').text()).toContain('26') // week of Jul 20-26
+    expect(w.find('.today-chip').exists()).toBe(false) // still "current week", not stale
+    vi.useRealTimers()
+  })
+
   it('scenic without WebGL falls back to the track view and disables the toggle', async () => {
     // jsdom has no WebGL: the async Scenic3D component mounts, probes, and emits
     // 'unsupported' — the app must land on the track view, not a blank scene (#51).

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { currentStreak, dailyTotals, weekStart } from './statistics'
 import type { Session, Goals } from './statistics'
 import type { WeightEntry } from './weight'
@@ -20,15 +20,32 @@ const emit = defineEmits<{
   'delete-session': [date: string]
 }>()
 
+// Reactive clock (#134): a treadmill kiosk leaves this page open across midnight or
+// the Sunday-to-Monday rollover; everything date-derived depends on this ref instead
+// of caching new Date() once at mount.
+const now = ref(new Date())
+let clockTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  clockTimer = setInterval(() => (now.value = new Date()), 30_000)
+})
+onUnmounted(() => clearInterval(clockTimer))
+
 // --- week navigation (#115): full calendar weeks Mon-Sun, ‹ › + date picker ---
 const anchor = ref(weekStart()) // Monday of the displayed week
+// the calendar week rolled over while showing the current week: follow it
+watch(
+  () => weekStart(now.value).getTime(),
+  (t, old) => {
+    if (anchor.value.getTime() === old) anchor.value = new Date(t)
+  },
+)
 const days = computed(() => {
   // dailyTotals ends its window at `now`; feed it the week's Sunday for Mon-Sun
   const sunday = new Date(anchor.value)
   sunday.setDate(sunday.getDate() + 6)
   return dailyTotals(props.sessions, 7, sunday)
 })
-const isCurrentWeek = computed(() => anchor.value.getTime() === weekStart().getTime())
+const isCurrentWeek = computed(() => anchor.value.getTime() === weekStart(now.value).getTime())
 function shiftWeek(delta: number) {
   const d = new Date(anchor.value)
   d.setDate(d.getDate() + delta * 7)
@@ -61,7 +78,7 @@ const weekLabel = computed(() => {
   return `${fmt(a, false)} – ${fmt(b, true)}`
 })
 const todayKey = computed(() => {
-  const d = new Date()
+  const d = now.value
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 })
@@ -136,9 +153,9 @@ function dayLabel(dateKey: string) {
 }
 
 // --- right rail: summary / walk log / weight ---
-const streak = computed(() => currentStreak(props.sessions))
+const streak = computed(() => currentStreak(props.sessions, now.value))
 const todayPct = computed(() => {
-  const today = dailyTotals(props.sessions, 1)[0]!
+  const today = dailyTotals(props.sessions, 1, now.value)[0]!
   // a mid-edit emptied goal input reaches here as '' — guard the divide (#137)
   const frac = (v: number, goal: number) => (Number(goal) > 0 ? Math.min(v / Number(goal), 1) : 0)
   const pcts = [

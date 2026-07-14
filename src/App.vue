@@ -997,7 +997,6 @@ const pace = computed(() => {
   >
     <header>
       <div class="brand">
-        <span class="dot" :class="{ on: state.connected, run: state.running }"></span>
         <h1><Logo /></h1>
       </div>
       <!-- live session stats (#46) — real zeros, faded while the belt is idle -->
@@ -1647,21 +1646,6 @@ h1 {
 .head-actions {
   display: flex;
   gap: 8px;
-}
-.dot {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: #555;
-  transition: 0.3s;
-}
-.dot.on {
-  background: #f5a623;
-  box-shadow: 0 0 10px #f5a623;
-}
-.dot.run {
-  background: var(--accent);
-  box-shadow: 0 0 12px var(--accent);
 }
 
 .warn {
@@ -2486,15 +2470,7 @@ input[type='range'] {
   bottom: 104px;
   width: min(520px, 92vw);
 }
-/* the header row is the HUD now: the brand gets its own translucent chip so it
-   stays readable over the sky; the fullscreen badges drop below the header bar */
-.app.layout-immersive > header .brand {
-  background: rgba(10, 12, 16, 0.62);
-  backdrop-filter: blur(6px);
-  border: 1px solid #232833;
-  border-radius: 12px;
-  padding: 4px 12px;
-}
+/* the header row is the HUD now; the fullscreen badges drop below the header bar */
 .app.layout-immersive .view-flip {
   top: 64px;
   right: 12px;

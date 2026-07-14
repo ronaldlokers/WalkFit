@@ -154,3 +154,55 @@ export function timeline(w: Pick<Workout, 'segments'>): Timeline {
   }
   return { segs, total: cum }
 }
+
+// --- custom workouts (#68): user-built segment plans, persisted locally ---
+const CUSTOM_KEY = 'walkfit.workouts.custom'
+// device speed range (see treadmill.ts SPEED_MIN/MAX — duplicated to keep this module
+// framework-free); minutes capped to keep a plan sane
+const CUSTOM_SPEED_MIN = 1.0
+const CUSTOM_SPEED_MAX = 6.0
+const CUSTOM_MAX_SEGMENTS = 24
+
+function sanitizeCustom(w: Workout): Workout | null {
+  if (!w || typeof w.id !== 'string' || typeof w.name !== 'string') return null
+  if (!Array.isArray(w.segments) || !w.segments.length) return null
+  const segments = w.segments.slice(0, CUSTOM_MAX_SEGMENTS).map((s) => ({
+    speed:
+      Math.round(
+        Math.min(CUSTOM_SPEED_MAX, Math.max(CUSTOM_SPEED_MIN, Number(s.speed) || 0)) * 10,
+      ) / 10,
+    minutes: Math.round(Math.min(120, Math.max(1, Number(s.minutes) || 0))),
+  }))
+  return {
+    id: w.id,
+    name: w.name.trim().slice(0, 40) || 'My workout',
+    focus: w.focus || '',
+    segments,
+  }
+}
+
+export function loadCustomWorkouts(): Workout[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CUSTOM_KEY) || '[]')
+    if (!Array.isArray(raw)) return []
+    return raw.map(sanitizeCustom).filter((w): w is Workout => w !== null)
+  } catch {
+    return []
+  }
+}
+
+// Add or replace (same id) a custom workout; segments are clamped to the device range.
+export function saveCustomWorkout(w: Workout): Workout[] {
+  const clean = sanitizeCustom(w)
+  if (!clean) return loadCustomWorkouts()
+  const list = loadCustomWorkouts().filter((x) => x.id !== clean.id)
+  list.push(clean)
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(list))
+  return list
+}
+
+export function deleteCustomWorkout(id: string): Workout[] {
+  const list = loadCustomWorkouts().filter((x) => x.id !== id)
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(list))
+  return list
+}

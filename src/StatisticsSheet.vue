@@ -149,12 +149,18 @@ const todayPct = computed(() => {
 const weekDistance = computed(() => days.value.reduce((a, d) => a + d.distance, 0))
 
 // Walk log: the displayed week's walks, newest first (#67 detail/delete kept).
+// The exclusive bound is next Monday via local-calendar arithmetic, NOT anchor+168h:
+// a DST week is 167 or 169 hours, and the fixed window dropped/duplicated walks near
+// the Sunday-night boundary (#135).
 const weekWalks = computed(() => {
   const a = anchor.value.getTime()
+  const end = new Date(anchor.value)
+  end.setDate(end.getDate() + 7)
+  const b = end.getTime()
   return [...props.sessions]
     .filter((s) => {
       const t = new Date(s.date).getTime()
-      return t >= a && t < a + 7 * 86400000
+      return t >= a && t < b
     })
     .reverse()
 })

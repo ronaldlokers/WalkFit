@@ -393,6 +393,28 @@ describe('workouts & goals (#68)', () => {
   })
 })
 
+describe('avgHr sampling (#132)', () => {
+  it('averages over time, not over value changes', async () => {
+    fakeHr.connected = true
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    // 20 ticks steady at 100 bpm — a change-based accumulator would count this ONCE
+    fakeHr.bpm = 100
+    for (let i = 0; i < 20; i++) await walk(w, 10, 1)
+    // 2 ticks at 160
+    fakeHr.bpm = 160
+    for (let i = 0; i < 2; i++) await walk(w, 10, 1)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    const [session] = logged() as { avgHr?: number }[]
+    // time-weighted: (20*100 + 2*160) / 22 ≈ 105 — change-weighted would be ~130
+    expect(session!.avgHr).toBeGreaterThan(100)
+    expect(session!.avgHr).toBeLessThan(112)
+    fakeHr.connected = false
+    fakeHr.bpm = 0
+  })
+})
+
 describe('wake lock race (#133)', () => {
   it('a lock resolving after the walk ended is released immediately', async () => {
     const release = vi.fn(async () => {})

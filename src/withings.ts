@@ -229,7 +229,12 @@ export function useWithings(): HealthProvider {
     const cursor = loadCursor(ID) ?? loadLastSync(ID)
     const groups: MeasureGroup[] = []
     let offset: number | undefined
-    for (let page = 0; page < 50; page++) {
+    let capped = false // hit the page cap with data still remaining
+    for (let page = 0; ; page++) {
+      if (page >= 50) {
+        capped = true
+        break
+      }
       const params = new URLSearchParams({ action: 'getmeas', meastypes: '1,6,76', category: '1' })
       if (cursor) params.set('lastupdate', String(Math.floor(cursor / 1000)))
       if (offset) params.set('offset', String(offset))
@@ -248,8 +253,14 @@ export function useWithings(): HealthProvider {
       if (!body.more || !body.offset) break
       offset = body.offset
     }
+    // Withings returns newest-first: advancing the cursor past a capped fetch would
+    // strand everything older than page 50 forever. On a cap, resume from the OLDEST
+    // fetched timestamp so the next sync continues the backfill; the source+grpid
+    // merge makes the overlap idempotent (#139).
     const newest = groups.reduce((max, g) => Math.max(max, g.modified ?? g.date), 0)
-    return { entries: parseWeighIns(groups), cursor: newest ? newest * 1000 : null }
+    const oldest = groups.reduce((min, g) => Math.min(min, g.modified ?? g.date), Infinity)
+    const next = capped ? (Number.isFinite(oldest) ? oldest : null) : newest || null
+    return { entries: parseWeighIns(groups), cursor: next ? next * 1000 : null }
   }
 
   return { id: ID, name: 'Withings', state, connect, disconnect, handleRedirect, syncWeight }

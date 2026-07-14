@@ -199,7 +199,7 @@ function segDur(min: number) {
           v-for="tg in hrTargets"
           :key="tg.id"
           class="hr-zone-opt"
-          :class="{ on: activeHrTarget === tg }"
+          :class="{ on: activeHrTarget?.id === tg.id }"
           :style="{ '--zc': tg.color }"
           :disabled="!hrConnected"
           @click="emit('start-hr', tg)"

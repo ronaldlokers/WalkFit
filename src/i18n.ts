@@ -179,6 +179,7 @@ const en = {
   'settings.todSunset': 'Sunset',
   'settings.todNight': 'Night',
   'settings.language': 'Language',
+  'settings.theme': 'Theme (experimental)',
   'settings.connected': 'Connected',
   'settings.autoUpload': 'Auto-upload walks',
   'settings.autoUploadOn': 'Finished walks upload automatically; failures fall back to the prompt.',
@@ -391,6 +392,7 @@ const nl: Record<MessageKey, string> = {
   'settings.todSunset': 'Zonsondergang',
   'settings.todNight': 'Nacht',
   'settings.language': 'Taal',
+  'settings.theme': 'Thema (experimenteel)',
   'settings.connected': 'Verbonden',
   'settings.autoUpload': 'Wandelingen automatisch uploaden',
   'settings.autoUploadOn':

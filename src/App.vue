@@ -304,6 +304,22 @@ function scenicUnsupported() {
 }
 // --- immersive layout (#103): the visual fills the viewport, HUD floats over it ---
 // Kiosk concept folded in as a big-numbers option.
+// Test themes (#173): experimental visual identities over the same immersive app.
+// Applied as html[data-theme] so the global theme stylesheets in style.css reach
+// body + every component without touching their scoped styles.
+const THEMES = ['default', 'neon', 'swiss', 'glass', 'alpine'] as const
+type Theme = (typeof THEMES)[number]
+const storedTheme = localStorage.getItem('walkfit.theme')
+const theme = ref<Theme>(THEMES.includes(storedTheme as Theme) ? (storedTheme as Theme) : 'default')
+watch(
+  theme,
+  (v) => {
+    localStorage.setItem('walkfit.theme', v)
+    document.documentElement.dataset.theme = v
+  },
+  { immediate: true },
+)
+
 const bigNumbers = ref(localStorage.getItem('walkfit.layout.big') === '1')
 watch(bigNumbers, (v) => localStorage.setItem('walkfit.layout.big', v ? '1' : '0'))
 // Immersive HUD fades after 5 s untouched while walking; any interaction wakes it.
@@ -1693,6 +1709,7 @@ const pace = computed(() => {
         v-model:debug-on="debugOn"
         v-model:view-mode="viewMode"
         v-model:big-numbers="bigNumbers"
+        v-model:theme="theme"
         v-model:goal-kcal="goals.kcal"
         v-model:goal-steps="goals.steps"
         v-model:goal-minutes="goals.minutes"

@@ -4,6 +4,10 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import App from './App.vue'
 
 // jsdom doesn't implement SVG geometry; stub what the loop/marker code calls.
+// Full-App mounts under a loaded parallel run can exceed vitest's 5 s default —
+// generous ceiling, not a wait (same rationale as App.hrWorkout.test.ts).
+vi.setConfig({ testTimeout: 20000 })
+
 type SvgGeometryStub = { getTotalLength(): number; getPointAtLength(d: number): DOMPoint }
 beforeAll(() => {
   const proto = SVGElement.prototype as unknown as SvgGeometryStub
@@ -367,6 +371,24 @@ describe('App happy path', () => {
       .find((b) => b.text().includes('Back'))!
       .trigger('click')
     expect(w.find('.mode-grid').exists()).toBe(true)
+  })
+})
+
+describe('test themes (#173)', () => {
+  it('persisted theme applies to the document and switching persists', async () => {
+    localStorage.setItem('walkfit.setupDone', '1')
+    localStorage.setItem('walkfit.theme', 'swiss')
+    const w = mount(App)
+    expect(document.documentElement.dataset.theme).toBe('swiss')
+    await clickButton(w, '☰')
+    await clickButton(w, 'Settings')
+    const select = w
+      .findAll('select')
+      .find((s) => s.findAll('option').some((o) => o.attributes('value') === 'neon'))!
+    await select.setValue('neon')
+    expect(document.documentElement.dataset.theme).toBe('neon')
+    expect(localStorage.getItem('walkfit.theme')).toBe('neon')
+    await select.setValue('default')
   })
 })
 

@@ -8,6 +8,10 @@ import { reactive } from 'vue'
 import type { TreadmillState } from './treadmill'
 import type { HeartRateState } from './heartrate'
 
+// Full-App mounts under a loaded parallel run can exceed vitest's 5 s default —
+// generous ceiling, not a wait (same rationale as App.hrWorkout.test.ts).
+vi.setConfig({ testTimeout: 20000 })
+
 const fakeTm = reactive<TreadmillState>({
   secure: true,
   supported: true,

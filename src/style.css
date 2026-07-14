@@ -76,3 +76,405 @@ input {
 .btn.forget {
   color: #ff7f7f;
 }
+
+/* ============================================================================
+   Test themes (#173) — experimental identities selectable in Settings.
+   Keyed off html[data-theme]; plain class selectors reach into scoped
+   components on purpose so the prototypes don't churn every SFC. The athletic
+   track keeps every marking — themes only restyle chrome, sky and accents.
+   ========================================================================== */
+
+/* --- Night Circuit: synthwave violet night, cyan/magenta glow --- */
+html[data-theme='neon'] {
+  --accent: #00f0ff;
+}
+html[data-theme='neon'] body {
+  background: radial-gradient(120% 100% at 50% 0%, #1a0b2e 0%, #0d0517 55%, #060210 100%);
+}
+html[data-theme='neon'] .sstat,
+html[data-theme='neon'] .app.layout-immersive .sstat {
+  background: rgba(20, 8, 40, 0.6);
+  border-color: rgba(0, 240, 255, 0.35);
+  border-radius: 4px;
+}
+html[data-theme='neon'] .sstat .sv {
+  color: #00f0ff;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.7);
+}
+html[data-theme='neon'] .sstat .sk {
+  color: #8f86b8;
+  letter-spacing: 2px;
+}
+html[data-theme='neon'] .app.layout-immersive > .controls,
+html[data-theme='neon'] .app.layout-immersive > .action-row,
+html[data-theme='neon'] .app.layout-immersive > .imm-workout {
+  background: rgba(13, 5, 26, 0.75);
+  border-color: rgba(0, 240, 255, 0.4);
+  border-radius: 6px;
+  box-shadow: 0 0 26px rgba(0, 240, 255, 0.14);
+}
+html[data-theme='neon'] .btn.go {
+  background: transparent;
+  color: #00ff9d;
+  border: 1px solid #00ff9d;
+  box-shadow: 0 0 16px rgba(0, 255, 157, 0.35);
+  border-radius: 4px;
+}
+html[data-theme='neon'] .btn.halt {
+  background: transparent;
+  color: #ff2ec4;
+  border: 1px solid #ff2ec4;
+  box-shadow: 0 0 16px rgba(255, 46, 196, 0.3);
+  border-radius: 4px;
+}
+html[data-theme='neon'] .menu-panel {
+  background: rgba(13, 5, 26, 0.95);
+  border-color: rgba(0, 240, 255, 0.35);
+}
+html[data-theme='neon'] .hr-badge {
+  border-color: rgba(255, 46, 196, 0.5);
+  background: rgba(20, 8, 40, 0.7);
+}
+html[data-theme='neon'] .track-lane {
+  stroke: rgba(0, 240, 255, 0.55);
+}
+html[data-theme='neon'] .lap-num,
+html[data-theme='neon'] .lap-label {
+  text-shadow: 0 0 14px rgba(0, 240, 255, 0.6);
+}
+
+/* --- Swiss Meet Sheet: light, Helvetica, hard rules, red accent --- */
+html[data-theme='swiss'] {
+  --accent: #e63312;
+  color-scheme: light;
+}
+html[data-theme='swiss'] body {
+  background: #f4f4f2;
+  color: #111;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+html[data-theme='swiss'] .logo-word {
+  color: #111;
+}
+html[data-theme='swiss'] .sstat,
+html[data-theme='swiss'] .app.layout-immersive .sstat {
+  background: #fff;
+  border: 0;
+  border-bottom: 3px solid #111;
+  border-radius: 0;
+}
+html[data-theme='swiss'] .sstat .sv {
+  color: #111;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+html[data-theme='swiss'] .sstat .sk {
+  color: #777;
+  letter-spacing: 2px;
+}
+html[data-theme='swiss'] .app.layout-immersive > .controls,
+html[data-theme='swiss'] .app.layout-immersive > .action-row,
+html[data-theme='swiss'] .app.layout-immersive > .imm-workout {
+  background: rgba(255, 255, 255, 0.94);
+  border: 0;
+  border-top: 3px solid #111;
+  border-radius: 0;
+  color: #111;
+  backdrop-filter: none;
+}
+html[data-theme='swiss'] .imm-name,
+html[data-theme='swiss'] .target {
+  color: #111;
+}
+html[data-theme='swiss'] .imm-time,
+html[data-theme='swiss'] .target small {
+  color: #777;
+}
+html[data-theme='swiss'] .btn {
+  border-radius: 0;
+}
+html[data-theme='swiss'] .btn.go {
+  background: #111;
+  color: #fff;
+}
+html[data-theme='swiss'] .btn.halt {
+  background: #e63312;
+  color: #fff;
+}
+html[data-theme='swiss'] .btn.ghost {
+  background: #e8e8e4;
+  color: #111;
+}
+html[data-theme='swiss'] .btn.round {
+  background: #111;
+  color: #fff;
+}
+html[data-theme='swiss'] .cog {
+  background: #111;
+  color: #f4f4f2;
+  border-radius: 0;
+}
+html[data-theme='swiss'] .hr-badge {
+  background: #fff;
+  border: 0;
+  border-bottom: 3px solid #e63312;
+  border-radius: 0;
+}
+html[data-theme='swiss'] .hr-badge-content {
+  color: #e63312;
+}
+html[data-theme='swiss'] .menu-panel {
+  background: #fff;
+  border: 2px solid #111;
+  border-radius: 0;
+}
+html[data-theme='swiss'] .menu-item {
+  color: #111;
+}
+html[data-theme='swiss'] .menu-item:hover {
+  background: #f0f0ec;
+}
+html[data-theme='swiss'] .view-flip {
+  background: #fff;
+  border: 1px solid #111;
+  border-radius: 0;
+}
+html[data-theme='swiss'] .view-flip button {
+  color: #777;
+  border-radius: 0;
+}
+html[data-theme='swiss'] .view-flip button.on {
+  background: #111;
+  color: #fff;
+}
+html[data-theme='swiss'] .lap-num {
+  fill: #111;
+}
+html[data-theme='swiss'] .lap-label,
+html[data-theme='swiss'] .lap-times {
+  fill: #777;
+}
+html[data-theme='swiss'] .track-lane {
+  stroke: rgba(17, 17, 17, 0.35);
+}
+html[data-theme='swiss'] .imm-seg {
+  background: #ddd;
+}
+html[data-theme='swiss'] .imm-seg.done {
+  background: #b9b4ab;
+}
+html[data-theme='swiss'] .imm-ring-track {
+  stroke: #ddd;
+}
+html[data-theme='swiss'] .imm-ring-val,
+html[data-theme='swiss'] .imm-nn-v {
+  color: #111;
+}
+html[data-theme='swiss'] .goal-chip {
+  background: #e8e8e4;
+  color: #111;
+  border-color: #ccc;
+}
+
+/* --- Morning Glass: daylight sky, frosted white pills --- */
+html[data-theme='glass'] {
+  --accent: #0a84ff;
+  color-scheme: light;
+}
+html[data-theme='glass'] body {
+  background: linear-gradient(165deg, #aee3ff 0%, #dff2fe 34%, #ffe9d6 72%, #ffd9b8 100%);
+  color: #17324d;
+}
+html[data-theme='glass'] .logo-word {
+  color: #17324d;
+}
+html[data-theme='glass'] .sstat,
+html[data-theme='glass'] .app.layout-immersive .sstat {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 16px;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 6px 18px rgba(23, 50, 77, 0.1);
+}
+html[data-theme='glass'] .sstat .sv {
+  color: #17324d;
+}
+html[data-theme='glass'] .sstat .sk {
+  color: #7b8da1;
+}
+html[data-theme='glass'] .app.layout-immersive > .controls,
+html[data-theme='glass'] .app.layout-immersive > .action-row,
+html[data-theme='glass'] .app.layout-immersive > .imm-workout {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 20px;
+  box-shadow: 0 10px 28px rgba(23, 50, 77, 0.14);
+  color: #17324d;
+}
+html[data-theme='glass'] .imm-name,
+html[data-theme='glass'] .target,
+html[data-theme='glass'] .imm-ring-val,
+html[data-theme='glass'] .imm-nn-v {
+  color: #17324d;
+}
+html[data-theme='glass'] .imm-time,
+html[data-theme='glass'] .target small {
+  color: #7b8da1;
+}
+html[data-theme='glass'] .btn.go {
+  background: linear-gradient(180deg, #34c759, #28a745);
+  border-radius: 14px;
+}
+html[data-theme='glass'] .btn.halt {
+  background: rgba(255, 255, 255, 0.65);
+  color: #e0284a;
+  border: 1px solid rgba(224, 40, 74, 0.3);
+  border-radius: 14px;
+}
+html[data-theme='glass'] .btn.ghost {
+  background: rgba(255, 255, 255, 0.6);
+  color: #17324d;
+}
+html[data-theme='glass'] .btn.round {
+  background: rgba(255, 255, 255, 0.75);
+  color: #17324d;
+}
+html[data-theme='glass'] .cog {
+  background: rgba(255, 255, 255, 0.6);
+  color: #17324d;
+}
+html[data-theme='glass'] .hr-badge {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.9);
+}
+html[data-theme='glass'] .menu-panel {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(255, 255, 255, 1);
+  backdrop-filter: blur(18px);
+}
+html[data-theme='glass'] .menu-item {
+  color: #17324d;
+}
+html[data-theme='glass'] .view-flip {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.9);
+}
+html[data-theme='glass'] .view-flip button {
+  color: #7b8da1;
+}
+html[data-theme='glass'] .lap-num {
+  fill: #17324d;
+}
+html[data-theme='glass'] .lap-label,
+html[data-theme='glass'] .lap-times {
+  fill: #5a789a;
+}
+html[data-theme='glass'] .track-lane {
+  stroke: rgba(255, 255, 255, 0.75);
+}
+html[data-theme='glass'] .goal-chip {
+  background: rgba(255, 255, 255, 0.6);
+  color: #17324d;
+  border-color: rgba(255, 255, 255, 0.9);
+}
+
+/* --- Alpine Trail: mountain morning, wooden-plank HUD (track keeps its red + markings) --- */
+html[data-theme='alpine'] {
+  --accent: #3f7d44;
+  color-scheme: light;
+}
+html[data-theme='alpine'] body {
+  background: linear-gradient(180deg, #bfe3f2 0%, #dff0ea 52%, #7fae74 60%, #4c7847 100%);
+  color: #2e2a22;
+}
+html[data-theme='alpine'] .logo-word {
+  color: #f4ead7;
+  text-shadow: 0 2px 8px rgba(46, 42, 34, 0.45);
+}
+html[data-theme='alpine'] .sstat,
+html[data-theme='alpine'] .app.layout-immersive .sstat {
+  background: #8a6a48;
+  border: 0;
+  border-bottom: 3px solid #6d5238;
+  border-radius: 8px;
+  color: #f4ead7;
+}
+html[data-theme='alpine'] .sstat .sv {
+  color: #f4ead7;
+}
+html[data-theme='alpine'] .sstat .sk {
+  color: #d9c4a3;
+}
+html[data-theme='alpine'] .app.layout-immersive > .controls,
+html[data-theme='alpine'] .app.layout-immersive > .action-row,
+html[data-theme='alpine'] .app.layout-immersive > .imm-workout {
+  background: rgba(244, 234, 215, 0.94);
+  border: 2px solid #8a6a48;
+  border-radius: 12px;
+  color: #2e2a22;
+  backdrop-filter: none;
+}
+html[data-theme='alpine'] .imm-name,
+html[data-theme='alpine'] .target,
+html[data-theme='alpine'] .imm-ring-val,
+html[data-theme='alpine'] .imm-nn-v {
+  color: #2e2a22;
+}
+html[data-theme='alpine'] .imm-time,
+html[data-theme='alpine'] .target small {
+  color: #8a6a48;
+}
+html[data-theme='alpine'] .btn.go {
+  background: #3f7d44;
+  color: #f4ead7;
+}
+html[data-theme='alpine'] .btn.halt {
+  background: transparent;
+  color: #a33b2e;
+  border: 2px solid #a33b2e;
+}
+html[data-theme='alpine'] .btn.ghost {
+  background: #e6dcc8;
+  color: #2e2a22;
+}
+html[data-theme='alpine'] .btn.round {
+  background: #8a6a48;
+  color: #f4ead7;
+}
+html[data-theme='alpine'] .cog {
+  background: #8a6a48;
+  color: #f4ead7;
+}
+html[data-theme='alpine'] .hr-badge {
+  background: #f4ead7;
+  border-color: #8a6a48;
+}
+html[data-theme='alpine'] .hr-badge-content {
+  color: #a33b2e;
+}
+html[data-theme='alpine'] .menu-panel {
+  background: #f4ead7;
+  border: 2px solid #8a6a48;
+}
+html[data-theme='alpine'] .menu-item {
+  color: #2e2a22;
+}
+html[data-theme='alpine'] .view-flip {
+  background: #f4ead7;
+  border-color: #8a6a48;
+}
+html[data-theme='alpine'] .view-flip button {
+  color: #8a6a48;
+}
+html[data-theme='alpine'] .lap-num {
+  fill: #2e2a22;
+}
+html[data-theme='alpine'] .lap-label,
+html[data-theme='alpine'] .lap-times {
+  fill: #4a5c43;
+}
+html[data-theme='alpine'] .goal-chip {
+  background: #e6dcc8;
+  color: #2e2a22;
+  border-color: #c9b489;
+}

@@ -134,7 +134,7 @@ export function useStrava() {
     return true
   }
 
-  async function freshAccessToken(): Promise<string> {
+  async function freshAccessToken(retried = false): Promise<string> {
     const t = loadTokens()
     if (!t) throw new Error('Not connected to Strava.')
     if (t.expiresAt > Date.now() / 1000 + 60) return t.accessToken // still valid, 1 min margin
@@ -154,7 +154,14 @@ export function useStrava() {
     }
     if (!res.ok) {
       if (res.status === 400 || res.status === 401) {
-        disconnect() // refresh token itself expired/revoked — needs a fresh connect
+        // Strava rotates refresh tokens: another tab (or auto-upload racing a manual
+        // action) may have refreshed and rotated while we held the now-stale token.
+        // Re-read storage before destroying the pair — same guard Withings got in #57.
+        const current = loadTokens()
+        if (!retried && current && current.refreshToken !== t.refreshToken) {
+          return freshAccessToken(true)
+        }
+        disconnect() // definitive: refresh token expired/revoked — needs a fresh connect
         throw new Error(data?.message || 'Strava session expired — reconnect in Settings.')
       }
       throw new Error(

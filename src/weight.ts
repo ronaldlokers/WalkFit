@@ -12,6 +12,9 @@ export interface WeightEntry {
   // across timestamp corrections made in the provider's app (#57). Absent on manual
   // entries and on data synced before this field existed.
   grpid?: number
+  // body-composition extras (#42) — present only when the provider reports them
+  fatPct?: number // body fat, percent
+  muscleKg?: number // muscle mass, kg
 }
 
 function byDate(a: WeightEntry, b: WeightEntry) {

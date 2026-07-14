@@ -63,11 +63,41 @@ export function addSession(entry: Session): Session[] {
 
 // Merge imported sessions (#69): union by start date (the de-facto session id),
 // existing entries win, result stays date-sorted and bounded.
+// Backup imports feed parsed JSON straight in — one entry with a missing/garbage
+// numeric would poison every reducer with NaN (and persist). Validate and coerce
+// per-field instead of trusting the shape (#137).
+function sanitizeSession(e: unknown): Session | null {
+  if (!e || typeof e !== 'object') return null
+  const raw = e as Record<string, unknown>
+  if (typeof raw.date !== 'string') return null
+  const num = (v: unknown) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null)
+  const distance = num(raw.distance)
+  const duration = num(raw.duration)
+  if (distance === null || duration === null || distance < 0 || duration < 0) return null
+  const out: Session = {
+    date: raw.date,
+    distance,
+    duration,
+    kcal: num(raw.kcal) ?? 0,
+    avgHr: num(raw.avgHr),
+  }
+  const steps = num(raw.steps)
+  if (steps !== null) out.steps = steps
+  const hrMin = num(raw.hrMin)
+  const hrMax = num(raw.hrMax)
+  if (hrMin !== null && hrMax !== null) {
+    out.hrMin = hrMin
+    out.hrMax = hrMax
+  }
+  return out
+}
+
 export function mergeSessions(entries: Session[]): Session[] {
   const list = loadStatistics()
   const have = new Set(list.map((s) => s.date))
-  for (const e of entries) {
-    if (e && typeof e.date === 'string' && !have.has(e.date)) {
+  for (const rawEntry of entries) {
+    const e = sanitizeSession(rawEntry)
+    if (e && !have.has(e.date)) {
       list.push(e)
       have.add(e.date)
     }
@@ -181,7 +211,17 @@ export function loadGoals(): Goals {
 }
 
 export function saveGoals(goals: Goals): void {
-  localStorage.setItem(GOALS_KEY, JSON.stringify(goals))
+  // an emptied number input writes '' through v-model.number — coerce per-field so a
+  // transient invalid value never persists (#137)
+  const pick = (v: unknown, fallback: number) => (Number(v) > 0 ? Number(v) : fallback)
+  localStorage.setItem(
+    GOALS_KEY,
+    JSON.stringify({
+      kcal: pick(goals.kcal, DEFAULT_GOALS.kcal),
+      steps: pick(goals.steps, DEFAULT_GOALS.steps),
+      minutes: pick(goals.minutes, DEFAULT_GOALS.minutes),
+    }),
+  )
 }
 
 // Consecutive-day streak ending today or yesterday (a walk yesterday still counts

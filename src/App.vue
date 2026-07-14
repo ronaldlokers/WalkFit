@@ -307,7 +307,7 @@ function scenicUnsupported() {
 // Test themes (#173): experimental visual identities over the same immersive app.
 // Applied as html[data-theme] so the global theme stylesheets in style.css reach
 // body + every component without touching their scoped styles.
-const THEMES = ['default', 'neon', 'swiss', 'glass', 'alpine'] as const
+const THEMES = ['default', 'neon', 'swiss', 'glass'] as const
 type Theme = (typeof THEMES)[number]
 const storedTheme = localStorage.getItem('walkfit.theme')
 const theme = ref<Theme>(THEMES.includes(storedTheme as Theme) ? (storedTheme as Theme) : 'default')
@@ -1301,6 +1301,18 @@ const pace = computed(() => {
         />
       </div>
     </section>
+
+    <!-- themed layouts (#173) relocate the lap readout out of the SVG centre;
+         hidden unless a theme shows it -->
+    <div class="theme-lap">
+      <b>{{ laps }}</b>
+      <span
+        >{{ laps === 1 ? t('track.lap') : t('track.laps') }} {{ t('track.suffix')
+        }}<template v-if="lastLap !== null">
+          · {{ t('track.lastBest', { last: mmss(lastLap), best: mmss(bestLap!) }) }}</template
+        ></span
+      >
+    </div>
 
     <section class="action-row" :class="{ disabled: !state.connected }">
       <button class="btn go" :disabled="!state.connected" @click="startWalk">

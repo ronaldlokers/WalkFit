@@ -229,7 +229,6 @@ function fmtSynced(ms: number | null) {
           <option value="neon">Night Circuit</option>
           <option value="swiss">Swiss Meet Sheet</option>
           <option value="glass">Morning Glass</option>
-          <option value="alpine">Alpine Trail</option>
         </select>
       </div>
       <div class="set-row">

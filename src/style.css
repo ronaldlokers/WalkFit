@@ -378,107 +378,6 @@ html[data-theme='glass'] .goal-chip {
   border-color: rgba(255, 255, 255, 0.9);
 }
 
-/* --- Alpine Trail: mountain morning, wooden-plank HUD (track keeps its red + markings) --- */
-html[data-theme='alpine'] {
-  --accent: #3f7d44;
-  color-scheme: light;
-}
-html[data-theme='alpine'] body {
-  background: linear-gradient(180deg, #bfe3f2 0%, #dff0ea 52%, #7fae74 60%, #4c7847 100%);
-  color: #2e2a22;
-}
-html[data-theme='alpine'] .logo-word {
-  color: #f4ead7;
-  text-shadow: 0 2px 8px rgba(46, 42, 34, 0.45);
-}
-html[data-theme='alpine'] .sstat,
-html[data-theme='alpine'] .app.layout-immersive .sstat {
-  background: #8a6a48;
-  border: 0;
-  border-bottom: 3px solid #6d5238;
-  border-radius: 8px;
-  color: #f4ead7;
-}
-html[data-theme='alpine'] .sstat .sv {
-  color: #f4ead7;
-}
-html[data-theme='alpine'] .sstat .sk {
-  color: #d9c4a3;
-}
-html[data-theme='alpine'] .app.layout-immersive > .controls,
-html[data-theme='alpine'] .app.layout-immersive > .action-row,
-html[data-theme='alpine'] .app.layout-immersive > .imm-workout {
-  background: rgba(244, 234, 215, 0.94);
-  border: 2px solid #8a6a48;
-  border-radius: 12px;
-  color: #2e2a22;
-  backdrop-filter: none;
-}
-html[data-theme='alpine'] .imm-name,
-html[data-theme='alpine'] .target,
-html[data-theme='alpine'] .imm-ring-val,
-html[data-theme='alpine'] .imm-nn-v {
-  color: #2e2a22;
-}
-html[data-theme='alpine'] .imm-time,
-html[data-theme='alpine'] .target small {
-  color: #8a6a48;
-}
-html[data-theme='alpine'] .btn.go {
-  background: #3f7d44;
-  color: #f4ead7;
-}
-html[data-theme='alpine'] .btn.halt {
-  background: transparent;
-  color: #a33b2e;
-  border: 2px solid #a33b2e;
-}
-html[data-theme='alpine'] .btn.ghost {
-  background: #e6dcc8;
-  color: #2e2a22;
-}
-html[data-theme='alpine'] .btn.round {
-  background: #8a6a48;
-  color: #f4ead7;
-}
-html[data-theme='alpine'] .cog {
-  background: #8a6a48;
-  color: #f4ead7;
-}
-html[data-theme='alpine'] .hr-badge {
-  background: #f4ead7;
-  border-color: #8a6a48;
-}
-html[data-theme='alpine'] .hr-badge-content {
-  color: #a33b2e;
-}
-html[data-theme='alpine'] .menu-panel {
-  background: #f4ead7;
-  border: 2px solid #8a6a48;
-}
-html[data-theme='alpine'] .menu-item {
-  color: #2e2a22;
-}
-html[data-theme='alpine'] .view-flip {
-  background: #f4ead7;
-  border-color: #8a6a48;
-}
-html[data-theme='alpine'] .view-flip button {
-  color: #8a6a48;
-}
-html[data-theme='alpine'] .lap-num {
-  fill: #2e2a22;
-}
-html[data-theme='alpine'] .lap-label,
-html[data-theme='alpine'] .lap-times {
-  fill: #4a5c43;
-}
-html[data-theme='alpine'] .goal-chip {
-  background: #e6dcc8;
-  color: #2e2a22;
-  border-color: #c9b489;
-}
-
 /* --- per-theme LAYOUT changes (the mockups' compositions, not just palettes) --- */
 
 /* Swiss: the stat strip becomes the mockup's full-width meet-sheet banner with huge
@@ -585,26 +484,6 @@ html[data-theme='glass'] .app.layout-immersive > .action-row .btn {
   flex: 1;
 }
 
-/* Alpine: the stat cells join into the mockup's single wooden plank with carved
-   dividers. */
-html[data-theme='alpine'] .app.layout-immersive .stat-strip {
-  gap: 0;
-  background: #8a6a48;
-  border-radius: 10px;
-  border-bottom: 3px solid #6d5238;
-  box-shadow: 0 6px 18px rgba(46, 42, 34, 0.35);
-  overflow: hidden;
-}
-html[data-theme='alpine'] .app.layout-immersive .sstat {
-  background: transparent;
-  border-bottom: 0;
-  border-right: 2px solid #6d5238;
-  border-radius: 0;
-}
-html[data-theme='alpine'] .app.layout-immersive .sstat:last-child {
-  border-right: 0;
-}
-
 /* Neon: lap info moves to the mockup's bottom-left glow block (the 2D SVG keeps its
    centre counter; this styles the workout ribbon + pills placement). */
 html[data-theme='neon'] .app.layout-immersive > .controls {
@@ -619,4 +498,147 @@ html[data-theme='neon'] .app.layout-immersive > .action-row .btn {
   text-transform: uppercase;
   font-size: 13px;
   padding: 12px 32px;
+}
+
+/* movable lap readout for themed layouts — hidden unless a theme places it */
+.theme-lap {
+  display: none;
+}
+
+/* --- Night Circuit layout: synthwave backdrop, lap block bottom-left, SVG centre text off --- */
+html[data-theme='neon'] body {
+  background:
+    radial-gradient(
+      circle at 50% 44%,
+      rgba(255, 46, 196, 0.5) 0%,
+      rgba(255, 138, 0, 0.28) 9%,
+      transparent 15%
+    ),
+    repeating-linear-gradient(90deg, rgba(0, 240, 255, 0.12) 0 2px, transparent 2px 110px),
+    repeating-linear-gradient(0deg, rgba(255, 46, 196, 0.1) 0 2px, transparent 2px 78px),
+    radial-gradient(120% 100% at 50% 0%, #1a0b2e 0%, #0d0517 55%, #060210 100%);
+}
+html[data-theme='neon'] .lap-num,
+html[data-theme='neon'] .lap-label,
+html[data-theme='neon'] .lap-times {
+  display: none;
+}
+html[data-theme='neon'] .theme-lap {
+  display: block;
+  position: fixed;
+  left: 30px;
+  bottom: 34px;
+  z-index: 10;
+}
+html[data-theme='neon'] .theme-lap b {
+  display: block;
+  font-size: 46px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 0 16px rgba(0, 240, 255, 0.9);
+  line-height: 1;
+}
+html[data-theme='neon'] .theme-lap span {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #8f86b8;
+}
+
+/* --- Swiss layout: track boxed left, right rail with giant speed + stacked controls --- */
+html[data-theme='swiss'] .app.layout-immersive > .track-wrap {
+  inset: 170px 440px 24px 24px;
+  background: #fff;
+  border: 1px solid #ddd;
+}
+html[data-theme='swiss'] .app.layout-immersive .track,
+html[data-theme='swiss'] .app.layout-immersive .scenic3d,
+html[data-theme='swiss'] .app.layout-immersive .scene3d-wrap {
+  height: 100%;
+  width: 100%;
+}
+html[data-theme='swiss'] .lap-num,
+html[data-theme='swiss'] .lap-label,
+html[data-theme='swiss'] .lap-times {
+  display: none;
+}
+html[data-theme='swiss'] .theme-lap {
+  display: block;
+  position: fixed;
+  left: 56px;
+  bottom: 44px;
+  z-index: 10;
+}
+html[data-theme='swiss'] .theme-lap b {
+  display: block;
+  font-size: 110px;
+  font-weight: 700;
+  letter-spacing: -6px;
+  line-height: 0.85;
+  color: #111;
+}
+html[data-theme='swiss'] .theme-lap span {
+  font-size: 13px;
+  color: #777;
+}
+html[data-theme='swiss'] .app.layout-immersive > .controls {
+  left: auto;
+  right: 0;
+  top: 170px;
+  bottom: 120px;
+  transform: none;
+  width: 416px;
+  border-top: 0;
+  border-left: 1px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 18px;
+  padding: 28px;
+}
+html[data-theme='swiss'] .app.layout-immersive > .action-row {
+  left: auto;
+  right: 0;
+  width: 416px;
+  bottom: 24px;
+  transform: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: #111;
+  padding: 0;
+}
+html[data-theme='swiss'] .app.layout-immersive > .action-row .btn {
+  padding: 20px 0;
+}
+html[data-theme='swiss'] .app.layout-immersive .view-flip {
+  /* the flip is absolute inside the (now boxed) track-wrap — box-relative coords */
+  top: 10px;
+  right: 10px;
+}
+
+/* --- Glass layout: the visual lives in a centred frosted card, dock beneath --- */
+html[data-theme='glass'] .app.layout-immersive > .track-wrap {
+  inset: auto;
+  left: 50%;
+  top: 86px;
+  transform: translateX(-50%);
+  width: min(880px, 92vw);
+  height: min(56vh, 520px);
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 14px 40px rgba(23, 50, 77, 0.16);
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+html[data-theme='glass'] .app.layout-immersive .track,
+html[data-theme='glass'] .app.layout-immersive .scenic3d,
+html[data-theme='glass'] .app.layout-immersive .scene3d-wrap {
+  height: 100%;
+  width: 100%;
+}
+html[data-theme='glass'] .app.layout-immersive .view-flip {
+  top: 10px;
+  right: 10px;
 }

@@ -334,6 +334,23 @@ describe('experimental layouts (#103)', () => {
     expect(w.find('.dash-widget').exists()).toBe(false)
   })
 
+  it('immersive shows the workout ribbon during a plan and End clears it', async () => {
+    localStorage.setItem('walkfit.setupDone', '1')
+    localStorage.setItem('walkfit.layout', 'immersive')
+    const w = mount(App)
+    expect(w.find('.imm-workout').exists()).toBe(false)
+    await clickButton(w, '☰')
+    await clickButton(w, 'Workout')
+    await w.find('.tcard').trigger('click')
+    await clickButton(w, 'Start workout')
+    const ribbon = w.find('.imm-workout')
+    expect(ribbon.exists()).toBe(true)
+    expect(ribbon.text()).toContain('seg 1/')
+    expect(ribbon.findAll('.imm-seg').length).toBeGreaterThan(1)
+    await clickButton(w, 'End')
+    expect(w.find('.imm-workout').exists()).toBe(false)
+  })
+
   it('dashboard layout renders the Today and Recent walks widgets', () => {
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T20:00:00.000Z') })
     localStorage.setItem('walkfit.setupDone', '1')

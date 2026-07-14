@@ -569,7 +569,20 @@ function finalizeSession() {
       ...(hrCount ? { hrMin: hrLo, hrMax: hrHi } : {}),
     }
     sessions.value = addSession(session)
-    if (strava.state.connected) stravaPrompt.value = { session, name: sessionName }
+    if (strava.state.connected) {
+      if (stravaAutoUpload.value) {
+        // fire-and-forget (#70): success shows a toast; failure falls back to the prompt
+        const name = sessionName
+        strava
+          .uploadSession(session, name)
+          .then(() => showToast('Uploaded to Strava ✓'))
+          .catch(() => {
+            stravaPrompt.value = { session, name }
+          })
+      } else {
+        stravaPrompt.value = { session, name: sessionName }
+      }
+    }
   }
   sessionStart = null
   localStorage.removeItem(SNAPSHOT_KEY)
@@ -667,6 +680,17 @@ async function handleOAuthRedirects() {
 
 // --- Strava upload prompt ---
 const stravaPrompt = ref<{ session: Session; name: string } | null>(null) // set while the post-walk popup is open
+// Auto-upload finished sessions instead of prompting (#70) — Settings toggle.
+const stravaAutoUpload = ref(localStorage.getItem('walkfit.strava.autoUpload') === '1')
+watch(stravaAutoUpload, (v) => localStorage.setItem('walkfit.strava.autoUpload', v ? '1' : '0'))
+// tiny transient toast (auto-upload confirmation)
+const toast = ref('')
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+function showToast(text: string) {
+  toast.value = text
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => (toast.value = ''), 4000)
+}
 async function uploadToStrava() {
   if (!stravaPrompt.value) return
   const { session, name } = stravaPrompt.value
@@ -1206,6 +1230,10 @@ const pace = computed(() => {
 
     <p v-if="hr.state.error" class="warn">Heart rate: {{ hr.state.error }}</p>
 
+    <transition name="toast">
+      <div v-if="toast" class="toast">{{ toast }}</div>
+    </transition>
+
     <!-- controls -->
 
     <details v-if="debugOn" class="dbg" open>
@@ -1422,6 +1450,7 @@ const pace = computed(() => {
         @close="settingsOpen = false"
         @weight-changed="weightSettingChanged"
         @sync-provider="syncHealth"
+        v-model:strava-auto-upload="stravaAutoUpload"
         @imported="reloadApp"
       />
     </div>
@@ -2236,5 +2265,29 @@ input[type='range'] {
   font-variant-numeric: tabular-nums;
   min-width: 62px;
   text-align: right;
+}
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a2420;
+  border: 1px solid var(--accent);
+  color: #e8ecf2;
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-size: 13.5px;
+  z-index: 40;
+}
+.toast-enter-active,
+.toast-leave-active {
+  transition:
+    opacity 0.25s,
+    transform 0.25s;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
 }
 </style>

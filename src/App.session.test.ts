@@ -68,6 +68,25 @@ vi.mock('./treadmill', () => ({
   SPEED_MAX: 6.0,
   SPEED_STEP: 0.1,
 }))
+const fakeStrava = reactive({
+  supported: true,
+  connected: false,
+  athleteName: '',
+  connecting: false,
+  uploading: false,
+  error: '',
+})
+const uploadSession = vi.fn<(session: unknown, name: string) => Promise<object>>(async () => ({}))
+vi.mock('./strava', () => ({
+  useStrava: () => ({
+    state: fakeStrava,
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    handleRedirect: async () => false,
+    uploadSession,
+  }),
+}))
+
 vi.mock('./heartrate', () => ({
   useHeartRate: () => ({
     state: fakeHr,
@@ -86,6 +105,8 @@ beforeAll(() => {
 })
 beforeEach(() => {
   localStorage.clear()
+  fakeStrava.connected = false
+  uploadSession.mockClear()
   fakeTm.running = false
   fakeTm.distance = 0
   fakeTm.elapsed = 0
@@ -369,5 +390,46 @@ describe('workouts & goals (#68)', () => {
     await walk(w, 450, 270)
     expect(w.find('.goal-pct').text()).toBe('✓ reached')
     await clickButton(w, 'Stop')
+  })
+})
+
+describe('strava auto-upload (#70)', () => {
+  it('uploads finished walks directly when the toggle is on, no prompt', async () => {
+    localStorage.setItem('walkfit.strava.autoUpload', '1')
+    fakeStrava.connected = true
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    await walk(w, 1000, 600)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(uploadSession).toHaveBeenCalledTimes(1)
+    expect(uploadSession.mock.calls[0]![1]).toBe('Free walk')
+    expect(w.text()).not.toContain('Upload to Strava?') // no prompt
+    await w.vm.$nextTick()
+    expect(w.find('.toast').exists()).toBe(true) // confirmation toast
+  })
+
+  it('falls back to the prompt when the auto-upload fails', async () => {
+    localStorage.setItem('walkfit.strava.autoUpload', '1')
+    fakeStrava.connected = true
+    uploadSession.mockRejectedValueOnce(new Error('rate limited'))
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    await walk(w, 1000, 600)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('Upload to Strava?')
+  })
+
+  it('keeps the prompt behavior when the toggle is off', async () => {
+    fakeStrava.connected = true
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    await walk(w, 1000, 600)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(uploadSession).not.toHaveBeenCalled()
+    expect(w.text()).toContain('Upload to Strava?')
   })
 })

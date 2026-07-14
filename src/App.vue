@@ -36,6 +36,7 @@ import { syncProvider } from './health'
 import type { HealthProvider } from './health'
 import { useWithings } from './withings'
 import { useStrava } from './strava'
+import Logo from './Logo.vue'
 import WorkoutPicker from './WorkoutPicker.vue'
 import StatisticsSheet from './StatisticsSheet.vue'
 import SettingsSheet from './SettingsSheet.vue'
@@ -997,7 +998,7 @@ const pace = computed(() => {
     <header>
       <div class="brand">
         <span class="dot" :class="{ on: state.connected, run: state.running }"></span>
-        <h1>Walk<span>Fit</span></h1>
+        <h1><Logo /></h1>
       </div>
       <!-- live session stats (#46) — real zeros, faded while the belt is idle -->
       <div class="stat-strip" :class="{ idle: !state.running }">
@@ -1641,11 +1642,7 @@ header {
 }
 h1 {
   font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.5px;
-}
-h1 span {
-  color: var(--accent);
+  line-height: 1;
 }
 .head-actions {
   display: flex;

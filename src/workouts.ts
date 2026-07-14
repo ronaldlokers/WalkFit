@@ -111,6 +111,15 @@ export const workouts: Workout[] = [
 const COOLDOWN: Segment = { speed: 1.0, minutes: 1.75 }
 for (const w of workouts) w.segments.push({ ...COOLDOWN })
 
+// Contiguous, non-overlapping bpm ranges for a steer target: hi is one below the next
+// target's lo (Light 90–113, Fat burn 114–132, … at the default 190 max HR).
+export function hrTargetRange(t: HrTarget, maxHr: number): { lo: number; hi: number } {
+  return {
+    lo: Math.round((t.loPct / 100) * maxHr),
+    hi: Math.round((t.hiPct / 100) * maxHr) - 1,
+  }
+}
+
 // Approx metabolic equivalent for a walking speed (km/h).
 export function metForSpeed(kmh: number): number {
   if (kmh < 3) return 2.0

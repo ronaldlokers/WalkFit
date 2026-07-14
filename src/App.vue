@@ -2,18 +2,11 @@
 import { ref, reactive, computed, onMounted, nextTick, watch, defineAsyncComponent } from 'vue'
 import { useTreadmill, SPEED_MIN, SPEED_MAX, SPEED_STEP } from './treadmill'
 import { useHeartRate } from './heartrate'
-import { workouts, timeline, metForSpeed } from './workouts'
+import { workouts, timeline, metForSpeed, hrTargetRange } from './workouts'
 import type { Workout, HrTarget } from './workouts'
-import {
-  loadStatistics,
-  addSession,
-  weeklyTotals,
-  currentStreak,
-  dailyTotals,
-  loadGoals,
-  saveGoals,
-} from './statistics'
+import { loadStatistics, addSession, loadGoals, saveGoals } from './statistics'
 import type { Session } from './statistics'
+import { mmss } from './format'
 import {
   trackPoint,
   laneStaggers,
@@ -36,6 +29,8 @@ import type { HealthProvider } from './health'
 import { useWithings } from './withings'
 import { useStrava } from './strava'
 import WorkoutPicker from './WorkoutPicker.vue'
+import StatisticsSheet from './StatisticsSheet.vue'
+import SettingsSheet from './SettingsSheet.vue'
 
 const {
   state,
@@ -184,14 +179,6 @@ const HR_TARGETS: HrTarget[] = [
 ]
 const HR_NUDGE_STEP = 0.3 // km/h per adjustment
 const HR_ADJUST_INTERVAL = 20 // seconds between nudges (issue #18 calls for 15–30s)
-// Contiguous, non-overlapping bpm ranges: hi is one below the next target's lo
-// (Light 90–113, Fat burn 114–132, … at the default 190 max HR).
-function hrTargetRange(t: HrTarget) {
-  return {
-    lo: Math.round((t.loPct / 100) * maxHr.value),
-    hi: Math.round((t.hiPct / 100) * maxHr.value) - 1,
-  }
-}
 const hrTarget = ref<HrTarget | null>(null) // active HR_TARGETS entry while the autopilot is steering speed
 let lastHrAdjustElapsed = 0
 function startHrWorkout(t: HrTarget) {
@@ -226,7 +213,7 @@ watch(
     lastHrAdjustElapsed = state.elapsed
     const bpm = hr.state.bpm
     if (!bpm) return // no reading this cycle — try again next interval rather than guess
-    const { lo, hi } = hrTargetRange(hrTarget.value)
+    const { lo, hi } = hrTargetRange(hrTarget.value, maxHr.value)
     if (bpm < lo) setSpeed(state.targetSpeed + HR_NUDGE_STEP)
     else if (bpm > hi) setSpeed(state.targetSpeed - HR_NUDGE_STEP)
   },
@@ -383,119 +370,10 @@ watch(
 const MIN_SESSION_DISTANCE = 50 // metres — filters out accidental/blip starts
 const sessions = ref(loadStatistics())
 const statisticsOpen = ref(false)
-const weekly = computed(() => weeklyTotals(sessions.value))
-const streak = computed(() => currentStreak(sessions.value))
 // Daily activity goals for the rings (#43); edits in Settings persist via the watcher.
 const goals = reactive(loadGoals())
 watch(goals, () => saveGoals({ ...goals }))
 
-// --- daily activity: rings + charts (#43) ---
-// Metric hues reuse the app's established identity colors (HR-zone badge, accent):
-// kcal green / steps blue / time amber / HR red. Validated on the #171a21 card surface —
-// contrast >3:1 and CVD ΔE 81 (target ≥12); they sit above the generic dark lightness
-// band by design, matching the rest of the UI rather than a darker chart-only variant.
-const METRIC_COLORS = { kcal: '#2ed573', steps: '#6ab0ff', time: '#f5a623', hr: '#ff4757' }
-const chartDays = ref(7)
-const daily = computed(() => dailyTotals(sessions.value, chartDays.value))
-const todayTotals = computed(() => dailyTotals(sessions.value, 1)[0]!)
-
-// Activity rings: outer→inner kcal/steps/time, filling toward the daily goals.
-const rings = computed(() => {
-  const t = todayTotals.value
-  return [
-    {
-      id: 'kcal',
-      label: 'Calories',
-      color: METRIC_COLORS.kcal,
-      value: Math.round(t.kcal),
-      goal: goals.kcal,
-      unit: 'kcal',
-    },
-    {
-      id: 'steps',
-      label: 'Steps',
-      color: METRIC_COLORS.steps,
-      value: t.steps,
-      goal: goals.steps,
-      unit: 'steps',
-    },
-    {
-      id: 'time',
-      label: 'Time',
-      color: METRIC_COLORS.time,
-      value: Math.round(t.duration / 60),
-      goal: goals.minutes,
-      unit: 'min',
-    },
-  ].map((r, i) => {
-    const radius = 52 - i * 15
-    const c = 2 * Math.PI * radius
-    const pct = Math.min(r.value / r.goal, 1)
-    return { ...r, radius, pct, dash: `${pct * c} ${c}` }
-  })
-})
-
-const barCharts = computed(() => {
-  const days = daily.value
-  return [
-    {
-      id: 'kcal',
-      label: 'Calories',
-      color: METRIC_COLORS.kcal,
-      unit: 'kcal',
-      values: days.map((d) => Math.round(d.kcal)),
-    },
-    {
-      id: 'steps',
-      label: 'Steps',
-      color: METRIC_COLORS.steps,
-      unit: 'steps',
-      values: days.map((d) => d.steps),
-    },
-    {
-      id: 'time',
-      label: 'Activity time',
-      color: METRIC_COLORS.time,
-      unit: 'min',
-      values: days.map((d) => Math.round(d.duration / 60)),
-    },
-  ].map((m) => ({
-    ...m,
-    max: Math.max(...m.values, 1),
-    total: m.values.reduce((a, b) => a + b, 0),
-  }))
-})
-
-// Daily HR: min–max span bars + an avg tick, on a shared padded bpm scale.
-const hrChart = computed(() => {
-  const days = daily.value
-  const withHr = days.filter((d) => d.hrMin !== null)
-  if (!withHr.length) return null
-  const lo = Math.min(...withHr.map((d) => d.hrMin!)) - 5
-  const hi = Math.max(...withHr.map((d) => d.hrMax!)) + 5
-  const span = hi - lo
-  return {
-    lo,
-    hi,
-    bars: days.map((d) =>
-      d.hrMin === null
-        ? null
-        : {
-            bottom: ((d.hrMin - lo) / span) * 100,
-            height: Math.max(((d.hrMax! - d.hrMin) / span) * 100, 3),
-            avg: d.hrAvg === null ? null : ((d.hrAvg - lo) / span) * 100,
-            title: `${d.date}: ${d.hrMin}–${d.hrMax} bpm · avg ${d.hrAvg}`,
-          },
-    ),
-  }
-})
-
-// Sparse x labels: weekday letters for 7d, day-of-month every 5th for longer ranges.
-function dayLabel(dateKey: string, i: number): string {
-  const d = new Date(dateKey + 'T00:00:00')
-  if (chartDays.value === 7) return 'SMTWTFS'[d.getDay()]!
-  return i % 5 === 0 || i === chartDays.value - 1 ? String(d.getDate()) : ''
-}
 let sessionStart: Date | null = null
 let sessionName = 'Free walk'
 let hrSum = 0
@@ -587,45 +465,9 @@ watch(
 
 // --- weight log (issue #16) ---
 const weightLog = ref<WeightEntry[]>(loadWeightLog())
-const latestWeight = computed(() => weightLog.value[weightLog.value.length - 1] ?? null)
-// Delta vs the last weigh-in at least ~30 days before the newest one (falls back to the
-// oldest entry when the log is younger than that; null until two entries exist).
-const weightDelta = computed(() => {
-  const log = weightLog.value
-  if (log.length < 2) return null
-  const latest = log[log.length - 1]
-  const cutoff = new Date(latest.date).getTime() - 30 * 86400000
-  let refEntry = log[0]
-  for (const e of log) {
-    if (new Date(e.date).getTime() <= cutoff) refEntry = e
-    else break
-  }
-  return latest.kg - refEntry.kg
-})
-// Trend line, x proportional to time (weigh-ins are irregular — index-spacing would lie).
-const weightSpark = computed(() => {
-  const log = weightLog.value
-  if (log.length < 2) return null
-  const W = 320,
-    H = 80
-  const kgs = log.map((e) => e.kg)
-  const min = Math.min(...kgs),
-    max = Math.max(...kgs)
-  const rng = Math.max(0.5, max - min) // floor so a flat log doesn't zoom into noise
-  const t0 = new Date(log[0].date).getTime()
-  const span = Math.max(1, new Date(log[log.length - 1].date).getTime() - t0)
-  const pts = log.map(
-    (e) =>
-      `${(((new Date(e.date).getTime() - t0) / span) * W).toFixed(1)},${(H - 0.12 * H - ((e.kg - min) / rng) * 0.76 * H).toFixed(1)}`,
-  )
-  return { line: pts.join(' '), area: `M0,${H} L${pts.join(' L')} L${W},${H} Z`, min, max }
-})
-const weighInInput = ref<number | null>(null)
-function logWeighIn() {
-  if (!weighInInput.value) return
-  const kg = Math.round(weighInInput.value * 10) / 10
+// Manual weigh-in from the statistics sheet (which owns the input; App owns the log).
+function handleWeighIn(kg: number) {
   weightLog.value = addWeighIn({ date: new Date().toISOString(), kg, source: 'manual' })
-  weighInInput.value = null
   syncWeightKg()
 }
 // Newest weigh-in drives the kcal-estimate weight (walkfit.weight persists via the
@@ -660,9 +502,6 @@ async function syncHealth(p: HealthProvider) {
 async function handleOAuthRedirects() {
   if (await strava.handleRedirect()) return
   for (const p of healthProviders) if (await p.handleRedirect()) return
-}
-function fmtSynced(ms: number | null) {
-  return ms ? new Date(ms).toLocaleString() : 'never'
 }
 
 // --- Strava upload prompt ---
@@ -845,10 +684,6 @@ const walkArea = computed(() => {
 const peakSpeed = computed(() => (state.history.length ? Math.max(...state.history) : 0))
 
 // --- formatting ---
-function mmss(sec: number) {
-  sec = Math.max(0, Math.floor(sec))
-  return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`
-}
 const fmtDist = computed(() =>
   state.distance >= 1000
     ? (state.distance / 1000).toFixed(2) + ' km'
@@ -1128,7 +963,8 @@ const pace = computed(() => {
         <div>
           <span class="workout-name">HR workout · {{ hrTarget.name }}</span>
           <span class="workout-seg">
-            target {{ hrTargetRange(hrTarget).lo }}–{{ hrTargetRange(hrTarget).hi }} bpm · now
+            target {{ hrTargetRange(hrTarget, maxHr).lo }}–{{ hrTargetRange(hrTarget, maxHr).hi }}
+            bpm · now
             {{ hr.state.bpm || '–' }} bpm · {{ state.targetSpeed.toFixed(1) }} km/h
           </span>
         </div>
@@ -1224,221 +1060,14 @@ const pace = computed(() => {
 
     <!-- session statistics -->
     <div v-if="statisticsOpen" class="overlay" @click.self="statisticsOpen = false">
-      <div class="sheet">
-        <div class="sheet-head">
-          <h2>Statistics</h2>
-          <button class="x" @click="statisticsOpen = false">✕</button>
-        </div>
-
-        <div v-if="!sessions.length" class="hist-empty">
-          <span class="hist-empty-icon">🏃</span>
-          <p class="hint">No walks logged yet — finish a walk to see it here.</p>
-        </div>
-
-        <div v-else class="hist-body">
-          <div class="hist-section">
-            <h3>Daily activity</h3>
-            <div class="rings-wrap">
-              <svg class="rings" viewBox="0 0 120 120" aria-hidden="true">
-                <g v-for="r in rings" :key="r.id">
-                  <circle class="ring-track" cx="60" cy="60" :r="r.radius" :stroke="r.color" />
-                  <circle
-                    v-if="r.pct > 0"
-                    class="ring-fill"
-                    cx="60"
-                    cy="60"
-                    :r="r.radius"
-                    :stroke="r.color"
-                    :stroke-dasharray="r.dash"
-                    transform="rotate(-90 60 60)"
-                  />
-                </g>
-              </svg>
-              <div class="ring-legend">
-                <div v-for="r in rings" :key="r.id" class="ring-item">
-                  <span class="ring-dot" :style="{ background: r.color }"></span>
-                  <span class="ring-label">{{ r.label }}</span>
-                  <span class="ring-val"
-                    >{{ r.value }}<span class="ring-goal"> / {{ r.goal }} {{ r.unit }}</span
-                    ><span v-if="r.pct >= 1" class="ring-done"> ✓</span></span
-                  >
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="detail-tiles hist-tiles">
-            <div>
-              <span class="v">{{ streak }}<span class="unit">🔥</span></span>
-              <span class="k">day streak</span>
-            </div>
-            <div>
-              <span class="v">{{ sessions.length }}</span>
-              <span class="k">{{ sessions.length === 1 ? 'walk' : 'walks' }} total</span>
-            </div>
-          </div>
-
-          <div class="hist-section">
-            <div class="daily-head">
-              <h3>Daily detail</h3>
-              <div class="range-chips">
-                <button
-                  v-for="n in [7, 14, 30]"
-                  :key="n"
-                  class="chip"
-                  :class="{ on: chartDays === n }"
-                  @click="chartDays = n"
-                >
-                  {{ n }}d
-                </button>
-              </div>
-            </div>
-
-            <div v-for="m in barCharts" :key="m.id" class="daychart">
-              <div class="daychart-head">
-                <span class="daychart-label"
-                  ><span class="ring-dot" :style="{ background: m.color }"></span
-                  >{{ m.label }}</span
-                >
-                <span class="daychart-total">{{ m.total }} {{ m.unit }}</span>
-              </div>
-              <div class="bars">
-                <div
-                  v-for="(v, i) in m.values"
-                  :key="i"
-                  class="bar-slot"
-                  :title="`${daily[i]!.date}: ${v} ${m.unit}`"
-                >
-                  <div
-                    class="bar"
-                    :style="
-                      v === 0
-                        ? { height: '2px', background: '#252b37' }
-                        : { height: (v / m.max) * 100 + '%', background: m.color }
-                    "
-                  ></div>
-                </div>
-              </div>
-              <div class="bar-labels">
-                <span v-for="(d, i) in daily" :key="d.date">{{ dayLabel(d.date, i) }}</span>
-              </div>
-            </div>
-
-            <div class="daychart">
-              <div class="daychart-head">
-                <span class="daychart-label"
-                  ><span class="ring-dot" :style="{ background: METRIC_COLORS.hr }"></span>Heart
-                  rate</span
-                >
-                <span v-if="hrChart" class="daychart-total"
-                  >{{ hrChart.lo }}–{{ hrChart.hi }} bpm · ─ avg</span
-                >
-              </div>
-              <template v-if="hrChart">
-                <div class="bars hr-bars">
-                  <div
-                    v-for="(b, i) in hrChart.bars"
-                    :key="i"
-                    class="bar-slot"
-                    :title="b ? b.title : ''"
-                  >
-                    <template v-if="b">
-                      <div
-                        class="hr-span"
-                        :style="{ bottom: b.bottom + '%', height: b.height + '%' }"
-                      ></div>
-                      <div v-if="b.avg !== null" class="hr-avg" :style="{ bottom: b.avg + '%' }" />
-                    </template>
-                  </div>
-                </div>
-                <div class="bar-labels">
-                  <span v-for="(d, i) in daily" :key="d.date">{{ dayLabel(d.date, i) }}</span>
-                </div>
-              </template>
-              <p v-else class="hint chart-empty-hint">
-                No heart-rate data in this range — connect a HR sensor during a walk.
-              </p>
-            </div>
-          </div>
-
-          <div class="hist-section">
-            <h3>By week</h3>
-            <ul class="weeklist">
-              <li v-for="w in weekly" :key="w.week">
-                <div class="week-head">
-                  <span class="week-label">{{ w.week }}</span>
-                  <span class="week-meta"
-                    >{{ w.sessions }} {{ w.sessions === 1 ? 'walk' : 'walks' }}</span
-                  >
-                </div>
-                <div class="week-stats">
-                  <span class="week-stat"
-                    ><span class="week-stat-v">{{ (w.distance / 1000).toFixed(1) }}</span
-                    ><span class="week-stat-k">km</span></span
-                  >
-                  <span class="week-stat"
-                    ><span class="week-stat-v">{{ mmss(w.duration) }}</span
-                    ><span class="week-stat-k">time</span></span
-                  >
-                  <span class="week-stat"
-                    ><span class="week-stat-v">~{{ Math.round(w.kcal) }}</span
-                    ><span class="week-stat-k">kcal</span></span
-                  >
-                </div>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="hist-section weight-section">
-          <h3>Weight</h3>
-          <div v-if="latestWeight" class="detail-tiles hist-tiles">
-            <div>
-              <span class="v">{{ latestWeight.kg.toFixed(1) }}<span class="unit">kg</span></span>
-              <span class="k">latest</span>
-            </div>
-            <div>
-              <span class="v"
-                >{{
-                  weightDelta === null
-                    ? '—'
-                    : (weightDelta > 0 ? '+' : '') + weightDelta.toFixed(1)
-                }}<span v-if="weightDelta !== null" class="unit">kg</span></span
-              >
-              <span class="k">vs ~30 days</span>
-            </div>
-          </div>
-          <template v-if="weightSpark">
-            <svg class="weight-chart" viewBox="0 0 320 80" preserveAspectRatio="none">
-              <path class="weight-area" :d="weightSpark.area" />
-              <polyline class="weight-line" :points="weightSpark.line" />
-            </svg>
-            <div class="weight-range">
-              {{ weightSpark.min.toFixed(1) }}–{{ weightSpark.max.toFixed(1) }} kg
-            </div>
-          </template>
-          <p v-if="!weightLog.length" class="hint">
-            No weigh-ins yet — log one to start the trend.
-          </p>
-          <div class="set-row weigh-row">
-            <span class="set-inline">
-              <input
-                v-model.number="weighInInput"
-                type="number"
-                step="0.1"
-                min="30"
-                max="250"
-                :placeholder="String(weightKg)"
-                @keyup.enter="logWeighIn"
-              />
-              <span class="set-unit">kg</span>
-            </span>
-            <button class="btn go sm" :disabled="!weighInInput" @click="logWeighIn">
-              Log weigh-in
-            </button>
-          </div>
-        </div>
-      </div>
+      <StatisticsSheet
+        :sessions="sessions"
+        :weight-log="weightLog"
+        :goals="goals"
+        :weight-kg="weightKg"
+        @close="statisticsOpen = false"
+        @weigh-in="handleWeighIn"
+      />
     </div>
 
     <!-- onboarding wizard -->
@@ -1550,190 +1179,24 @@ const pace = computed(() => {
 
     <!-- settings -->
     <div v-if="settingsOpen" class="overlay" @click.self="settingsOpen = false">
-      <div class="sheet">
-        <div class="sheet-head">
-          <h2>Settings</h2>
-          <button class="x" @click="settingsOpen = false">✕</button>
-        </div>
-        <div class="settings">
-          <h3>Treadmill</h3>
-          <div class="set-row">
-            <span>{{
-              state.connected ? state.deviceName : state.remembered ? 'Remembered' : 'Not connected'
-            }}</span>
-            <div class="set-actions">
-              <button
-                v-if="!state.connected"
-                class="btn ghost sm"
-                :disabled="state.connecting"
-                @click="connect"
-              >
-                {{ state.connecting ? 'Connecting…' : 'Connect' }}
-              </button>
-              <button v-else class="btn ghost sm" @click="disconnect">Disconnect</button>
-              <button v-if="state.remembered" class="btn ghost sm forget" @click="forgetTreadmill">
-                Forget
-              </button>
-            </div>
-          </div>
-
-          <h3>Heart rate</h3>
-          <div class="set-row">
-            <span>{{
-              hr.state.connected
-                ? hr.state.deviceName
-                : hr.state.remembered
-                  ? 'Remembered'
-                  : 'Not connected'
-            }}</span>
-            <div class="set-actions">
-              <button
-                v-if="!hr.state.connected"
-                class="btn ghost sm"
-                :disabled="hr.state.connecting"
-                @click="hr.connect"
-              >
-                {{ hr.state.connecting ? 'Connecting…' : 'Connect' }}
-              </button>
-              <button v-else class="btn ghost sm" @click="hr.disconnect">Disconnect</button>
-              <button v-if="hr.state.remembered" class="btn ghost sm forget" @click="hr.forget">
-                Forget
-              </button>
-            </div>
-          </div>
-          <div class="set-row">
-            <span>Max HR</span>
-            <input v-model.number="maxHr" type="number" min="120" max="220" />
-          </div>
-          <p class="set-note">
-            Fat-burn zone: {{ Math.round(maxHr * 0.6) }}–{{ Math.round(maxHr * 0.7) }} bpm
-          </p>
-          <div class="set-row">
-            <span>Weight</span>
-            <span class="set-inline">
-              <input
-                v-model.number="weightKg"
-                type="number"
-                min="30"
-                max="250"
-                @change="weightSettingChanged"
-              />
-              <span class="set-unit">kg</span>
-            </span>
-          </div>
-          <p class="set-note">Used to estimate calories burned.</p>
-
-          <h3>Daily goals</h3>
-          <div class="set-row">
-            <span>Calories</span>
-            <span class="set-inline">
-              <input v-model.number="goals.kcal" type="number" min="50" max="5000" step="50" />
-              <span class="set-unit">kcal</span>
-            </span>
-          </div>
-          <div class="set-row">
-            <span>Steps</span>
-            <input v-model.number="goals.steps" type="number" min="500" max="50000" step="500" />
-          </div>
-          <div class="set-row">
-            <span>Activity time</span>
-            <span class="set-inline">
-              <input v-model.number="goals.minutes" type="number" min="5" max="300" step="5" />
-              <span class="set-unit">min</span>
-            </span>
-          </div>
-          <p class="set-note">The activity rings in Statistics fill toward these.</p>
-
-          <h3>Display</h3>
-          <div class="set-row">
-            <span>Track view</span>
-            <div class="set-actions">
-              <button
-                :class="viewMode === 'track' ? 'btn primary sm' : 'btn ghost sm'"
-                @click="viewMode = 'track'"
-              >
-                2D
-              </button>
-              <button
-                :class="viewMode === 'scenic' ? 'btn primary sm' : 'btn ghost sm'"
-                :disabled="!scenicSupported"
-                :title="scenicSupported ? undefined : 'Needs WebGL'"
-                @click="viewMode = 'scenic'"
-              >
-                3D
-              </button>
-            </div>
-          </div>
-
-          <template v-if="strava.state.supported">
-            <h3>Strava</h3>
-            <div class="set-row">
-              <span>{{
-                strava.state.connected ? strava.state.athleteName || 'Connected' : 'Not connected'
-              }}</span>
-              <div class="set-actions">
-                <button
-                  v-if="!strava.state.connected"
-                  class="btn ghost sm"
-                  :disabled="strava.state.connecting"
-                  @click="strava.connect"
-                >
-                  {{ strava.state.connecting ? 'Connecting…' : 'Connect' }}
-                </button>
-                <button v-else class="btn ghost sm" @click="strava.disconnect">Disconnect</button>
-              </div>
-            </div>
-            <p v-if="strava.state.error" class="set-note warn-note">{{ strava.state.error }}</p>
-            <p class="set-note">Prompts to upload each finished walk once connected.</p>
-          </template>
-
-          <template v-for="p in healthProviders" :key="p.id">
-            <template v-if="p.state.supported">
-              <h3>{{ p.name }}</h3>
-              <div class="set-row">
-                <span>{{
-                  p.state.connected ? p.state.accountLabel || 'Connected' : 'Not connected'
-                }}</span>
-                <div class="set-actions">
-                  <button
-                    v-if="!p.state.connected"
-                    class="btn ghost sm"
-                    :disabled="p.state.connecting"
-                    @click="p.connect"
-                  >
-                    {{ p.state.connecting ? 'Connecting…' : 'Connect' }}
-                  </button>
-                  <template v-else>
-                    <button class="btn ghost sm" :disabled="p.state.syncing" @click="syncHealth(p)">
-                      {{ p.state.syncing ? 'Syncing…' : 'Sync now' }}
-                    </button>
-                    <button class="btn ghost sm" @click="p.disconnect">Disconnect</button>
-                  </template>
-                </div>
-              </div>
-              <p v-if="p.state.error" class="set-note warn-note">{{ p.state.error }}</p>
-              <p class="set-note">
-                Weigh-ins sync into the weight log{{
-                  p.state.connected ? ` — last synced ${fmtSynced(p.state.lastSync)}` : ''
-                }}.
-              </p>
-            </template>
-          </template>
-
-          <h3>Sound</h3>
-          <label class="set-row toggle">
-            <span>Audio cues</span>
-            <input v-model="audioOn" type="checkbox" />
-          </label>
-          <p class="set-note">Countdown beeps + spoken speed at segment changes, lap chime.</p>
-
-          <h3>Advanced</h3>
-          <label class="set-row toggle">
-            <span>Debug panel</span>
-            <input v-model="debugOn" type="checkbox" />
-          </label>
-        </div>
-      </div>
+      <SettingsSheet
+        v-model:max-hr="maxHr"
+        v-model:weight-kg="weightKg"
+        v-model:audio-on="audioOn"
+        v-model:debug-on="debugOn"
+        v-model:view-mode="viewMode"
+        v-model:goal-kcal="goals.kcal"
+        v-model:goal-steps="goals.steps"
+        v-model:goal-minutes="goals.minutes"
+        :tm="{ state, connect, disconnect, forget: forgetTreadmill }"
+        :hr="hr"
+        :strava="strava"
+        :providers="healthProviders"
+        :scenic-supported="scenicSupported"
+        @close="settingsOpen = false"
+        @weight-changed="weightSettingChanged"
+        @sync-provider="syncHealth"
+      />
     </div>
   </div>
 </template>
@@ -2204,66 +1667,6 @@ code {
   z-index: 1;
   color: #ff4757;
 }
-.settings {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-bottom: 8px;
-}
-.settings h3 {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: #8a93a3;
-  margin-top: 10px;
-}
-.set-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  background: #171a21;
-  border: 1px solid #232833;
-  border-radius: 12px;
-  padding: 12px 14px;
-  font-size: 14px;
-}
-.set-row input[type='number'] {
-  width: 72px;
-  background: #12151b;
-  border: 1px solid #232833;
-  color: #e8ecf2;
-  border-radius: 8px;
-  padding: 6px 8px;
-  font-size: 14px;
-  text-align: right;
-}
-.set-inline {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.set-unit {
-  color: #8a93a3;
-  font-size: 13px;
-}
-.set-row input[type='checkbox'] {
-  width: 20px;
-  height: 20px;
-  accent-color: var(--accent);
-}
-.set-row.toggle {
-  cursor: pointer;
-}
-.set-note {
-  font-size: 12.5px;
-  color: #8a93a3;
-  padding: 0 2px;
-}
-.set-actions {
-  display: flex;
-  gap: 8px;
-}
 .controls.disabled {
   opacity: 0.55;
 }
@@ -2545,300 +1948,6 @@ input[type='range'] {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #8a93a3;
-}
-/* --- statistics --- */
-.hist-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  text-align: center;
-  padding: 48px 16px 36px;
-}
-.hist-empty-icon {
-  font-size: 40px;
-  opacity: 0.6;
-}
-.hist-empty .hint {
-  margin-top: 0;
-}
-.hist-body {
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-  padding-top: 4px;
-}
-.hist-tiles > div {
-  padding: 16px 10px;
-}
-.hist-tiles .v {
-  font-size: 26px;
-}
-.hist-tiles .unit {
-  margin-left: 3px;
-  font-size: 16px;
-  vertical-align: 2px;
-}
-.hist-section h3 {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: #8a93a3;
-  margin: 0 0 10px 2px;
-}
-/* --- daily activity rings --- */
-.rings-wrap {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 6px 2px;
-}
-.rings {
-  width: 128px;
-  height: 128px;
-  flex: none;
-}
-.ring-track {
-  fill: none;
-  stroke-width: 10;
-  opacity: 0.16;
-}
-.ring-fill {
-  fill: none;
-  stroke-width: 10;
-  stroke-linecap: round;
-  transition: stroke-dasharray 0.4s ease;
-}
-.ring-legend {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
-.ring-item {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 14px;
-}
-.ring-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex: none;
-  display: inline-block;
-  align-self: center;
-}
-.ring-label {
-  color: #8a93a3;
-  min-width: 62px;
-}
-.ring-val {
-  font-weight: 700;
-}
-.ring-goal {
-  color: #8a93a3;
-  font-weight: 400;
-  font-size: 12px;
-}
-.ring-done {
-  color: var(--accent);
-}
-/* --- daily bar / HR charts --- */
-.daily-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-.range-chips {
-  display: flex;
-  gap: 6px;
-}
-.chip {
-  background: #1b1f27;
-  border: 1px solid #232833;
-  color: #cbd3df;
-  border-radius: 999px;
-  padding: 3px 11px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.chip.on {
-  background: var(--accent);
-  border-color: transparent;
-  color: #05210f;
-  font-weight: 700;
-}
-.daychart {
-  margin-top: 14px;
-}
-.daychart-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 6px;
-  font-size: 13px;
-}
-.daychart-label {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: #cbd3df;
-  font-weight: 600;
-}
-.daychart-total {
-  color: #8a93a3;
-  font-size: 12px;
-}
-.bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 64px;
-  background: #171a21;
-  border: 1px solid #232833;
-  border-radius: 10px;
-  padding: 6px 6px 0;
-  overflow: hidden;
-}
-.bar-slot {
-  flex: 1;
-  height: 100%;
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-}
-.bar {
-  width: 100%;
-  border-radius: 3px 3px 0 0;
-}
-.hr-bars {
-  height: 90px;
-  padding: 6px;
-}
-.hr-span {
-  position: absolute;
-  left: 18%;
-  width: 64%;
-  background: rgba(255, 71, 87, 0.4);
-  border: 1px solid #ff4757;
-  border-radius: 4px;
-}
-.hr-avg {
-  position: absolute;
-  left: 10%;
-  width: 80%;
-  height: 2px;
-  border-radius: 1px;
-  background: #e8ecf2;
-}
-.bar-labels {
-  display: flex;
-  gap: 2px;
-  margin-top: 4px;
-  padding: 0 6px;
-}
-.bar-labels span {
-  flex: 1;
-  text-align: center;
-  font-size: 10px;
-  color: #8a93a3;
-}
-.chart-empty-hint {
-  margin: 4px 0 0;
-  font-size: 12px;
-}
-.weeklist {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.weeklist li {
-  padding: 14px 16px;
-  background: #171a21;
-  border: 1px solid #232833;
-  border-radius: 14px;
-  transition: border-color 0.15s;
-}
-.weeklist li:hover {
-  border-color: #333a46;
-}
-.weight-chart {
-  display: block;
-  width: 100%;
-  height: 90px;
-  background: #171a21;
-  border: 1px solid #232833;
-  border-radius: 14px;
-}
-.weight-area {
-  fill: rgba(46, 213, 115, 0.12);
-}
-.weight-line {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke;
-  stroke-linejoin: round;
-}
-.weight-range {
-  text-align: right;
-  font-size: 11px;
-  color: #8a93a3;
-  margin-top: 4px;
-}
-.weight-section {
-  /* separate the Weight block from the By-week block above it */
-  margin-top: 22px;
-}
-.weight-section .hist-tiles {
-  margin-bottom: 12px;
-}
-.weigh-row {
-  margin-top: 10px;
-}
-.week-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 12px;
-}
-.week-label {
-  font-weight: 800;
-  font-size: 14px;
-  letter-spacing: 0.2px;
-}
-.week-meta {
-  font-size: 12px;
-  color: #8a93a3;
-}
-.week-stats {
-  display: flex;
-  gap: 10px;
-}
-.week-stat {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 0;
-  background: #12151b;
-  border-radius: 8px;
-  text-align: center;
-}
-.week-stat-v {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-.week-stat-k {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
   color: #8a93a3;
 }
 .detail-actions {

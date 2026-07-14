@@ -118,6 +118,7 @@ describe('App happy path', () => {
     await clickButton(w, 'Free walk')
     await clickButton(w, '☰')
     await clickButton(w, 'Statistics')
+    await clickButton(w, 'Weight') // tab (#115 mock №3)
     expect(w.find('.weight-section').exists()).toBe(true)
     expect(w.text()).toContain('No weigh-ins yet')
 
@@ -136,7 +137,7 @@ describe('App happy path', () => {
     vi.useRealTimers()
   })
 
-  it('statistics dashboard shows Mon-Sun lanes with week navigation (#115)', async () => {
+  it('statistics dashboard: hero band, tabs, Mon-Sun week navigation (#115)', async () => {
     // 2026-07-13 is a Monday; seed one walk that Monday and one the Sunday before
     // (previous calendar week) — the week view must separate them.
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T20:00:00') })
@@ -170,35 +171,42 @@ describe('App happy path', () => {
     await clickButton(w, '☰')
     await clickButton(w, 'Statistics')
 
-    // current week: Mon 13 - Sun 19, only Monday's walk counts
-    expect(w.findAll('.lane.bars').length).toBe(4) // kcal, steps, minutes + HR
-    expect(w.findAll('.bar-labels span').length).toBe(7) // always a full Mon-Sun axis
-    const totals = w.findAll('.lane-total').map((t) => t.text())
-    expect(totals).toContain('72 kcal')
-    expect(totals).toContain('1800 steps')
-    expect(totals).toContain('20 min')
-    expect(w.findAll('.hr-span').length).toBe(1) // HR data on Monday only
-    // walk log shows only this week's walk
-    expect(w.findAll('.walk-row').length).toBe(1)
+    // hero band reflects the current week (Mon 13 - Sun 19: only Monday's walk)
+    const hero = w.find('.hero-band').text()
+    expect(hero).toContain('1.5') // km this week
+    expect(hero).toContain('72') // kcal this week
+    // Activity tab is the default: three day charts with a full Mon-Sun axis
+    expect(w.findAll('.activity-grid .card').length).toBe(3)
+    expect(w.findAll('.activity-grid .card')[0]!.findAll('.bar-slot').length).toBe(7)
+    expect(w.findAll('.card-total').map((t) => t.text())).toContain('1800 steps')
 
-    // ← one week back: Sunday's walk appears, Monday's disappears
+    // HR tab shows Monday's span only
+    await clickButton(w, 'Heart rate')
+    expect(w.findAll('.hr-span').length).toBe(1)
+
+    // Walks tab lists only this week's walk
+    await clickButton(w, 'Walks')
+    expect(w.findAll('.walk-row').length).toBe(1)
+    expect(w.find('.walk-row').text()).toContain('1.50 km')
+
+    // ← one week back: Sunday's walk appears, hero updates, This-week chip shows
     const nav = w.findAll('.wk-btn')
     await nav[0]!.trigger('click')
-    expect(w.findAll('.lane-total').map((t) => t.text())).toContain('40 kcal')
     expect(w.findAll('.walk-row').length).toBe(1)
     expect(w.find('.walk-row').text()).toContain('900 m')
-    expect(w.find('.today-chip').exists()).toBe(true) // "This week" chip appears off-week
+    expect(w.find('.hero-band').text()).toContain('0.9')
+    expect(w.find('.today-chip').exists()).toBe(true)
 
     // → forward returns to the current week; the chip goes away
     await nav[1]!.trigger('click')
-    expect(w.findAll('.lane-total').map((t) => t.text())).toContain('72 kcal')
+    expect(w.find('.walk-row').text()).toContain('1.50 km')
     expect(w.find('.today-chip').exists()).toBe(false)
 
     // date picker jumps to the week containing the picked date
     await w.find('.week-date').setValue('2026-07-08') // a Wednesday, week of Jul 6-12
-    expect(w.findAll('.lane-total').map((t) => t.text())).toContain('40 kcal')
+    expect(w.find('.walk-row').text()).toContain('900 m')
     await clickButton(w, 'This week')
-    expect(w.findAll('.lane-total').map((t) => t.text())).toContain('72 kcal')
+    expect(w.find('.walk-row').text()).toContain('1.50 km')
     vi.useRealTimers()
   })
 
@@ -236,6 +244,7 @@ describe('App happy path', () => {
     await clickButton(w, 'Free walk')
     await clickButton(w, '☰')
     await clickButton(w, 'Statistics')
+    await clickButton(w, 'Weight')
     expect(w.find('.weight-goal-line').exists()).toBe(true)
     expect(w.find('.weight-section').text()).toContain('3.2')
     expect(w.find('.weight-section').text()).toContain('to goal')
@@ -264,6 +273,7 @@ describe('App happy path', () => {
     await clickButton(w, 'Free walk')
     await clickButton(w, '☰')
     await clickButton(w, 'Statistics')
+    await clickButton(w, 'Walks')
 
     const rows = w.findAll('.walk-row')
     expect(rows).toHaveLength(2)

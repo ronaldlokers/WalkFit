@@ -120,32 +120,13 @@ const hrLane = computed(() => {
   }
 })
 
-// Weight lane: weigh-ins that fall inside the displayed week, dot per entry on the
-// day axis, plus the goal line. The full-log trend lives in the right-rail card.
-const weightLane = computed(() => {
-  const a = anchor.value.getTime()
-  const entries = props.weightLog
-    .map((e) => ({ e, t: new Date(e.date).getTime() }))
-    .filter(({ t }) => t >= a && t < a + 7 * 86400000)
-  if (!entries.length) return null
-  const kgs = entries.map(({ e }) => e.kg)
-  if (props.goalWeight) kgs.push(props.goalWeight)
-  const min = Math.min(...kgs)
-  const rng = Math.max(0.5, Math.max(...kgs) - min)
-  const H = 56
-  const y = (kg: number) => H - 0.15 * H - ((kg - min) / rng) * 0.7 * H
-  const pts = entries.map(({ e, t }) => ({
-    x: (((t - a) / (7 * 86400000)) * 320).toFixed(1),
-    y: y(e.kg).toFixed(1),
-    kg: e.kg,
-  }))
-  return {
-    pts,
-    line: pts.map((p) => `${p.x},${p.y}`).join(' '),
-    goalY: props.goalWeight ? y(props.goalWeight) : null,
-    latest: entries[entries.length - 1]!.e.kg,
-  }
-})
+// --- hero band + tabs (#115 mock №3) ---
+const tab = ref<'activity' | 'hr' | 'weight' | 'walks'>('activity')
+const weekKcal = computed(() => days.value.reduce((a, d) => a + d.kcal, 0))
+const weekDuration = computed(() => days.value.reduce((a, d) => a + d.duration, 0))
+function hhmm(sec: number) {
+  return `${Math.floor(sec / 3600)}:${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}`
+}
 
 function dayLabel(dateKey: string) {
   return new Date(dateKey + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' })
@@ -254,237 +235,233 @@ function logWeighIn() {
       </div>
     </div>
 
-    <div class="stats-grid">
-      <!-- left: aligned daily lanes, one shared Mon-Sun axis -->
-      <div class="card lanes-card">
-        <h3>Daily trends</h3>
-        <div v-if="!sessions.length" class="hist-empty">
-          <span class="hist-empty-icon">🏃</span>
-          <p class="hint">No walks logged yet — finish a walk to see it here.</p>
+    <!-- hero band: the shown week's headline numbers + today's goals ring -->
+    <div class="hero-band">
+      <div class="hero-stat">
+        <span class="hero-v">{{ (weekDistance / 1000).toFixed(1) }}<small> km</small></span>
+        <span class="hero-k">distance this week</span>
+      </div>
+      <div class="hero-stat">
+        <span class="hero-v">{{ Math.round(weekKcal) }}<small> kcal</small></span>
+        <span class="hero-k">burned this week</span>
+      </div>
+      <div class="hero-stat">
+        <span class="hero-v">{{ hhmm(weekDuration) }}<small> h</small></span>
+        <span class="hero-k">active this week</span>
+      </div>
+      <div class="hero-stat">
+        <span class="hero-v">{{ streak }}<small> 🔥</small></span>
+        <span class="hero-k">day streak</span>
+      </div>
+      <div class="hero-stat">
+        <span class="hero-ring">
+          <svg viewBox="0 0 64 64">
+            <circle class="hero-ring-track" cx="32" cy="32" r="26" />
+            <circle
+              class="hero-ring-fill"
+              cx="32"
+              cy="32"
+              r="26"
+              :stroke-dasharray="`${(todayPct / 100) * 163.4} 163.4`"
+              transform="rotate(-90 32 32)"
+            />
+          </svg>
+          <span class="hero-ring-val">{{ todayPct }}%</span>
+        </span>
+        <span class="hero-k">today's goals</span>
+      </div>
+    </div>
+
+    <!-- tabs -->
+    <div class="stats-tabs">
+      <button class="chip" :class="{ on: tab === 'activity' }" @click="tab = 'activity'">
+        Activity
+      </button>
+      <button class="chip" :class="{ on: tab === 'hr' }" @click="tab = 'hr'">Heart rate</button>
+      <button class="chip" :class="{ on: tab === 'weight' }" @click="tab = 'weight'">Weight</button>
+      <button class="chip" :class="{ on: tab === 'walks' }" @click="tab = 'walks'">Walks</button>
+    </div>
+
+    <div v-if="!sessions.length && tab !== 'weight'" class="hist-empty">
+      <span class="hist-empty-icon">🏃</span>
+      <p class="hint">No walks logged yet — finish a walk to see it here.</p>
+    </div>
+
+    <!-- Activity: kcal / steps / minutes per day, Mon-Sun -->
+    <div v-else-if="tab === 'activity'" class="panel activity-grid">
+      <div v-for="m in barLanes" :key="m.id" class="card">
+        <h3>
+          <span :style="{ color: m.color }">{{ m.label }} / day</span>
+          <span class="card-total">{{ m.total }} {{ m.unit }}</span>
+        </h3>
+        <div class="bars">
+          <div
+            v-for="(v, i) in m.values"
+            :key="i"
+            class="bar-slot"
+            :title="`${days[i]!.date}: ${v} ${m.unit}`"
+          >
+            <div
+              class="bar"
+              :class="{ today: days[i]!.date === todayKey }"
+              :style="
+                v === 0
+                  ? { height: '2px', background: '#252b37' }
+                  : { height: (v / m.max) * 100 + '%', background: m.color }
+              "
+            ></div>
+          </div>
         </div>
-        <div v-else class="lanes">
-          <template v-for="m in barLanes" :key="m.id">
-            <div class="lane-side">
-              <span class="lane-name" :style="{ color: m.color }">{{ m.label }}</span>
-              <span class="lane-total">{{ m.total }} {{ m.unit }}</span>
-            </div>
-            <div class="lane bars">
-              <div
-                v-for="(v, i) in m.values"
-                :key="i"
-                class="bar-slot"
-                :title="`${days[i]!.date}: ${v} ${m.unit}`"
-              >
+        <div class="bar-labels">
+          <span v-for="d in days" :key="d.date" :class="{ 'label-today': d.date === todayKey }">{{
+            dayLabel(d.date)
+          }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Heart rate: min-max span + avg per day -->
+    <div v-else-if="tab === 'hr'" class="panel">
+      <div class="card">
+        <h3>
+          <span style="color: #ff4757">Heart rate / day</span>
+          <span class="card-total">{{
+            hrLane ? `${hrLane.lo}–${hrLane.hi} bpm · ─ avg` : ''
+          }}</span>
+        </h3>
+        <template v-if="hrLane">
+          <div class="bars hr-bars">
+            <div v-for="(b, i) in hrLane.bars" :key="i" class="bar-slot" :title="b ? b.title : ''">
+              <template v-if="b">
                 <div
-                  class="bar"
-                  :class="{ today: days[i]!.date === todayKey }"
-                  :style="
-                    v === 0
-                      ? { height: '2px', background: '#252b37' }
-                      : { height: (v / m.max) * 100 + '%', background: m.color }
-                  "
+                  class="hr-span"
+                  :style="{ bottom: b.bottom + '%', height: b.height + '%' }"
                 ></div>
-              </div>
+                <div v-if="b.avg !== null" class="hr-avg" :style="{ bottom: b.avg + '%' }" />
+              </template>
             </div>
-          </template>
-
-          <div class="lane-side">
-            <span class="lane-name" :style="{ color: METRIC_COLORS.hr }">Heart rate</span>
-            <span class="lane-total">{{ hrLane ? `${hrLane.lo}–${hrLane.hi} bpm` : '—' }}</span>
           </div>
-          <div class="lane bars hr-bars">
-            <template v-if="hrLane">
-              <div
-                v-for="(b, i) in hrLane.bars"
-                :key="i"
-                class="bar-slot"
-                :title="b ? b.title : ''"
-              >
-                <template v-if="b">
-                  <div
-                    class="hr-span"
-                    :style="{ bottom: b.bottom + '%', height: b.height + '%' }"
-                  ></div>
-                  <div v-if="b.avg !== null" class="hr-avg" :style="{ bottom: b.avg + '%' }" />
-                </template>
-              </div>
-            </template>
-            <p v-else class="hint lane-empty">No heart-rate data this week.</p>
-          </div>
-
-          <div class="lane-side">
-            <span class="lane-name weight-name">Weight</span>
-            <span class="lane-total">{{
-              weightLane ? `${weightLane.latest.toFixed(1)} kg` : '—'
-            }}</span>
-          </div>
-          <div class="lane weight-lane">
-            <svg v-if="weightLane" viewBox="0 0 320 56" preserveAspectRatio="none">
-              <line
-                v-if="weightLane.goalY !== null"
-                class="weight-goal-line"
-                x1="0"
-                :y1="weightLane.goalY"
-                x2="320"
-                :y2="weightLane.goalY"
-              />
-              <polyline
-                v-if="weightLane.pts.length > 1"
-                class="weight-line"
-                :points="weightLane.line"
-              />
-              <circle
-                v-for="(p, i) in weightLane.pts"
-                :key="i"
-                class="weight-dot"
-                :cx="p.x"
-                :cy="p.y"
-                r="3.5"
-              />
-            </svg>
-            <p v-else class="hint lane-empty">No weigh-ins this week.</p>
-          </div>
-
-          <div></div>
           <div class="bar-labels">
             <span v-for="d in days" :key="d.date" :class="{ 'label-today': d.date === todayKey }">{{
               dayLabel(d.date)
             }}</span>
           </div>
+        </template>
+        <p v-else class="hint">No heart-rate data this week — connect a HR sensor during a walk.</p>
+      </div>
+    </div>
+
+    <!-- Weight: full-log trend + weigh-in (reachable even with zero walks) -->
+    <div v-else-if="tab === 'weight'" class="panel">
+      <div class="card weight-section">
+        <div v-if="latestWeight" class="detail-tiles hist-tiles">
+          <div>
+            <span class="v">{{ latestWeight.kg.toFixed(1) }}<span class="unit">kg</span></span>
+            <span class="k">latest</span>
+          </div>
+          <div>
+            <span class="v"
+              >{{
+                weightDelta === null ? '—' : (weightDelta > 0 ? '+' : '') + weightDelta.toFixed(1)
+              }}<span v-if="weightDelta !== null" class="unit">kg</span></span
+            >
+            <span class="k">vs ~30 days</span>
+          </div>
+          <div v-if="toGoal !== null">
+            <span class="v"
+              >{{ (toGoal > 0 ? '' : '+') + Math.abs(toGoal).toFixed(1)
+              }}<span class="unit">kg</span></span
+            >
+            <span class="k">{{ toGoal > 0 ? 'to goal' : 'past goal' }}</span>
+          </div>
+        </div>
+        <template v-if="weightSpark">
+          <svg class="weight-chart" viewBox="0 0 320 80" preserveAspectRatio="none">
+            <path class="weight-area" :d="weightSpark.area" />
+            <line
+              v-if="weightSpark.goalY !== null"
+              class="weight-goal-line"
+              x1="0"
+              :y1="weightSpark.goalY"
+              x2="320"
+              :y2="weightSpark.goalY"
+            />
+            <polyline class="weight-line" :points="weightSpark.line" />
+          </svg>
+          <div class="weight-range">
+            {{ weightSpark.min.toFixed(1) }}–{{ weightSpark.max.toFixed(1) }} kg
+          </div>
+        </template>
+        <p v-if="!weightLog.length" class="hint">No weigh-ins yet — log one to start the trend.</p>
+        <div class="set-row weigh-row">
+          <span class="set-inline">
+            <input
+              v-model.number="weighInInput"
+              type="number"
+              step="0.1"
+              min="30"
+              max="250"
+              :placeholder="String(weightKg)"
+              @keyup.enter="logWeighIn"
+            />
+            <span class="set-unit">kg</span>
+          </span>
+          <button class="btn go sm" :disabled="!weighInInput" @click="logWeighIn">
+            Log weigh-in
+          </button>
         </div>
       </div>
+    </div>
 
-      <!-- right rail -->
-      <div class="rail">
-        <div class="card summary-card">
-          <div>
-            <span class="v">{{ todayPct }}%</span>
-            <span class="k">goals today</span>
-          </div>
-          <div>
-            <span class="v">{{ streak }}🔥</span>
-            <span class="k">streak</span>
-          </div>
-          <div>
-            <span class="v">{{ (weekDistance / 1000).toFixed(1) }}</span>
-            <span class="k">km this week</span>
-          </div>
-          <div>
-            <span class="v">{{ sessions.length }}</span>
-            <span class="k">walks total</span>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3>Walk log</h3>
-          <ul v-if="weekWalks.length" class="walklist">
-            <li v-for="w in weekWalks" :key="w.date">
-              <button class="walk-row" @click="toggleWalk(w.date)">
-                <span class="walk-when">
-                  <span class="walk-day">{{ walkDay(w.date) }}</span>
-                  <span class="walk-time">{{ walkTime(w.date) }}</span>
-                </span>
-                <span class="walk-stats">
-                  <span class="walk-stat">{{ fmtKm(w.distance) }}</span>
-                  <span class="walk-stat">{{ mmss(w.duration) }}</span>
-                  <span class="walk-stat">~{{ Math.round(w.kcal) }} kcal</span>
-                </span>
-              </button>
-              <div v-if="expandedWalk === w.date" class="walk-detail">
-                <div class="detail-tiles hist-tiles walk-tiles">
-                  <div>
-                    <span class="v">{{ w.steps ?? '—' }}</span>
-                    <span class="k">steps</span>
-                  </div>
-                  <div>
-                    <span class="v">{{ w.avgHr ?? '—' }}</span>
-                    <span class="k">avg bpm</span>
-                  </div>
-                  <div>
-                    <span class="v">{{ w.hrMin != null ? `${w.hrMin}–${w.hrMax}` : '—' }}</span>
-                    <span class="k">bpm range</span>
-                  </div>
-                </div>
-                <button class="btn ghost sm walk-delete" @click="emit('delete-session', w.date)">
-                  Delete this walk
-                </button>
-              </div>
-            </li>
-          </ul>
-          <p v-else class="hint">No walks in this week.</p>
-        </div>
-
-        <div class="card weight-section">
-          <h3>Weight</h3>
-          <div v-if="latestWeight" class="detail-tiles hist-tiles">
-            <div>
-              <span class="v">{{ latestWeight.kg.toFixed(1) }}<span class="unit">kg</span></span>
-              <span class="k">latest</span>
-            </div>
-            <div>
-              <span class="v"
-                >{{
-                  weightDelta === null
-                    ? '—'
-                    : (weightDelta > 0 ? '+' : '') + weightDelta.toFixed(1)
-                }}<span v-if="weightDelta !== null" class="unit">kg</span></span
-              >
-              <span class="k">vs ~30 days</span>
-            </div>
-            <div v-if="toGoal !== null">
-              <span class="v"
-                >{{ (toGoal > 0 ? '' : '+') + Math.abs(toGoal).toFixed(1)
-                }}<span class="unit">kg</span></span
-              >
-              <span class="k">{{ toGoal > 0 ? 'to goal' : 'past goal' }}</span>
-            </div>
-          </div>
-          <template v-if="weightSpark">
-            <svg class="weight-chart" viewBox="0 0 320 80" preserveAspectRatio="none">
-              <path class="weight-area" :d="weightSpark.area" />
-              <line
-                v-if="weightSpark.goalY !== null"
-                class="weight-goal-line"
-                x1="0"
-                :y1="weightSpark.goalY"
-                x2="320"
-                :y2="weightSpark.goalY"
-              />
-              <polyline class="weight-line" :points="weightSpark.line" />
-            </svg>
-            <div class="weight-range">
-              {{ weightSpark.min.toFixed(1) }}–{{ weightSpark.max.toFixed(1) }} kg
-            </div>
-          </template>
-          <p v-if="!weightLog.length" class="hint">
-            No weigh-ins yet — log one to start the trend.
-          </p>
-          <div class="set-row weigh-row">
-            <span class="set-inline">
-              <input
-                v-model.number="weighInInput"
-                type="number"
-                step="0.1"
-                min="30"
-                max="250"
-                :placeholder="String(weightKg)"
-                @keyup.enter="logWeighIn"
-              />
-              <span class="set-unit">kg</span>
-            </span>
-            <button class="btn go sm" :disabled="!weighInInput" @click="logWeighIn">
-              Log weigh-in
+    <!-- Walks: the shown week's log, expandable detail + delete (#67) -->
+    <div v-else class="panel">
+      <div class="card">
+        <h3>
+          <span>Walk log</span><span class="card-total">{{ sessions.length }} walks total</span>
+        </h3>
+        <ul v-if="weekWalks.length" class="walklist">
+          <li v-for="w in weekWalks" :key="w.date">
+            <button class="walk-row" @click="toggleWalk(w.date)">
+              <span class="walk-when">
+                <span class="walk-day">{{ walkDay(w.date) }}</span>
+                <span class="walk-time">{{ walkTime(w.date) }}</span>
+              </span>
+              <span class="walk-stats">
+                <span class="walk-stat">{{ fmtKm(w.distance) }}</span>
+                <span class="walk-stat">{{ mmss(w.duration) }}</span>
+                <span class="walk-stat">~{{ Math.round(w.kcal) }} kcal</span>
+              </span>
             </button>
-          </div>
-        </div>
+            <div v-if="expandedWalk === w.date" class="walk-detail">
+              <div class="detail-tiles hist-tiles walk-tiles">
+                <div>
+                  <span class="v">{{ w.steps ?? '—' }}</span>
+                  <span class="k">steps</span>
+                </div>
+                <div>
+                  <span class="v">{{ w.avgHr ?? '—' }}</span>
+                  <span class="k">avg bpm</span>
+                </div>
+                <div>
+                  <span class="v">{{ w.hrMin != null ? `${w.hrMin}–${w.hrMax}` : '—' }}</span>
+                  <span class="k">bpm range</span>
+                </div>
+              </div>
+              <button class="btn ghost sm walk-delete" @click="emit('delete-session', w.date)">
+                Delete this walk
+              </button>
+            </div>
+          </li>
+        </ul>
+        <p v-else class="hint">No walks in this week.</p>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* Full-page dashboard (#115, mock №4): fixed overlay page, aligned lanes left,
-   summary/walk-log/weight rail right. Shares the app's dark theme tokens. */
+/* Full-page dashboard (#115, mock №3): hero week band + tab panels.
+   Shares the app's dark theme tokens. */
 .statspage {
   position: fixed;
   inset: 0;
@@ -551,20 +528,131 @@ function logWeighIn() {
   border: 1px solid #232833;
   color: #cbd3df;
   border-radius: 999px;
-  padding: 5px 12px;
-  font-size: 12px;
+  padding: 6px 18px;
+  font-size: 13px;
   cursor: pointer;
+}
+.chip.on {
+  background: var(--accent);
+  border-color: transparent;
+  color: #05210f;
+  font-weight: 700;
 }
 .today-chip {
   background: var(--accent);
   border-color: transparent;
   color: #05210f;
   font-weight: 700;
+  padding: 5px 12px;
+  font-size: 12px;
 }
 .hint {
   font-size: 12.5px;
   color: #8a93a3;
   line-height: 1.5;
+}
+/* --- hero band --- */
+.hero-band {
+  display: flex;
+  gap: 40px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 26px 22px;
+  border-bottom: 1px solid #232833;
+  background: linear-gradient(180deg, #12151b, transparent);
+}
+.hero-stat {
+  text-align: center;
+}
+.hero-v {
+  display: block;
+  font-size: 36px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.hero-v small {
+  font-size: 15px;
+  color: #8a93a3;
+  font-weight: 600;
+}
+.hero-k {
+  font-size: 12px;
+  color: #8a93a3;
+}
+.hero-ring {
+  position: relative;
+  display: block;
+  width: 58px;
+  height: 58px;
+  margin: 0 auto;
+}
+.hero-ring svg {
+  width: 100%;
+  height: 100%;
+}
+.hero-ring-track,
+.hero-ring-fill {
+  fill: none;
+  stroke-width: 7;
+}
+.hero-ring-track {
+  stroke: #22371f;
+}
+.hero-ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+}
+.hero-ring-val {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+}
+/* --- tabs + panels --- */
+.stats-tabs {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  padding: 16px 22px 4px;
+  flex-wrap: wrap;
+}
+.panel {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 14px 22px;
+}
+.activity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+.card {
+  background: #171a21;
+  border: 1px solid #232833;
+  border-radius: 14px;
+  padding: 16px;
+}
+.card h3 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: #8a93a3;
+  margin: 0 0 12px;
+}
+.card-total {
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
 }
 .hist-empty {
   display: flex;
@@ -578,70 +666,12 @@ function logWeighIn() {
   font-size: 40px;
   opacity: 0.6;
 }
-.stats-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
-  padding: 18px 22px;
-  max-width: 1360px;
-  margin: 0 auto;
-}
-@media (min-width: 1000px) {
-  .stats-grid {
-    grid-template-columns: minmax(0, 1fr) 400px;
-    align-items: start;
-  }
-}
-.card {
-  background: #171a21;
-  border: 1px solid #232833;
-  border-radius: 14px;
-  padding: 16px;
-}
-.card h3 {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.7px;
-  color: #8a93a3;
-  margin: 0 0 12px;
-}
-/* --- lanes --- */
-.lanes {
-  display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  row-gap: 18px;
-  column-gap: 12px;
-  align-items: end;
-}
-.lane-side {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-bottom: 2px;
-}
-.lane-name {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 700;
-}
-.weight-name {
-  color: #8a93a3;
-}
-.lane-total {
-  font-size: 15px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-.lane {
-  min-width: 0;
-}
+/* --- bars --- */
 .bars {
   display: flex;
   align-items: flex-end;
   gap: 5px;
-  height: 56px;
+  height: 96px;
 }
 .bar-slot {
   flex: 1;
@@ -660,6 +690,7 @@ function logWeighIn() {
 }
 .hr-bars {
   align-items: stretch;
+  height: 130px;
 }
 .hr-span {
   position: absolute;
@@ -677,21 +708,10 @@ function logWeighIn() {
   border-radius: 1px;
   background: #e8ecf2;
 }
-.weight-lane svg {
-  display: block;
-  width: 100%;
-  height: 56px;
-}
-.weight-dot {
-  fill: #6ab0ff;
-}
-.lane-empty {
-  align-self: center;
-  margin: 0 auto;
-}
 .bar-labels {
   display: flex;
   gap: 5px;
+  margin-top: 6px;
 }
 .bar-labels span {
   flex: 1;
@@ -703,59 +723,7 @@ function logWeighIn() {
   color: var(--accent);
   font-weight: 700;
 }
-/* --- right rail --- */
-.rail {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.summary-card {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  text-align: center;
-}
-.summary-card .v {
-  display: block;
-  font-size: 21px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-.summary-card .k {
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: #8a93a3;
-}
-.detail-tiles {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-.detail-tiles > div {
-  background: #12151b;
-  border: 1px solid #232833;
-  border-radius: 12px;
-  padding: 10px;
-  text-align: center;
-}
-.detail-tiles .v {
-  display: block;
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--accent);
-}
-.detail-tiles .k {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #8a93a3;
-}
-.hist-tiles .unit {
-  margin-left: 3px;
-  font-size: 14px;
-  vertical-align: 2px;
-}
+/* --- walks --- */
 .walklist {
   list-style: none;
   display: flex;
@@ -811,7 +779,36 @@ function logWeighIn() {
 .walk-delete {
   color: #ff7f7f;
 }
-/* --- weight card --- */
+.detail-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.detail-tiles > div {
+  background: #12151b;
+  border: 1px solid #232833;
+  border-radius: 12px;
+  padding: 10px;
+  text-align: center;
+}
+.detail-tiles .v {
+  display: block;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--accent);
+}
+.detail-tiles .k {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #8a93a3;
+}
+.hist-tiles .unit {
+  margin-left: 3px;
+  font-size: 14px;
+  vertical-align: 2px;
+}
+/* --- weight --- */
 .weight-section .hist-tiles {
   margin-bottom: 12px;
 }

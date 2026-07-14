@@ -58,7 +58,14 @@ describe('parseTelemetry', () => {
         0x02, 0x51, 0x03, 0x0a, 0x00, 0x64, 0x00, 0x14,
         0x00, 0x13, 0x00, 0x64, 0x00, 0x00, 0x00, 0x5f, 0x03,
       ]),
-    ).toEqual({ type: 'speed', speed: 1.0, steps: 100 })
+    ).toEqual({
+      type: 'speed',
+      speed: 1.0,
+      steps: 100,
+      beltDistance: 20, // matches the walk: ~20 m at the 100-step mark (#66)
+      beltKcal: 19,
+      beltTime: 100,
+    })
   })
   it('reads a multi-byte step count via the high byte', () => {
     // 0x012c = 300 steps (b5=0x2c, b6=0x01)
@@ -68,7 +75,7 @@ describe('parseTelemetry', () => {
         0x02, 0x51, 0x03, 0x0a, 0x00, 0x2c, 0x01, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x03,
       ]),
-    ).toEqual({ type: 'speed', speed: 1.0, steps: 300 })
+    ).toEqual({ type: 'speed', speed: 1.0, steps: 300, beltDistance: 0, beltKcal: 0, beltTime: 0 })
   })
   it('status: 00 = running, 03 = idle (must not be treated as speed)', () => {
     expect(parseTelemetry([0x02, 0x53, 0x01, 0x00, 0x52, 0x03])).toEqual({

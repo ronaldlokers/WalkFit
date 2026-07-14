@@ -21,6 +21,9 @@ const fakeTm = reactive<TreadmillState>({
   targetSpeed: 3.0,
   distance: 0,
   steps: 0,
+  beltDistance: 0,
+  beltKcal: 0,
+  beltTime: 0,
   elapsed: 0,
   error: '',
   history: [],
@@ -48,6 +51,9 @@ vi.mock('./treadmill', () => ({
       fakeTm.running = true
     }),
     stop: vi.fn(async () => {
+      fakeTm.running = false
+    }),
+    pause: vi.fn(async () => {
       fakeTm.running = false
     }),
     setSpeed: vi.fn(),
@@ -188,5 +194,105 @@ describe('session accounting (#55)', () => {
     await clickButton(w, 'Stop')
     await w.vm.$nextTick()
     expect(logged().map((s) => s.distance)).toEqual([300]) // post-reset delta, not negative/lost
+  })
+})
+
+describe('session resilience (#66)', () => {
+  it('walking persists an in-progress snapshot roughly every 10 m', async () => {
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    await walk(w, 250, 150, 300)
+    const snap = JSON.parse(localStorage.getItem('walkfit.session.inprogress')!)
+    expect(snap.distance).toBeGreaterThanOrEqual(240)
+    expect(snap.name).toBe('Free walk')
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(localStorage.getItem('walkfit.session.inprogress')).toBeNull() // cleared on finalize
+  })
+
+  it('a reload mid-walk resumes the session and logs combined totals', async () => {
+    // simulate the previous page's snapshot: 400 m walked before the reload
+    localStorage.setItem(
+      'walkfit.session.inprogress',
+      JSON.stringify({
+        date: '2026-07-14T07:00:00.000Z',
+        name: 'Free walk',
+        distance: 400,
+        elapsed: 240,
+        kcal: 20,
+        steps: 500,
+        hrSum: 0,
+        hrCount: 0,
+        hrLo: 0,
+        hrHi: 0,
+      }),
+    )
+    const w = await mountToMain()
+    // belt reconnects still running; counters restart from zero on our side
+    fakeTm.running = true
+    await w.vm.$nextTick()
+    await walk(w, 100, 60, 120)
+    fakeTm.running = false
+    await w.vm.$nextTick()
+    const log = logged()
+    expect(log).toHaveLength(1)
+    expect(log[0]!.distance).toBe(500) // 400 carried + 100 fresh
+    expect(log[0]!.duration).toBe(300)
+    expect(log[0]!.steps).toBe(620)
+    expect(JSON.parse(localStorage.getItem('walkfit.history')!)[0].date).toBe(
+      '2026-07-14T07:00:00.000Z', // the original start survives the reload
+    )
+  })
+
+  it('a snapshot whose belt never resumes is logged on the next Start', async () => {
+    localStorage.setItem(
+      'walkfit.session.inprogress',
+      JSON.stringify({
+        date: '2026-07-14T07:00:00.000Z',
+        name: 'Free walk',
+        distance: 800,
+        elapsed: 480,
+        kcal: 40,
+        steps: 900,
+        hrSum: 0,
+        hrCount: 0,
+        hrLo: 0,
+        hrHi: 0,
+      }),
+    )
+    const w = await mountToMain()
+    await clickButton(w, 'Start') // fresh walk: the orphaned session gets closed out first
+    await w.vm.$nextTick()
+    expect(logged().map((s) => s.distance)).toEqual([800])
+    await walk(w, 100, 60)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(logged().map((s) => s.distance)).toEqual([800, 100])
+  })
+
+  it('pause + resume keeps one session; Stop from paused finalizes it', async () => {
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    await walk(w, 500, 300, 600)
+    await clickButton(w, 'Pause')
+    await w.vm.$nextTick()
+    expect(logged()).toHaveLength(0) // paused, not finished
+    expect(w.text()).toContain('Resume')
+    await clickButton(w, 'Resume')
+    await walk(w, 200, 120, 240)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(logged().map((s) => s.distance)).toEqual([700])
+    expect(logged()[0]!.duration).toBe(420)
+  })
+
+  it('Stop while paused logs the banked progress', async () => {
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    await walk(w, 300, 180)
+    await clickButton(w, 'Pause')
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(logged().map((s) => s.distance)).toEqual([300])
   })
 })

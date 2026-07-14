@@ -40,6 +40,7 @@ const {
   forget: forgetTreadmill,
   start,
   stop,
+  pause,
   setSpeed,
   resetStats,
 } = useTreadmill()
@@ -194,7 +195,7 @@ function startHrWorkout(t: HrTarget) {
 }
 function endHrWorkout() {
   hrTarget.value = null
-  stop()
+  stopWalk()
 }
 // Nudge at most once per HR_ADJUST_INTERVAL, only while the belt is actually moving (so
 // this can't fight the countdown-window enforcement in treadmill.js — setSpeed re-arms
@@ -303,7 +304,40 @@ const track2d = {
 const trackEl = ref<SVGPathElement | null>(null)
 const pathLen = ref(0)
 const lapLength = 400 // metres per virtual lap — one athletics-track lap
+// A snapshot from a previous page means the tab closed/reloaded mid-walk: adopt it as
+// the open session. If the belt reconnects still running, the running watcher rebases
+// and the walk continues seamlessly; otherwise the next session boundary (Start, a
+// workout pick, or the sweep below) logs it as a completed walk.
+function restoreSnapshot() {
+  let snap: SessionSnapshot | null = null
+  try {
+    snap = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || 'null')
+  } catch {
+    /* corrupt — drop it */
+  }
+  if (!snap) {
+    localStorage.removeItem(SNAPSHOT_KEY)
+    return
+  }
+  sessionStart = new Date(snap.date)
+  sessionName = snap.name
+  carryDistance = snap.distance
+  carryElapsed = snap.elapsed
+  carryKcal = snap.kcal
+  carrySteps = snap.steps
+  hrSum = snap.hrSum
+  hrCount = snap.hrCount
+  hrLo = snap.hrLo
+  hrHi = snap.hrHi
+  rebaseWatermarks()
+  // if the belt hasn't come back running within the auto-reconnect window, close it out
+  setTimeout(() => {
+    if (sessionStart && !state.running) finalizeSession()
+  }, 30_000)
+}
+
 onMounted(() => {
+  restoreSnapshot()
   if (trackEl.value) pathLen.value = trackEl.value.getTotalLength()
   if (state.supported) connectAuto() // silent reconnect to remembered devices
   handleOAuthRedirects() // no-op unless we just came back from an OAuth page
@@ -390,6 +424,49 @@ let baseDistance = 0
 let baseElapsed = 0
 let baseKcal = 0
 let baseSteps = 0
+// Carried in from a restored in-progress snapshot (#66): a reload mid-walk loses the
+// client-side counters, so the pre-reload totals ride along and finalize adds them.
+let carryDistance = 0
+let carryElapsed = 0
+let carryKcal = 0
+let carrySteps = 0
+const SNAPSHOT_KEY = 'walkfit.session.inprogress'
+interface SessionSnapshot {
+  date: string
+  name: string
+  distance: number
+  elapsed: number
+  kcal: number
+  steps: number
+  hrSum: number
+  hrCount: number
+  hrLo: number
+  hrHi: number
+}
+function sessionTotals() {
+  return {
+    distance: carryDistance + Math.max(0, state.distance - baseDistance),
+    elapsed: carryElapsed + Math.max(0, state.elapsed - baseElapsed),
+    kcal: carryKcal + Math.max(0, liveKcal.value - baseKcal),
+    steps: carrySteps + Math.max(0, state.steps - baseSteps),
+  }
+}
+let lastSnapshotDistance = -Infinity
+function writeSnapshot() {
+  if (!sessionStart) return
+  const t = sessionTotals()
+  const snap: SessionSnapshot = {
+    date: sessionStart.toISOString(),
+    name: sessionName,
+    ...t,
+    hrSum,
+    hrCount,
+    hrLo,
+    hrHi,
+  }
+  localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snap))
+  lastSnapshotDistance = t.distance
+}
 watch(
   () => hr.state.bpm,
   (bpm) => {
@@ -409,6 +486,14 @@ function beginSession() {
   hrCount = 0
   hrLo = 0
   hrHi = 0
+  rebaseWatermarks()
+  carryDistance = 0
+  carryElapsed = 0
+  carryKcal = 0
+  carrySteps = 0
+  lastSnapshotDistance = -Infinity
+}
+function rebaseWatermarks() {
   baseDistance = state.distance
   baseElapsed = state.elapsed
   baseKcal = liveKcal.value
@@ -419,15 +504,16 @@ function beginSession() {
 // logged instead of silently wiped by their resetStats().
 function finalizeSession() {
   if (!sessionStart) return
-  const distance = Math.round(state.distance - baseDistance)
+  const t = sessionTotals()
+  const distance = Math.round(t.distance)
   if (distance >= MIN_SESSION_DISTANCE) {
     const session: Session = {
       date: sessionStart.toISOString(),
       distance,
-      duration: Math.round(state.elapsed - baseElapsed),
-      kcal: Math.max(0, liveKcal.value - baseKcal),
+      duration: Math.round(t.elapsed),
+      kcal: Math.round(t.kcal),
       // belt's own pedometer count (0 if FW never reported one)
-      steps: Math.max(0, state.steps - baseSteps),
+      steps: Math.round(t.steps),
       avgHr: hrCount ? Math.round(hrSum / hrCount) : null,
       ...(hrCount ? { hrMin: hrLo, hrMax: hrHi } : {}),
     }
@@ -435,12 +521,33 @@ function finalizeSession() {
     if (strava.state.connected) stravaPrompt.value = { session, name: sessionName }
   }
   sessionStart = null
+  localStorage.removeItem(SNAPSHOT_KEY)
 }
+const pausedWalk = ref(false)
 watch(
   () => state.running,
   (running, was) => {
-    if (running && !was) beginSession()
-    else if (!running && was) finalizeSession()
+    if (running && !was) {
+      pausedWalk.value = false
+      // a restored (or paused) session stays open: rebase against the fresh counters
+      // and keep accumulating instead of starting a new session (#66)
+      if (sessionStart) rebaseWatermarks()
+      else beginSession()
+    } else if (!running && was) {
+      if (pausedWalk.value) {
+        // paused, not finished: bank the progress so the resume continues from here,
+        // and rebase so the live delta restarts at zero (no double counting)
+        const t = sessionTotals()
+        carryDistance = t.distance
+        carryElapsed = t.elapsed
+        carryKcal = t.kcal
+        carrySteps = t.steps
+        rebaseWatermarks()
+        writeSnapshot()
+      } else {
+        finalizeSession()
+      }
+    }
   },
 )
 // Counters were reset mid-session (Reset button, workout start): rebase the watermarks
@@ -454,6 +561,9 @@ watch(
       baseElapsed = 0
       baseKcal = 0
     }
+    // persist the in-progress session roughly every 10 m — a reload/tab close mid-walk
+    // then loses at most a few metres instead of the whole session (#66)
+    if (sessionStart && sessionTotals().distance - lastSnapshotDistance >= 10) writeSnapshot()
   },
 )
 watch(
@@ -600,12 +710,31 @@ watch(
 // Free walk from the header Start button (#55): starting fresh from stopped ends any
 // lingering unlogged segment and zeroes the counters, so consecutive walks can't
 // accumulate into one another. Starting while already running just re-sends start.
+// A paused walk resumes instead — Start doubles as Resume (#66).
 async function startWalk() {
-  if (!state.running) {
+  if (!state.running && !pausedWalk.value) {
     finalizeSession()
     resetStats()
   }
+  pausedWalk.value = false
   await start()
+}
+
+// Pause without ending the session (#66): the belt stops but the walk stays open —
+// Start resumes it, Stop finalizes it. (FTMS 08 02; device-experimental, see
+// treadmill.ts — worst case the belt ignores it and nothing changes.)
+async function pauseWalk() {
+  pausedWalk.value = true
+  await pause()
+}
+
+// Stop always finishes the session — including from paused, where there's no
+// running→false edge left to fire the finalize watcher.
+async function stopWalk() {
+  const wasPaused = pausedWalk.value
+  pausedWalk.value = false
+  await stop()
+  if (wasPaused) finalizeSession()
 }
 
 async function startWorkout(t: Workout) {
@@ -620,7 +749,7 @@ async function startWorkout(t: Workout) {
 }
 function endWorkout() {
   active.value = null
-  stop()
+  stopWalk()
 }
 function finishWorkout() {
   const t = active.value
@@ -904,8 +1033,18 @@ const pace = computed(() => {
     </section>
 
     <section class="action-row" :class="{ disabled: !state.connected }">
-      <button class="btn go" :disabled="!state.connected" @click="startWalk">▶ Start</button>
-      <button class="btn halt" :disabled="!state.connected" @click="stop">■ Stop</button>
+      <button class="btn go" :disabled="!state.connected" @click="startWalk">
+        {{ pausedWalk ? '▶ Resume' : '▶ Start' }}
+      </button>
+      <button
+        v-if="state.running"
+        class="btn ghost"
+        :disabled="!state.connected"
+        @click="pauseWalk"
+      >
+        ❚❚ Pause
+      </button>
+      <button class="btn halt" :disabled="!state.connected" @click="stopWalk">■ Stop</button>
       <button class="btn ghost" @click="resetStats">Reset</button>
     </section>
 

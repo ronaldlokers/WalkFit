@@ -12,7 +12,14 @@ import {
   deleteCustomWorkout,
 } from './workouts'
 import type { Workout, HrTarget } from './workouts'
-import { loadStatistics, addSession, removeSession, loadGoals, saveGoals } from './statistics'
+import {
+  loadStatistics,
+  addSession,
+  removeSession,
+  loadGoals,
+  saveGoals,
+  dailyTotals,
+} from './statistics'
 import type { Session } from './statistics'
 import { mmss } from './format'
 import {
@@ -290,6 +297,36 @@ function scenicUnsupported() {
   scenicSupported.value = false
   viewMode.value = 'track'
 }
+// --- experimental layouts (#103): 'current' (default) | 'immersive' | 'dashboard' ---
+// Prototypes behind a switcher (Settings → Display) so they can be compared on the
+// real treadmill without churning the default. Composition only — same components.
+const layout = ref(localStorage.getItem('walkfit.layout') || 'current')
+watch(layout, (v) => localStorage.setItem('walkfit.layout', v))
+// kiosk concept folded into immersive as a big-numbers option
+const bigNumbers = ref(localStorage.getItem('walkfit.layout.big') === '1')
+watch(bigNumbers, (v) => localStorage.setItem('walkfit.layout.big', v ? '1' : '0'))
+// Immersive HUD fades after 5 s untouched while walking; any interaction wakes it.
+const hudHidden = ref(false)
+let hudTimer: ReturnType<typeof setTimeout> | null = null
+function wakeHud() {
+  hudHidden.value = false
+  if (hudTimer) clearTimeout(hudTimer)
+  hudTimer = setTimeout(() => {
+    if (layout.value === 'immersive' && state.running) hudHidden.value = true
+  }, 5000)
+}
+// (re)arm the fade when a walk starts in immersive; show the HUD everywhere else
+watch(
+  () => [layout.value, state.running] as const,
+  ([l, running]) => {
+    if (l === 'immersive' && running) wakeHud()
+    else {
+      hudHidden.value = false
+      if (hudTimer) clearTimeout(hudTimer)
+    }
+  },
+)
+
 const viewMode = ref<'track' | 'scenic'>(
   localStorage.getItem('walkfit.view') === 'scenic' ? 'scenic' : 'track',
 )
@@ -469,6 +506,31 @@ watch(
 // --- session statistics ---
 const MIN_SESSION_DISTANCE = 50 // metres — filters out accidental/blip starts
 const sessions = ref(loadStatistics())
+// dashboard-layout widgets (#103)
+const dashToday = computed(() => {
+  const t = dailyTotals(sessions.value, 1)[0]!
+  return [
+    {
+      label: 'Calories',
+      color: '#2ed573',
+      pct: Math.min(100, (t.kcal / goals.kcal) * 100),
+      text: `${Math.round(t.kcal)} / ${goals.kcal}`,
+    },
+    {
+      label: 'Steps',
+      color: '#6ab0ff',
+      pct: Math.min(100, (t.steps / goals.steps) * 100),
+      text: `${t.steps} / ${goals.steps}`,
+    },
+    {
+      label: 'Time',
+      color: '#f5a623',
+      pct: Math.min(100, (t.duration / 60 / goals.minutes) * 100),
+      text: `${Math.round(t.duration / 60)} / ${goals.minutes} min`,
+    },
+  ]
+})
+const dashRecent = computed(() => [...sessions.value].reverse().slice(0, 4))
 const statisticsOpen = ref(false)
 // Daily activity goals for the rings (#43); edits in Settings persist via the watcher.
 const goals = reactive(loadGoals())
@@ -925,7 +987,12 @@ const pace = computed(() => {
 </script>
 
 <template>
-  <div class="app">
+  <div
+    class="app"
+    :class="[`layout-${layout}`, { 'hud-hidden': hudHidden, 'hud-big': bigNumbers }]"
+    @pointerdown="wakeHud"
+    @pointermove="wakeHud"
+  >
     <header>
       <div class="brand">
         <span class="dot" :class="{ on: state.connected, run: state.running }"></span>
@@ -1248,6 +1315,28 @@ const pace = computed(() => {
       <p v-if="state.history.length < 2" class="chart-empty">Start walking, or pick a workout.</p>
     </section>
 
+    <!-- dashboard-only widgets (#103): today vs goals + recent walks -->
+    <section v-if="layout === 'dashboard'" class="dash-widget card-widget">
+      <h3>Today</h3>
+      <div v-for="m in dashToday" :key="m.label" class="dw-row">
+        <span class="dw-label">{{ m.label }}</span>
+        <div class="dw-bar">
+          <div class="dw-fill" :style="{ width: m.pct + '%', background: m.color }"></div>
+        </div>
+        <span class="dw-val">{{ m.text }}</span>
+      </div>
+    </section>
+    <section v-if="layout === 'dashboard'" class="dash-widget card-widget">
+      <h3>Recent walks</h3>
+      <div v-for="w in dashRecent" :key="w.date" class="dw-walk">
+        <span>{{ new Date(w.date).toLocaleDateString(undefined, { weekday: 'short' }) }}</span>
+        <span class="mutv">{{ (w.distance / 1000).toFixed(2) }} km</span>
+        <span class="mutv">{{ mmss(w.duration) }}</span>
+        <span class="mutv">~{{ Math.round(w.kcal) }} kcal</span>
+      </div>
+      <p v-if="!dashRecent.length" class="hint">No walks yet.</p>
+    </section>
+
     <p v-if="hr.state.error" class="warn">Heart rate: {{ hr.state.error }}</p>
 
     <transition name="toast">
@@ -1460,6 +1549,8 @@ const pace = computed(() => {
         v-model:audio-on="audioOn"
         v-model:debug-on="debugOn"
         v-model:view-mode="viewMode"
+        v-model:layout="layout"
+        v-model:big-numbers="bigNumbers"
         v-model:goal-kcal="goals.kcal"
         v-model:goal-steps="goals.steps"
         v-model:goal-minutes="goals.minutes"
@@ -2312,5 +2403,200 @@ input[type='range'] {
 .toast-leave-to {
   opacity: 0;
   transform: translateX(-50%) translateY(8px);
+}
+/* --- experimental layouts (#103): behind the walkfit.layout switcher --- */
+
+/* IMMERSIVE: the visual fills the viewport; header stats become a floating HUD and
+   the controls a bottom pill; everything fades while walking untouched. */
+.app.layout-immersive {
+  max-width: none;
+  padding: 0;
+}
+@media (min-width: 900px) {
+  .app.layout-immersive {
+    display: block; /* cancel the desktop grid */
+  }
+}
+.app.layout-immersive > .track-wrap {
+  position: fixed;
+  inset: 0;
+  margin: 0;
+  z-index: 1;
+}
+.app.layout-immersive .scenic3d,
+.app.layout-immersive .track {
+  height: 100vh;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+.app.layout-immersive > header {
+  position: fixed;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  z-index: 10;
+  margin: 0;
+  transition: opacity 0.4s;
+}
+.app.layout-immersive .stat-strip {
+  order: 0;
+  flex-basis: auto;
+  flex: 1;
+  justify-content: center;
+  margin: 0 10px;
+}
+.app.layout-immersive .sstat {
+  flex: 0 1 110px;
+  background: rgba(10, 12, 16, 0.62);
+  backdrop-filter: blur(6px);
+}
+.app.layout-immersive > .warn {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  max-width: 90vw;
+}
+.app.layout-immersive > .action-row,
+.app.layout-immersive > .controls {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  margin: 0;
+  background: rgba(10, 12, 16, 0.62);
+  backdrop-filter: blur(6px);
+  border: 1px solid #232833;
+  border-radius: 18px;
+  padding: 10px 14px;
+  transition: opacity 0.4s;
+}
+.app.layout-immersive > .controls {
+  bottom: 104px;
+  width: min(520px, 92vw);
+}
+/* the header row is the HUD now: hide the brand, keep Connect/HR/menu on the right,
+   and drop the fullscreen badges below the header bar */
+.app.layout-immersive > header .brand {
+  display: none;
+}
+.app.layout-immersive .view-flip {
+  top: 64px;
+  right: 12px;
+}
+.app.layout-immersive .scene-badge3d {
+  top: 64px;
+  left: 12px;
+}
+.app.layout-immersive > .action-row {
+  bottom: 20px;
+}
+.app.layout-immersive > .controls .goal-row,
+.app.layout-immersive > .chart-wrap,
+.app.layout-immersive > .dash-widget {
+  display: none;
+}
+/* fade the HUD while walking untouched; the lap badge stays */
+.app.layout-immersive.hud-hidden > header,
+.app.layout-immersive.hud-hidden > .action-row,
+.app.layout-immersive.hud-hidden > .controls {
+  opacity: 0;
+  pointer-events: none;
+}
+/* kiosk fold-in: big numbers for treadmill-distance reading */
+.app.layout-immersive.hud-big .sstat .sv {
+  font-size: 30px;
+}
+.app.layout-immersive.hud-big .sstat .sk {
+  font-size: 11px;
+}
+.app.layout-immersive.hud-big > .action-row .btn {
+  font-size: 22px;
+  padding: 18px 30px;
+}
+.app.layout-immersive.hud-big > .controls .target {
+  font-size: 28px;
+}
+/* the bigger buttons need more clearance below the speed pill */
+.app.layout-immersive.hud-big > .controls {
+  bottom: 130px;
+}
+.app.layout-immersive.hud-big > .warn {
+  top: 96px;
+}
+
+/* DASHBOARD: desktop widget grid — visual left, chart/controls + today + recent right */
+.app.layout-dashboard > .dash-widget {
+  background: #171a21;
+  border: 1px solid #232833;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.app.layout-dashboard > .dash-widget h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #8a93a3;
+  margin-bottom: 10px;
+}
+.dw-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 7px 0;
+}
+.dw-label {
+  width: 62px;
+  font-size: 13px;
+  color: #cbd3df;
+}
+.dw-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: #1b1f27;
+  overflow: hidden;
+}
+.dw-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+.dw-val {
+  font-size: 12px;
+  color: #8a93a3;
+  font-variant-numeric: tabular-nums;
+  min-width: 86px;
+  text-align: right;
+}
+.dw-walk {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 1px solid #232833;
+}
+.dw-walk:last-of-type {
+  border-bottom: 0;
+}
+.mutv {
+  color: #8a93a3;
+  font-variant-numeric: tabular-nums;
+}
+@media (min-width: 900px) {
+  .app.layout-dashboard {
+    max-width: 1320px;
+    grid-template-columns: 2fr 1fr;
+  }
+  .app.layout-dashboard > .track-wrap {
+    grid-row: span 5;
+  }
+  .app.layout-dashboard > .dash-widget {
+    grid-column: 2;
+    align-self: start;
+    margin-bottom: 14px;
+  }
 }
 </style>

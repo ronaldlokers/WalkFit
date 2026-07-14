@@ -217,6 +217,11 @@ const en = {
   'speech.speedUp': 'speeding up to {v} in 5 seconds',
   'speech.slowDown': 'slowing down to {v} in 5 seconds',
   'speech.complete': '{name} complete',
+  'session.freeWalk': 'Free walk',
+  'session.hrWorkout': '{name} HR workout',
+  'warn.noWebBtTm':
+    'Web Bluetooth not available. In Brave: enable brave://flags/#brave-web-bluetooth-api and relaunch. Otherwise use Chrome or Edge.',
+  'warn.noWebBtHr': 'Web Bluetooth unavailable here.',
   'workout.completeAlert': '{name} complete! {km} km walked.',
 }
 
@@ -425,6 +430,11 @@ const nl: Record<MessageKey, string> = {
   'speech.speedUp': 'over 5 seconden versnellen naar {v}',
   'speech.slowDown': 'over 5 seconden vertragen naar {v}',
   'speech.complete': '{name} voltooid',
+  'session.freeWalk': 'Vrije wandeling',
+  'session.hrWorkout': 'HR-workout {name}',
+  'warn.noWebBtTm':
+    'Web Bluetooth niet beschikbaar. In Brave: zet brave://flags/#brave-web-bluetooth-api aan en herstart. Gebruik anders Chrome of Edge.',
+  'warn.noWebBtHr': 'Web Bluetooth is hier niet beschikbaar.',
   'workout.completeAlert': '{name} voltooid! {km} km gelopen.',
 }
 

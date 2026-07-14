@@ -4,6 +4,9 @@ import { parseHeartRate } from './protocol'
 // Standard Bluetooth Heart Rate Service (works with Garmin "Broadcast Heart Rate",
 // chest straps, etc.) — separate GATT device from the treadmill.
 // 128-bit UUID strings, not 0x… aliases — see treadmill.ts (Bluefy compat)
+// Sentinel error string, translated at render (#140) — see treadmill.ts.
+export const NO_WEBBT_HR_ERROR = 'Web Bluetooth unavailable here.'
+
 const HR_SERVICE = '0000180d-0000-1000-8000-00805f9b34fb'
 const HR_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb'
 
@@ -89,7 +92,7 @@ export function useHeartRate() {
 
   async function connect() {
     if (!state.supported) {
-      state.error = 'Web Bluetooth unavailable here.'
+      state.error = NO_WEBBT_HR_ERROR
       return
     }
     if (state.connecting) return // reentrancy guard

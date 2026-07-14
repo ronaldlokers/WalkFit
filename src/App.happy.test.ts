@@ -136,22 +136,23 @@ describe('App happy path', () => {
     vi.useRealTimers()
   })
 
-  it('statistics sheet shows activity rings, daily charts, and the HR range chart', async () => {
-    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T20:00:00.000Z') })
-    // seed: one walk today (with steps + HR range), one yesterday (pre-#43 shape: no steps/hr range)
+  it('statistics dashboard shows Mon-Sun lanes with week navigation (#115)', async () => {
+    // 2026-07-13 is a Monday; seed one walk that Monday and one the Sunday before
+    // (previous calendar week) — the week view must separate them.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T20:00:00') })
     localStorage.setItem('walkfit.goals', JSON.stringify({ kcal: 400, steps: 6000, minutes: 30 }))
     localStorage.setItem(
       'walkfit.history',
       JSON.stringify([
         {
-          date: '2026-07-12T08:00:00.000Z',
+          date: '2026-07-12T08:00:00',
           distance: 900,
           duration: 900,
           kcal: 40,
           avgHr: 100,
         },
         {
-          date: '2026-07-13T08:00:00.000Z',
+          date: '2026-07-13T08:00:00',
           distance: 1500,
           duration: 1200,
           kcal: 72,
@@ -169,36 +170,35 @@ describe('App happy path', () => {
     await clickButton(w, '☰')
     await clickButton(w, 'Statistics')
 
-    // rings: three tracks, fills for today's non-zero metrics, legend shows value/goal
-    expect(w.findAll('.ring-track').length).toBe(3)
-    expect(w.findAll('.ring-fill').length).toBe(3)
-    const legend = w.find('.ring-legend').text()
-    expect(legend).toContain('72')
-    expect(legend).toContain('/ 400 kcal')
-    expect(legend).toContain('1800')
-    expect(legend).toContain('/ 6000 steps')
-    expect(legend).toContain('20') // 1200s -> 20 min
-    expect(legend).toContain('/ 30 min')
+    // current week: Mon 13 - Sun 19, only Monday's walk counts
+    expect(w.findAll('.lane.bars').length).toBe(4) // kcal, steps, minutes + HR
+    expect(w.findAll('.bar-labels span').length).toBe(7) // always a full Mon-Sun axis
+    const totals = w.findAll('.lane-total').map((t) => t.text())
+    expect(totals).toContain('72 kcal')
+    expect(totals).toContain('1800 steps')
+    expect(totals).toContain('20 min')
+    expect(w.findAll('.hr-span').length).toBe(1) // HR data on Monday only
+    // walk log shows only this week's walk
+    expect(w.findAll('.walk-row').length).toBe(1)
 
-    // daily detail: three bar charts with period totals, 7d default
-    const charts = w.findAll('.daychart')
-    expect(charts.length).toBe(4) // kcal, steps, time + HR
-    expect(charts[0]!.text()).toContain('112 kcal') // 40 + 72 over the week
-    expect(charts[1]!.text()).toContain('1800 steps') // yesterday's pre-#43 walk adds 0
-    expect(w.find('.chip.on').text()).toBe('7d')
-    expect(w.findAll('.bar-slot').length).toBeGreaterThan(20) // 7 slots x 3 charts + HR
+    // ← one week back: Sunday's walk appears, Monday's disappears
+    const nav = w.findAll('.wk-btn')
+    await nav[0]!.trigger('click')
+    expect(w.findAll('.lane-total').map((t) => t.text())).toContain('40 kcal')
+    expect(w.findAll('.walk-row').length).toBe(1)
+    expect(w.find('.walk-row').text()).toContain('900 m')
+    expect(w.find('.today-chip').exists()).toBe(true) // "This week" chip appears off-week
 
-    // HR chart: both days have HR data (yesterday falls back to avgHr for the range)
-    expect(w.findAll('.hr-span').length).toBe(2)
-    expect(w.findAll('.hr-avg').length).toBe(2)
+    // → forward returns to the current week; the chip goes away
+    await nav[1]!.trigger('click')
+    expect(w.findAll('.lane-total').map((t) => t.text())).toContain('72 kcal')
+    expect(w.find('.today-chip').exists()).toBe(false)
 
-    // range selector re-renders at 30 days
-    await w
-      .findAll('.chip')
-      .find((c) => c.text() === '30d')!
-      .trigger('click')
-    expect(w.find('.chip.on').text()).toBe('30d')
-    expect(w.findAll('.daychart')[0]!.findAll('.bar-slot').length).toBe(30)
+    // date picker jumps to the week containing the picked date
+    await w.find('.week-date').setValue('2026-07-08') // a Wednesday, week of Jul 6-12
+    expect(w.findAll('.lane-total').map((t) => t.text())).toContain('40 kcal')
+    await clickButton(w, 'This week')
+    expect(w.findAll('.lane-total').map((t) => t.text())).toContain('72 kcal')
     vi.useRealTimers()
   })
 

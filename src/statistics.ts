@@ -121,6 +121,15 @@ function localDayKey(d: Date): string {
 // first, zero-filled so days with no walk still get a (0) bucket for the bar charts. HR
 // fields are null on days with no HR data. Pre-#43 sessions have no steps/hrMin/hrMax;
 // they contribute 0 steps and fall back to avgHr for the day's HR range.
+// Monday 00:00 (local) of the week containing d — the statistics dashboard shows
+// full calendar weeks (Mon-Sun) and navigates by these anchors.
+export function weekStart(d: Date = new Date()): Date {
+  const out = new Date(d)
+  out.setHours(0, 0, 0, 0)
+  out.setDate(out.getDate() - ((out.getDay() + 6) % 7))
+  return out
+}
+
 export function dailyTotals(sessions: Session[], days: number, now = new Date()): DayTotals[] {
   const byDay = new Map<string, Session[]>()
   for (const s of sessions) {

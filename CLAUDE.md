@@ -38,7 +38,7 @@ inside that session don't recurse.
 ```bash
 npm test           # Vitest (run once)
 npm run test:watch
-npm run typecheck  # vue-tsc --build (project references; checks .ts + .vue)
+npm run typecheck  # vue-tsc --build (src/, e2e/) + tsc -p oauth-proxy (checkJs worker)
 npm run lint       # ESLint (flat config, Vue + typescript-eslint)
 npm run format     # Prettier --write   (format:check in CI)
 ```
@@ -48,7 +48,9 @@ Codebase is TypeScript (strict, via `@vue/tsconfig`): `tsconfig.app.json` covers
 `e2e/`. Extensionless relative imports (`from './protocol'`) — `vi.mock` specifiers must
 match. `src/vite-env.d.ts` declares the `VITE_STRAVA_*` env vars and `webkitAudioContext`.
 
-CI (`.github/workflows/ci.yml`) runs lint → format:check → typecheck → test → build on
+CI (`.github/workflows/ci.yml`) runs lint → format:check → typecheck → test → build →
+bundle-size guard (`scripts/check-bundle-size.mjs` — fails if the main chunk exceeds
+250 kB, i.e. if three.js ever gets imported statically) on
 PRs; deploy workflow gates on tests too. Tests: `src/protocol.test.ts` (framing/checksum,
 phantom-2x speed filter, telemetry + HR parsing), `src/workouts.test.ts`, `src/statistics.test.ts`,
 `src/App.happy.test.ts` (jsdom + @vue/test-utils happy-path: wizard → walk/workout flows),

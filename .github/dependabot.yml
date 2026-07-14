@@ -1,0 +1,18 @@
+# Weekly dependency PRs (#65). Note for reviewers: a @playwright/test bump MUST be
+# paired with the same version bump of the mcr.microsoft.com/playwright container tag
+# in .github/workflows/e2e.yml AND regenerated screenshot baselines (see CLAUDE.md's
+# "regenerate baselines" docker command) — a failing E2E diff on the update PR is the
+# expected reminder, not a flake.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      dev-dependencies:
+        dependency-type: development
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -114,3 +114,27 @@ describe('custom workouts (#68)', () => {
     expect(deleteCustomWorkout('a').map((w) => w.id)).toEqual(['b'])
   })
 })
+
+describe('custom workout corruption (#136)', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('a null segment drops that workout without nuking the rest', () => {
+    localStorage.setItem(
+      'walkfit.workouts.custom',
+      JSON.stringify([
+        { id: 'custom-ok', name: 'Good', focus: '', segments: [{ speed: 3, minutes: 10 }] },
+        { id: 'custom-bad', name: 'Bad', focus: '', segments: [null] },
+      ]),
+    )
+    const loaded = loadCustomWorkouts()
+    expect(loaded.map((w) => w.id)).toEqual(['custom-ok'])
+    // and a subsequent save keeps the surviving plan instead of persisting []
+    saveCustomWorkout({
+      id: 'custom-new',
+      name: 'New',
+      focus: '',
+      segments: [{ speed: 4, minutes: 5 }],
+    })
+    expect(loadCustomWorkouts().map((w) => w.id)).toEqual(['custom-ok', 'custom-new'])
+  })
+})

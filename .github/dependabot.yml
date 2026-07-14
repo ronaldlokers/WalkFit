@@ -10,8 +10,14 @@ updates:
     schedule:
       interval: weekly
     groups:
+      # group only minor/patch dev bumps — MAJORS arrive as individual PRs so each
+      # migration (eslint, vite, vitest, typescript, ...) can be judged and fixed on
+      # its own instead of arriving as one unmergeable lump (see PR #88)
       dev-dependencies:
         dependency-type: development
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: github-actions
     directory: /
     schedule:

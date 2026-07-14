@@ -377,9 +377,9 @@ describe('App happy path', () => {
 describe('test themes (#173)', () => {
   it('persisted theme applies to the document and switching persists', async () => {
     localStorage.setItem('walkfit.setupDone', '1')
-    localStorage.setItem('walkfit.theme', 'swiss')
+    localStorage.setItem('walkfit.theme', 'glass')
     const w = mount(App)
-    expect(document.documentElement.dataset.theme).toBe('swiss')
+    expect(document.documentElement.dataset.theme).toBe('glass')
     await clickButton(w, '☰')
     await clickButton(w, 'Settings')
     const select = w

@@ -85,6 +85,9 @@ Keep pinned Playwright version and image tag in sync.
   telemetry parse, phantom-2x speed filter, HR parse). Unit-tested in `src/protocol.test.ts`.
 - `src/treadmill.ts` — `useTreadmill()` composable: Web Bluetooth connection wiring around
   `protocol.ts` (connect, start/stop, set speed, distance/time integration, auto-reconnect).
+- `src/demo.ts` — demo mode (#169): simulated belt + HR strap behind the same composable
+  interfaces plus the canonical seed fixture (`SPEED_*` consts live in protocol.ts so
+  this file imports cycle-free). README screenshots are generated against it.
 - `src/heartrate.ts` — `useHeartRate()` composable: standard BLE Heart Rate Service (`0x180D`).
 - `src/workouts.ts` — weight-loss workout presets (segments of `{speed, minutes}`),
   `workoutStats`, `timeline`, `metForSpeed` (MET-based kcal estimate, also used for live
@@ -161,7 +164,10 @@ layout since #103: fullscreen visual, fading HUD pills, workout state in the
 `.imm-workout` ribbon), `walkfit.scenic.time`
 (3D time-of-day override), `walkfit.bestLap` (all-time best 400 m lap — scenic ghost),
 `walkfit.capture` (raw BLE frame
-debug logging, off unless `'1'`).
+debug logging, off unless `'1'`), `walkfit.demo` (demo mode — src/demo.ts simulates the
+treadmill + HR strap behind the composable interfaces and seeds a fixture dataset;
+also via `?demo`. Used for README screenshots; opt-in only so it can't mask real
+connection failures).
 
 **Health sync** — `health.ts` defines `HealthProvider` (id doubles as
 `WeightEntry.source`; reactive state; `connect`/`disconnect`/`handleRedirect`/

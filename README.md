@@ -65,8 +65,9 @@ the API to CoreBluetooth — open the app's URL there and connect as usual.
 
 1. **Connect treadmill** — pick "Dreaver Motion One" in the browser prompt. The device is
    remembered; next time it reconnects silently.
-2. **Start** — keep the safety key clipped in and a foot ready; the belt beeps and counts
-   3-2-1 before moving.
+2. **Start** — the belt beeps and counts 3-2-1, then moves. Note: this treadmill has **no
+   safety key or other physical stop-guard** — stand ready, and keep the Stop control in
+   reach.
 3. Set speed with the slider or ± buttons, or pick a free-walk goal (1/2/5 km, 20/30 min) —
    you'll hear a cue at halfway and on reaching it. Watch your runner lap the 400 m track,
    or flip to the 3D scenic walk.

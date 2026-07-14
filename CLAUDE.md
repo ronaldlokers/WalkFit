@@ -312,7 +312,8 @@ Connect over **BLE** (public address, advertises FTMS `0x1826` + vendor `0xfff0`
 Bluetooth pairing only exposes audio profiles — dead end.
 
 - **Start / stop** via FTMS Control Point `0x2ad9` (write): `00` request control, `07` start, `08 01`
-  stop. Start triggers on-belt 3-2-1 countdown; belt needs safety key / foot on it.
+  stop. Start triggers on-belt 3-2-1 countdown, then the belt simply moves — this device
+  has NO safety key or other physical stop-guard.
 - **Set speed** via vendor write char `0xfff2` (FTMS set-speed ignored by this firmware). Frame:
   `02 53 02 <speed> <xor> 03`, `speed` = km/h × 10, checksum = XOR of opcode..last payload byte.
   Range 1.0–6.0 km/h.

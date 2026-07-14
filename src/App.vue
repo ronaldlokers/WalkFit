@@ -1283,19 +1283,6 @@ const pace = computed(() => {
           :time-of-day="scenicTime as never"
           @unsupported="scenicUnsupported"
         />
-        <!-- lap badge carried over from the track view, overlaid on the 3D canvas -->
-        <div class="scene-badge3d">
-          <div class="scene-badge3d-main">
-            {{ laps }} <span class="scene-badge3d-unit">× 400m</span>
-          </div>
-          <div class="scene-badge3d-sub">
-            {{
-              lastLap !== null
-                ? t('track.lastBest', { last: mmss(lastLap), best: mmss(bestLap!) })
-                : t('track.walkToStart')
-            }}
-          </div>
-        </div>
       </div>
     </section>
 
@@ -1896,32 +1883,9 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
-/* --- 3D scenic (#51): canvas wrapper + overlaid lap badge --- */
+/* --- 3D scenic (#51): canvas wrapper --- */
 .scene3d-wrap {
   position: relative;
-}
-.scene-badge3d {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  background: rgba(10, 12, 16, 0.72);
-  border: 1px solid #232833;
-  border-radius: 10px;
-  padding: 6px 12px;
-  pointer-events: none;
-}
-.scene-badge3d-main {
-  font-size: 14px;
-  font-weight: 700;
-}
-.scene-badge3d-unit {
-  color: #8a93a3;
-  font-size: 10px;
-  font-weight: 500;
-}
-.scene-badge3d-sub {
-  font-size: 10.5px;
-  color: #8a93a3;
 }
 
 .chart-wrap {
@@ -2599,10 +2563,6 @@ input[type='range'] {
   top: 64px;
   right: 12px;
 }
-.app.layout-immersive .scene-badge3d {
-  top: 64px;
-  left: 12px;
-}
 .app.layout-immersive > .action-row {
   bottom: 20px;
 }
@@ -2767,8 +2727,7 @@ input[type='range'] {
   .app.layout-immersive .sstat .sk {
     font-size: 8.5px;
   }
-  .app.layout-immersive .view-flip,
-  .app.layout-immersive .scene-badge3d {
+  .app.layout-immersive .view-flip {
     top: 118px;
   }
   .app.layout-immersive > .warn {

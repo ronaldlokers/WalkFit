@@ -4,6 +4,7 @@ import { currentStreak, dailyTotals, weekStart } from './statistics'
 import type { Session, Goals } from './statistics'
 import type { WeightEntry } from './weight'
 import { mmss } from './format'
+import { t, locale, localeTag } from './i18n'
 import Logo from './Logo.vue'
 
 const props = defineProps<{
@@ -47,11 +48,12 @@ function pickDate(e: Event) {
   if (v) anchor.value = weekStart(new Date(v + 'T12:00:00'))
 }
 const weekLabel = computed(() => {
+  void locale.value // re-render the label on language switch
   const a = anchor.value
   const b = new Date(a)
   b.setDate(b.getDate() + 6)
   const fmt = (d: Date, y: boolean) =>
-    d.toLocaleDateString(undefined, {
+    d.toLocaleDateString(localeTag(), {
       day: 'numeric',
       month: 'short',
       year: y ? 'numeric' : undefined,
@@ -71,21 +73,21 @@ const barLanes = computed(() => {
   return [
     {
       id: 'kcal',
-      label: 'Calories',
+      label: t('stats.calories'),
       color: METRIC_COLORS.kcal,
       unit: 'kcal',
       values: d.map((x) => Math.round(x.kcal)),
     },
     {
       id: 'steps',
-      label: 'Steps',
+      label: t('stats.steps'),
       color: METRIC_COLORS.steps,
       unit: 'steps',
       values: d.map((x) => x.steps),
     },
     {
       id: 'time',
-      label: 'Minutes',
+      label: t('stats.minutes'),
       color: METRIC_COLORS.time,
       unit: 'min',
       values: d.map((x) => Math.round(x.duration / 60)),
@@ -130,7 +132,7 @@ function hhmm(sec: number) {
 }
 
 function dayLabel(dateKey: string) {
-  return new Date(dateKey + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' })
+  return new Date(dateKey + 'T00:00:00').toLocaleDateString(localeTag(), { weekday: 'short' })
 }
 
 // --- right rail: summary / walk log / weight ---
@@ -161,14 +163,14 @@ function toggleWalk(date: string) {
   expandedWalk.value = expandedWalk.value === date ? null : date
 }
 function walkDay(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
+  return new Date(iso).toLocaleDateString(localeTag(), {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
   })
 }
 function walkTime(iso: string) {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' })
 }
 function fmtKm(m: number) {
   return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m'
@@ -246,15 +248,17 @@ function logWeighIn() {
     <div class="stats-topbar">
       <button class="x" @click="emit('close')">‹</button>
       <Logo :size="19" />
-      <h2>Statistics</h2>
+      <h2>{{ t('stats.title') }}</h2>
       <div class="week-nav">
-        <button class="x wk-btn" title="Previous week" @click="shiftWeek(-1)">‹</button>
+        <button class="x wk-btn" :title="t('stats.prevWeek')" @click="shiftWeek(-1)">‹</button>
         <label class="week-label">
           <span>{{ weekLabel }}</span>
           <input type="date" class="week-date" :value="anchorInput" @change="pickDate" />
         </label>
-        <button class="x wk-btn" title="Next week" @click="shiftWeek(1)">›</button>
-        <button v-if="!isCurrentWeek" class="chip today-chip" @click="goToday">This week</button>
+        <button class="x wk-btn" :title="t('stats.nextWeek')" @click="shiftWeek(1)">›</button>
+        <button v-if="!isCurrentWeek" class="chip today-chip" @click="goToday">
+          {{ t('stats.thisWeek') }}
+        </button>
       </div>
     </div>
 
@@ -262,19 +266,19 @@ function logWeighIn() {
     <div class="hero-band">
       <div class="hero-stat">
         <span class="hero-v">{{ (weekDistance / 1000).toFixed(1) }}<small> km</small></span>
-        <span class="hero-k">distance this week</span>
+        <span class="hero-k">{{ t('stats.kmWeek') }}</span>
       </div>
       <div class="hero-stat">
         <span class="hero-v">{{ Math.round(weekKcal) }}<small> kcal</small></span>
-        <span class="hero-k">burned this week</span>
+        <span class="hero-k">{{ t('stats.kcalWeek') }}</span>
       </div>
       <div class="hero-stat">
         <span class="hero-v">{{ hhmm(weekDuration) }}<small> h</small></span>
-        <span class="hero-k">active this week</span>
+        <span class="hero-k">{{ t('stats.activeWeek') }}</span>
       </div>
       <div class="hero-stat">
         <span class="hero-v">{{ streak }}<small> 🔥</small></span>
-        <span class="hero-k">day streak</span>
+        <span class="hero-k">{{ t('stats.streak') }}</span>
       </div>
       <div class="hero-stat">
         <span class="hero-ring">
@@ -291,30 +295,36 @@ function logWeighIn() {
           </svg>
           <span class="hero-ring-val">{{ todayPct }}%</span>
         </span>
-        <span class="hero-k">today's goals</span>
+        <span class="hero-k">{{ t('stats.goalsToday') }}</span>
       </div>
     </div>
 
     <!-- tabs -->
     <div class="stats-tabs">
       <button class="chip" :class="{ on: tab === 'activity' }" @click="tab = 'activity'">
-        Activity
+        {{ t('stats.tabActivity') }}
       </button>
-      <button class="chip" :class="{ on: tab === 'hr' }" @click="tab = 'hr'">Heart rate</button>
-      <button class="chip" :class="{ on: tab === 'weight' }" @click="tab = 'weight'">Weight</button>
-      <button class="chip" :class="{ on: tab === 'walks' }" @click="tab = 'walks'">Walks</button>
+      <button class="chip" :class="{ on: tab === 'hr' }" @click="tab = 'hr'">
+        {{ t('stats.tabHr') }}
+      </button>
+      <button class="chip" :class="{ on: tab === 'weight' }" @click="tab = 'weight'">
+        {{ t('stats.tabWeight') }}
+      </button>
+      <button class="chip" :class="{ on: tab === 'walks' }" @click="tab = 'walks'">
+        {{ t('stats.tabWalks') }}
+      </button>
     </div>
 
     <div v-if="!sessions.length && tab !== 'weight'" class="hist-empty">
       <span class="hist-empty-icon">🏃</span>
-      <p class="hint">No walks logged yet — finish a walk to see it here.</p>
+      <p class="hint">{{ t('stats.empty') }}</p>
     </div>
 
     <!-- Activity: kcal / steps / minutes per day, Mon-Sun -->
     <div v-else-if="tab === 'activity'" class="panel activity-grid">
       <div v-for="m in barLanes" :key="m.id" class="card">
         <h3>
-          <span :style="{ color: m.color }">{{ m.label }} / day</span>
+          <span :style="{ color: m.color }">{{ t('stats.perDay', { metric: m.label }) }}</span>
           <span class="card-total">{{ m.total }} {{ m.unit }}</span>
         </h3>
         <div class="bars">
@@ -347,9 +357,9 @@ function logWeighIn() {
     <div v-else-if="tab === 'hr'" class="panel">
       <div class="card">
         <h3>
-          <span style="color: #ff4757">Heart rate / day</span>
+          <span style="color: #ff4757">{{ t('stats.hrPerDay') }}</span>
           <span class="card-total">{{
-            hrLane ? `${hrLane.lo}–${hrLane.hi} bpm · ─ avg` : ''
+            hrLane ? t('stats.hrRange', { lo: hrLane.lo, hi: hrLane.hi }) : ''
           }}</span>
         </h3>
         <template v-if="hrLane">
@@ -370,7 +380,7 @@ function logWeighIn() {
             }}</span>
           </div>
         </template>
-        <p v-else class="hint">No heart-rate data this week — connect a HR sensor during a walk.</p>
+        <p v-else class="hint">{{ t('stats.noHr') }}</p>
       </div>
     </div>
 
@@ -380,7 +390,7 @@ function logWeighIn() {
         <div v-if="latestWeight" class="detail-tiles hist-tiles">
           <div>
             <span class="v">{{ latestWeight.kg.toFixed(1) }}<span class="unit">kg</span></span>
-            <span class="k">latest</span>
+            <span class="k">{{ t('stats.latest') }}</span>
           </div>
           <div>
             <span class="v"
@@ -388,26 +398,26 @@ function logWeighIn() {
                 weightDelta === null ? '—' : (weightDelta > 0 ? '+' : '') + weightDelta.toFixed(1)
               }}<span v-if="weightDelta !== null" class="unit">kg</span></span
             >
-            <span class="k">vs ~30 days</span>
+            <span class="k">{{ t('stats.vs30') }}</span>
           </div>
           <div v-if="toGoal !== null">
             <span class="v"
               >{{ (toGoal > 0 ? '' : '+') + Math.abs(toGoal).toFixed(1)
               }}<span class="unit">kg</span></span
             >
-            <span class="k">{{ toGoal > 0 ? 'to goal' : 'past goal' }}</span>
+            <span class="k">{{ toGoal > 0 ? t('stats.toGoal') : t('stats.pastGoal') }}</span>
           </div>
         </div>
         <div v-if="latestFat || latestMuscle" class="detail-tiles hist-tiles comp-tiles">
           <div v-if="latestFat">
             <span class="v">{{ latestFat.fatPct!.toFixed(1) }}<span class="unit">%</span></span>
-            <span class="k">body fat</span>
+            <span class="k">{{ t('stats.bodyFat') }}</span>
           </div>
           <div v-if="latestMuscle">
             <span class="v"
               >{{ latestMuscle.muscleKg!.toFixed(1) }}<span class="unit">kg</span></span
             >
-            <span class="k">muscle</span>
+            <span class="k">{{ t('stats.muscle') }}</span>
           </div>
         </div>
         <template v-if="weightSpark">
@@ -432,10 +442,10 @@ function logWeighIn() {
             <polyline class="fat-line" :points="fatSpark.line" />
           </svg>
           <div class="weight-range">
-            body fat {{ fatSpark.min.toFixed(1) }}–{{ fatSpark.max.toFixed(1) }} %
+            {{ t('stats.fatRange', { lo: fatSpark.min.toFixed(1), hi: fatSpark.max.toFixed(1) }) }}
           </div>
         </template>
-        <p v-if="!weightLog.length" class="hint">No weigh-ins yet — log one to start the trend.</p>
+        <p v-if="!weightLog.length" class="hint">{{ t('stats.noWeighIns') }}</p>
         <div class="set-row weigh-row">
           <span class="set-inline">
             <input
@@ -450,7 +460,7 @@ function logWeighIn() {
             <span class="set-unit">kg</span>
           </span>
           <button class="btn go sm" :disabled="!weighInInput" @click="logWeighIn">
-            Log weigh-in
+            {{ t('stats.logWeighIn') }}
           </button>
         </div>
       </div>
@@ -460,7 +470,8 @@ function logWeighIn() {
     <div v-else class="panel">
       <div class="card">
         <h3>
-          <span>Walk log</span><span class="card-total">{{ sessions.length }} walks total</span>
+          <span>{{ t('stats.walkLog') }}</span
+          ><span class="card-total">{{ t('stats.walksTotal', { n: sessions.length }) }}</span>
         </h3>
         <ul v-if="weekWalks.length" class="walklist">
           <li v-for="w in weekWalks" :key="w.date">
@@ -479,24 +490,24 @@ function logWeighIn() {
               <div class="detail-tiles hist-tiles walk-tiles">
                 <div>
                   <span class="v">{{ w.steps ?? '—' }}</span>
-                  <span class="k">steps</span>
+                  <span class="k">{{ t('stats.stepsTile') }}</span>
                 </div>
                 <div>
                   <span class="v">{{ w.avgHr ?? '—' }}</span>
-                  <span class="k">avg bpm</span>
+                  <span class="k">{{ t('stats.avgBpm') }}</span>
                 </div>
                 <div>
                   <span class="v">{{ w.hrMin != null ? `${w.hrMin}–${w.hrMax}` : '—' }}</span>
-                  <span class="k">bpm range</span>
+                  <span class="k">{{ t('stats.bpmRange') }}</span>
                 </div>
               </div>
               <button class="btn ghost sm walk-delete" @click="emit('delete-session', w.date)">
-                Delete this walk
+                {{ t('stats.deleteWalk') }}
               </button>
             </div>
           </li>
         </ul>
-        <p v-else class="hint">No walks in this week.</p>
+        <p v-else class="hint">{{ t('stats.noWalks') }}</p>
       </div>
     </div>
   </div>

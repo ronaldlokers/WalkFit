@@ -146,7 +146,9 @@ Session logged to statistics when `state.running` goes true→false and covered 
 staleness-timeout auto-stop, so doesn't matter which one ends walk. If Strava connected,
 same transition opens the upload-prompt popup.
 
-`localStorage` keys: `walkfit.treadmill.id`, `walkfit.hr.id` (remembered device ids),
+`localStorage` keys: `walkfit.lang` (`en` default | `nl` — src/i18n.ts, hand-rolled
+typed key table; `t()` interpolates `{param}`s, `localeTag()` feeds SpeechSynthesis +
+date formatting), `walkfit.treadmill.id`, `walkfit.hr.id` (remembered device ids),
 `walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.setupDone`,
 `walkfit.history`,
 `walkfit.goals` (daily activity goals), `walkfit.weight.goal`, `walkfit.workouts.custom` (user-built plans), `walkfit.session.inprogress` (mid-walk

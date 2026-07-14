@@ -564,14 +564,25 @@ function writeSnapshot() {
   localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snap))
   lastSnapshotDistance = tot.distance
 }
+// Range: track every reading so brief peaks/dips aren't missed.
 watch(
   () => hr.state.bpm,
   (bpm) => {
     if (state.running && bpm > 0) {
-      hrSum += bpm
-      hrCount += 1
       if (!hrLo || bpm < hrLo) hrLo = bpm
       if (bpm > hrHi) hrHi = bpm
+    }
+  },
+)
+// Average: sample on the ~1 Hz elapsed tick, NOT on bpm change — a change-triggered
+// watcher weights volatile periods (20 min steady at 115 was ONE sample) (#132).
+watch(
+  () => state.elapsed,
+  () => {
+    const bpm = hr.state.bpm
+    if (state.running && bpm > 0) {
+      hrSum += bpm
+      hrCount += 1
     }
   },
 )

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
 import type { TreadmillState } from './treadmill'
@@ -34,6 +34,14 @@ const fakeHr = reactive<HeartRateState>({
   error: '',
 })
 const setSpeedCalls: number[] = []
+
+// unmount between tests — a lingering instance keeps watching the shared fakeTm/fakeHr
+// and would double-count nudges once steering rebases on elapsed resets (#55)
+let mounted: VueWrapper | null = null
+afterEach(() => {
+  mounted?.unmount()
+  mounted = null
+})
 
 vi.mock('./treadmill', () => ({
   useTreadmill: () => ({
@@ -103,7 +111,7 @@ async function toMain(w: VueWrapper) {
 describe('HR workout', () => {
   it('nudges speed up when bpm is below the target zone, rate-limited to HR_ADJUST_INTERVAL', async () => {
     const App = (await import('./App.vue')).default
-    const w = mount(App)
+    const w = (mounted = mount(App))
     await toMain(w)
 
     // open picker via the HR badge, start Cardio (zone 3)
@@ -135,9 +143,38 @@ describe('HR workout', () => {
     expect(setSpeedCalls.length).toBe(2)
   })
 
+  it('keeps nudging after a mid-workout stats reset (#55)', async () => {
+    const App = (await import('./App.vue')).default
+    const w = (mounted = mount(App))
+    await toMain(w)
+    await w
+      .findAll('button')
+      .find((b) => b.attributes('title')?.includes('tap for HR workout'))!
+      .trigger('click')
+    await w
+      .findAll('.hr-zone-opt')
+      .find((b) => b.text().includes('Cardio'))!
+      .trigger('click')
+    fakeHr.bpm = 90
+    for (let e = 0; e <= 25; e += 1) {
+      fakeTm.elapsed = e
+      await w.vm.$nextTick()
+    }
+    expect(setSpeedCalls.length).toBe(1)
+    // Reset button zeroes elapsed mid-workout — steering must rebase, not stall until
+    // elapsed re-exceeds the pre-reset value
+    fakeTm.elapsed = 0
+    await w.vm.$nextTick()
+    for (let e = 0; e <= 21; e += 1) {
+      fakeTm.elapsed = e
+      await w.vm.$nextTick()
+    }
+    expect(setSpeedCalls.length).toBe(2)
+  })
+
   it('nudges speed down when bpm is above the target zone', async () => {
     const App = (await import('./App.vue')).default
-    const w = mount(App)
+    const w = (mounted = mount(App))
     await toMain(w)
     await w
       .findAll('button')
@@ -159,7 +196,7 @@ describe('HR workout', () => {
 
   it('does not nudge while the belt is not running (respects countdown/enforcement)', async () => {
     const App = (await import('./App.vue')).default
-    const w = mount(App)
+    const w = (mounted = mount(App))
     await toMain(w)
     await w
       .findAll('button')
@@ -181,7 +218,7 @@ describe('HR workout', () => {
 
   it('ends the autopilot when heart rate disconnects', async () => {
     const App = (await import('./App.vue')).default
-    const w = mount(App)
+    const w = (mounted = mount(App))
     await toMain(w)
     await w
       .findAll('button')
@@ -201,7 +238,7 @@ describe('HR workout', () => {
 
   it('offers a Light target at 90–113 bpm (default 190 max HR)', async () => {
     const App = (await import('./App.vue')).default
-    const w = mount(App)
+    const w = (mounted = mount(App))
     await toMain(w)
     await w
       .findAll('button')
@@ -214,7 +251,7 @@ describe('HR workout', () => {
 
   it('the header Workout menu item opens the weight-loss tab, not the HR tab', async () => {
     const App = (await import('./App.vue')).default
-    const w = mount(App)
+    const w = (mounted = mount(App))
     await toMain(w)
     await w
       .findAll('button')

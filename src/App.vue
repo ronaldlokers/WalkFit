@@ -150,6 +150,9 @@ watch(maxHr, (v) => localStorage.setItem('walkfit.maxhr', String(v)))
 
 // --- weight (used for calorie estimates — see workoutStats / metForSpeed) ---
 const weightKg = ref(Number(localStorage.getItem('walkfit.weight')) || 70)
+// Target weight (#71): drives the goal line on the trend chart. 0/empty = none.
+const goalWeight = ref(Number(localStorage.getItem('walkfit.weight.goal')) || 0)
+watch(goalWeight, (v) => localStorage.setItem('walkfit.weight.goal', String(v || 0)))
 watch(weightKg, (v) => localStorage.setItem('walkfit.weight', String(v)))
 // Shared by the live HR badge (hrZone) and the HR-steered autopilot's target picker below,
 // so the two can't drift apart. hi is a %-of-maxHr upper bound; Infinity for the top zone.
@@ -1315,6 +1318,7 @@ const pace = computed(() => {
         :weight-log="weightLog"
         :goals="goals"
         :weight-kg="weightKg"
+        :goal-weight="goalWeight"
         @close="statisticsOpen = false"
         @weigh-in="handleWeighIn"
         @delete-session="(date: string) => (sessions = removeSession(date))"
@@ -1442,6 +1446,8 @@ const pace = computed(() => {
         v-model:goal-kcal="goals.kcal"
         v-model:goal-steps="goals.steps"
         v-model:goal-minutes="goals.minutes"
+        v-model:goal-weight="goalWeight"
+        v-model:strava-auto-upload="stravaAutoUpload"
         :tm="{ state, connect, disconnect, forget: forgetTreadmill }"
         :hr="hr"
         :strava="strava"
@@ -1450,7 +1456,6 @@ const pace = computed(() => {
         @close="settingsOpen = false"
         @weight-changed="weightSettingChanged"
         @sync-provider="syncHealth"
-        v-model:strava-auto-upload="stravaAutoUpload"
         @imported="reloadApp"
       />
     </div>

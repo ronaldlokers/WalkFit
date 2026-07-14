@@ -221,6 +221,26 @@ describe('App happy path', () => {
     expect(btn3d.attributes('title')).toBe('Needs WebGL')
   })
 
+  it('a goal weight draws the target line and the to-go delta (#71)', async () => {
+    localStorage.setItem('walkfit.weight.goal', '80')
+    localStorage.setItem(
+      'walkfit.weight.log',
+      JSON.stringify([
+        { date: '2026-07-01T07:00:00.000Z', kg: 85, source: 'manual' },
+        { date: '2026-07-10T07:00:00.000Z', kg: 83.2, source: 'manual' },
+      ]),
+    )
+    const w = mount(App)
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Free walk')
+    await clickButton(w, '☰')
+    await clickButton(w, 'Statistics')
+    expect(w.find('.weight-goal-line').exists()).toBe(true)
+    expect(w.find('.weight-section').text()).toContain('3.2')
+    expect(w.find('.weight-section').text()).toContain('to goal')
+  })
+
   it('recent walks list expands to a detail view and deletes a session (#67)', async () => {
     localStorage.setItem(
       'walkfit.history',

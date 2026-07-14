@@ -149,7 +149,7 @@ same transition opens the upload-prompt popup.
 `localStorage` keys: `walkfit.treadmill.id`, `walkfit.hr.id` (remembered device ids),
 `walkfit.maxhr`, `walkfit.weight`, `walkfit.audio`, `walkfit.debug`, `walkfit.setupDone`,
 `walkfit.history`,
-`walkfit.goals` (daily activity goals), `walkfit.workouts.custom` (user-built plans), `walkfit.session.inprogress` (mid-walk
+`walkfit.goals` (daily activity goals), `walkfit.weight.goal`, `walkfit.workouts.custom` (user-built plans), `walkfit.session.inprogress` (mid-walk
 snapshot — reload resumes the session), `walkfit.weight.log` (weigh-ins),
 `walkfit.strava` / `walkfit.withings` (OAuth tokens), `walkfit.strava.autoUpload`, `walkfit.health.lastSync.<provider>`
 (display-only last-sync times), `walkfit.health.cursor.<provider>` (server-derived

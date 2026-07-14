@@ -630,6 +630,33 @@ function finalizeSession() {
   sessionStart = null
   localStorage.removeItem(SNAPSHOT_KEY)
 }
+// --- screen wake lock (#19): keep the display on while the belt runs ---
+// Chromium-only is fine (Web Bluetooth already requires it). The UA auto-releases
+// the lock when the tab hides; re-acquire on return if the walk is still going.
+let wakeLock: WakeLockSentinel | null = null
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return
+  try {
+    wakeLock = await navigator.wakeLock.request('screen')
+  } catch {
+    // low battery or platform refusal — walking works fine without it
+  }
+}
+function releaseWakeLock() {
+  wakeLock?.release().catch(() => {})
+  wakeLock = null
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.running) acquireWakeLock()
+})
+watch(
+  () => state.running,
+  (running) => {
+    if (running) acquireWakeLock()
+    else releaseWakeLock()
+  },
+)
+
 const pausedWalk = ref(false)
 watch(
   () => state.running,

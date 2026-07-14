@@ -151,7 +151,7 @@ same transition opens the upload-prompt popup.
 `walkfit.history`,
 `walkfit.goals` (daily activity goals), `walkfit.workouts.custom` (user-built plans), `walkfit.session.inprogress` (mid-walk
 snapshot — reload resumes the session), `walkfit.weight.log` (weigh-ins),
-`walkfit.strava` / `walkfit.withings` (OAuth tokens), `walkfit.health.lastSync.<provider>`
+`walkfit.strava` / `walkfit.withings` (OAuth tokens), `walkfit.strava.autoUpload`, `walkfit.health.lastSync.<provider>`
 (display-only last-sync times), `walkfit.health.cursor.<provider>` (server-derived
 incremental sync cursors), `walkfit.view` (`track` | `scenic`), `walkfit.capture` (raw BLE frame
 debug logging, off unless `'1'`).

@@ -69,6 +69,7 @@ const maxHr = defineModel<number>('maxHr', { required: true })
 const weightKg = defineModel<number>('weightKg', { required: true })
 const audioOn = defineModel<boolean>('audioOn', { required: true })
 const debugOn = defineModel<boolean>('debugOn', { required: true })
+const stravaAutoUpload = defineModel<boolean>('stravaAutoUpload', { required: true })
 const viewMode = defineModel<'track' | 'scenic'>('viewMode', { required: true })
 const goalKcal = defineModel<number>('goalKcal', { required: true })
 const goalSteps = defineModel<number>('goalSteps', { required: true })
@@ -218,7 +219,17 @@ function fmtSynced(ms: number | null) {
           </div>
         </div>
         <p v-if="strava.state.error" class="set-note warn-note">{{ strava.state.error }}</p>
-        <p class="set-note">Prompts to upload each finished walk once connected.</p>
+        <div v-if="strava.state.connected" class="set-row">
+          <span>Auto-upload walks</span>
+          <input v-model="stravaAutoUpload" type="checkbox" class="set-check" />
+        </div>
+        <p class="set-note">
+          {{
+            stravaAutoUpload
+              ? 'Finished walks upload automatically; failures fall back to the prompt.'
+              : 'Prompts to upload each finished walk once connected.'
+          }}
+        </p>
       </template>
 
       <template v-for="p in providers" :key="p.id">

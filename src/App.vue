@@ -187,8 +187,11 @@ function hrTargetRange(t: HrTarget) {
 const hrTarget = ref<HrTarget | null>(null) // active HR_TARGETS entry while the autopilot is steering speed
 let lastHrAdjustElapsed = 0
 function startHrWorkout(t: HrTarget) {
+  finalizeSession() // log an in-progress free walk (≥50 m) instead of wiping it (#55)
   active.value = null // mutually exclusive with a weight-loss workout
   hrTarget.value = t
+  resetStats()
+  if (state.running) beginSession() // belt already moving — the new session starts now
   menuOpen.value = false
   lastHrAdjustElapsed = state.elapsed
   if (state.connected) start()
@@ -207,6 +210,9 @@ watch(
   () => [state.elapsed, state.running],
   () => {
     if (!hrTarget.value || !state.running) return
+    // stats were reset mid-workout (Reset button): rebase, or no nudge would fire until
+    // elapsed re-exceeded the pre-reset value (#55) — same pattern as the kcal watcher
+    if (state.elapsed < lastHrAdjustElapsed) lastHrAdjustElapsed = 0
     if (state.elapsed - lastHrAdjustElapsed < HR_ADJUST_INTERVAL) return
     lastHrAdjustElapsed = state.elapsed
     const bpm = hr.state.bpm
@@ -487,6 +493,16 @@ let hrSum = 0
 let hrCount = 0
 let hrLo = 0 // session bpm low/high for the daily HR range chart (#43)
 let hrHi = 0
+// Watermarks (#55): the treadmill counters are cumulative since connect/reset, so a
+// session owns the DELTA since it began — not the raw counters. This is what stops a
+// second walk from re-logging the first one's distance (Start without Reset), and it
+// neutralizes the belt's deceleration bounce after Stop (running briefly flips back on
+// while the belt coasts; that phantom "session" is a few metres of delta and falls to
+// the 50 m filter instead of re-logging the whole walk).
+let baseDistance = 0
+let baseElapsed = 0
+let baseKcal = 0
+let baseSteps = 0
 watch(
   () => hr.state.bpm,
   (bpm) => {
@@ -498,32 +514,65 @@ watch(
     }
   },
 )
+function beginSession() {
+  sessionStart = new Date()
+  sessionName =
+    active.value?.name || (hrTarget.value ? `${hrTarget.value.name} HR workout` : 'Free walk')
+  hrSum = 0
+  hrCount = 0
+  hrLo = 0
+  hrHi = 0
+  baseDistance = state.distance
+  baseElapsed = state.elapsed
+  baseKcal = liveKcal.value
+  baseSteps = state.steps
+}
+// Log the session-so-far if it covered enough ground, and close it either way. Called
+// on the running true→false edge, and by workout starts so an in-progress free walk is
+// logged instead of silently wiped by their resetStats().
+function finalizeSession() {
+  if (!sessionStart) return
+  const distance = Math.round(state.distance - baseDistance)
+  if (distance >= MIN_SESSION_DISTANCE) {
+    const session: Session = {
+      date: sessionStart.toISOString(),
+      distance,
+      duration: Math.round(state.elapsed - baseElapsed),
+      kcal: Math.max(0, liveKcal.value - baseKcal),
+      // belt's own pedometer count (0 if FW never reported one)
+      steps: Math.max(0, state.steps - baseSteps),
+      avgHr: hrCount ? Math.round(hrSum / hrCount) : null,
+      ...(hrCount ? { hrMin: hrLo, hrMax: hrHi } : {}),
+    }
+    sessions.value = addSession(session)
+    if (strava.state.connected) stravaPrompt.value = { session, name: sessionName }
+  }
+  sessionStart = null
+}
 watch(
   () => state.running,
   (running, was) => {
-    if (running && !was) {
-      sessionStart = new Date()
-      sessionName = active.value?.name || 'Free walk'
-      hrSum = 0
-      hrCount = 0
-      hrLo = 0
-      hrHi = 0
-    } else if (!running && was) {
-      if (state.distance >= MIN_SESSION_DISTANCE) {
-        const session: Session = {
-          date: (sessionStart || new Date()).toISOString(),
-          distance: Math.round(state.distance),
-          duration: Math.round(state.elapsed),
-          kcal: liveKcal.value,
-          steps: state.steps, // belt's own pedometer count (0 if FW never reported one)
-          avgHr: hrCount ? Math.round(hrSum / hrCount) : null,
-          ...(hrCount ? { hrMin: hrLo, hrMax: hrHi } : {}),
-        }
-        sessions.value = addSession(session)
-        if (strava.state.connected) stravaPrompt.value = { session, name: sessionName }
-      }
-      sessionStart = null
+    if (running && !was) beginSession()
+    else if (!running && was) finalizeSession()
+  },
+)
+// Counters were reset mid-session (Reset button, workout start): rebase the watermarks
+// so the continuing session isn't undercounted against stale-high bases. Steps rebase
+// separately — the belt's own counter also restarts when the belt starts a new workout.
+watch(
+  () => state.distance,
+  (d) => {
+    if (d < baseDistance) {
+      baseDistance = 0
+      baseElapsed = 0
+      baseKcal = 0
     }
+  },
+)
+watch(
+  () => state.steps,
+  (s) => {
+    if (s < baseSteps) baseSteps = 0
   },
 )
 
@@ -699,10 +748,23 @@ watch(
   },
 )
 
+// Free walk from the header Start button (#55): starting fresh from stopped ends any
+// lingering unlogged segment and zeroes the counters, so consecutive walks can't
+// accumulate into one another. Starting while already running just re-sends start.
+async function startWalk() {
+  if (!state.running) {
+    finalizeSession()
+    resetStats()
+  }
+  await start()
+}
+
 async function startWorkout(t: Workout) {
+  finalizeSession() // log an in-progress free walk (≥50 m) instead of wiping it (#55)
   active.value = t
   hrTarget.value = null // mutually exclusive with an HR workout
   resetStats()
+  if (state.running) beginSession() // belt already moving — the new session starts now
   menuOpen.value = false
   setSpeed(t.segments[0].speed) // sets target for the start sequence
   if (state.connected) await start()
@@ -997,7 +1059,7 @@ const pace = computed(() => {
     </section>
 
     <section class="action-row" :class="{ disabled: !state.connected }">
-      <button class="btn go" :disabled="!state.connected" @click="start">▶ Start</button>
+      <button class="btn go" :disabled="!state.connected" @click="startWalk">▶ Start</button>
       <button class="btn halt" :disabled="!state.connected" @click="stop">■ Stop</button>
       <button class="btn ghost" @click="resetStats">Reset</button>
     </section>

@@ -138,12 +138,14 @@ function dayLabel(dateKey: string) {
 // --- right rail: summary / walk log / weight ---
 const streak = computed(() => currentStreak(props.sessions))
 const todayPct = computed(() => {
-  const t = dailyTotals(props.sessions, 1)[0]!
+  const today = dailyTotals(props.sessions, 1)[0]!
+  // a mid-edit emptied goal input reaches here as '' — guard the divide (#137)
+  const frac = (v: number, goal: number) => (Number(goal) > 0 ? Math.min(v / Number(goal), 1) : 0)
   const pcts = [
-    t.kcal / props.goals.kcal,
-    t.steps / props.goals.steps,
-    t.duration / 60 / props.goals.minutes,
-  ].map((p) => Math.min(p, 1))
+    frac(today.kcal, props.goals.kcal),
+    frac(today.steps, props.goals.steps),
+    frac(today.duration / 60, props.goals.minutes),
+  ]
   return Math.round((pcts.reduce((a, b) => a + b, 0) / 3) * 100)
 })
 const weekDistance = computed(() => days.value.reduce((a, d) => a + d.distance, 0))

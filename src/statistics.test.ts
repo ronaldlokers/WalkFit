@@ -198,6 +198,26 @@ describe('removeSession (#67)', () => {
   })
 })
 
+describe('session sanitization (#137)', () => {
+  it('drops entries with missing/garbage numerics instead of persisting NaN', () => {
+    const merged = mergeSessions([
+      { date: '2026-07-13T08:00:00.000Z' } as never, // no numerics at all
+      { date: '2026-07-14T08:00:00.000Z', distance: 'junk', duration: 600 } as never,
+      { date: '2026-07-15T08:00:00.000Z', distance: 800, duration: 600 } as never, // kcal absent -> 0
+    ])
+    expect(merged).toHaveLength(1)
+    expect(merged[0]).toMatchObject({ distance: 800, duration: 600, kcal: 0, avgHr: null })
+    // nothing NaN reaches the reducers
+    const [day] = dailyTotals(merged, 1, new Date('2026-07-15T12:00:00.000Z'))
+    expect(Number.isNaN(day!.kcal)).toBe(false)
+  })
+
+  it('saveGoals coerces invalid fields so a transient empty input never persists', () => {
+    saveGoals({ kcal: '' as never, steps: 9000, minutes: 45 })
+    expect(loadGoals()).toEqual({ kcal: 500, steps: 9000, minutes: 45 })
+  })
+})
+
 describe('mergeSessions (#69)', () => {
   it('unions by date with existing entries winning, sorted', () => {
     addSession({

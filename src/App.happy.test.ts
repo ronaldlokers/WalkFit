@@ -210,6 +210,30 @@ describe('App happy path', () => {
     vi.useRealTimers()
   })
 
+  it('week boundary is the local next Monday, not anchor+168h (#135)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T10:00:00') })
+    localStorage.setItem('walkfit.setupDone', '1')
+    localStorage.setItem(
+      'walkfit.history',
+      JSON.stringify([
+        // Sunday 23:59 local — inside the Jul 13-19 week
+        { date: '2026-07-19T23:59:00', distance: 800, duration: 600, kcal: 35, avgHr: null },
+        // Monday 00:00 local — first second of the NEXT week
+        { date: '2026-07-20T00:00:00', distance: 900, duration: 700, kcal: 40, avgHr: null },
+      ]),
+    )
+    const w = mount(App)
+    await clickButton(w, '☰')
+    await w
+      .findAll('.menu-item')
+      .find((b) => b.text().includes('Statistics'))!
+      .trigger('click')
+    await clickButton(w, 'Walks')
+    expect(w.findAll('.walk-row')).toHaveLength(1)
+    expect(w.find('.walk-row').text()).toContain('800 m')
+    vi.useRealTimers()
+  })
+
   it('scenic without WebGL falls back to the track view and disables the toggle', async () => {
     // jsdom has no WebGL: the async Scenic3D component mounts, probes, and emits
     // 'unsupported' — the app must land on the track view, not a blank scene (#51).

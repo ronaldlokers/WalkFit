@@ -71,6 +71,7 @@ const audioOn = defineModel<boolean>('audioOn', { required: true })
 const debugOn = defineModel<boolean>('debugOn', { required: true })
 const stravaAutoUpload = defineModel<boolean>('stravaAutoUpload', { required: true })
 const goalWeight = defineModel<number>('goalWeight', { required: true })
+const scenicTime = defineModel<string>('scenicTime', { required: true })
 const viewMode = defineModel<'track' | 'scenic'>('viewMode', { required: true })
 const goalKcal = defineModel<number>('goalKcal', { required: true })
 const goalSteps = defineModel<number>('goalSteps', { required: true })
@@ -207,6 +208,16 @@ function fmtSynced(ms: number | null) {
             3D
           </button>
         </div>
+      </div>
+      <div class="set-row">
+        <span>3D time of day</span>
+        <select v-model="scenicTime" class="set-select">
+          <option value="auto">Auto (follows distance)</option>
+          <option value="dawn">Dawn</option>
+          <option value="day">Day</option>
+          <option value="sunset">Sunset</option>
+          <option value="night">Night</option>
+        </select>
       </div>
 
       <template v-if="strava.state.supported">
@@ -435,5 +446,13 @@ function fmtSynced(ms: number | null) {
   align-items: center;
   gap: 7px;
   cursor: pointer;
+}
+.set-select {
+  background: #171a21;
+  border: 1px solid #232833;
+  border-radius: 8px;
+  color: inherit;
+  font: inherit;
+  padding: 6px 10px;
 }
 </style>

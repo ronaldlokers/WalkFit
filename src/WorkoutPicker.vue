@@ -12,13 +12,14 @@ const props = withDefaults(
     weightKg: number
     maxHr: number
     connected?: boolean
+    hrConnected?: boolean // an HR sensor is paired — required to start an HR workout (#63)
     hrTargets: HrTarget[]
     activeHrTarget?: HrTarget | null
     adjustInterval: number
     startTab?: 'plans' | 'hr' // 'plans' (weight loss) | 'hr' (heart rate)
     closable?: boolean
   }>(),
-  { connected: false, activeHrTarget: null, startTab: 'plans', closable: true },
+  { connected: false, hrConnected: false, activeHrTarget: null, startTab: 'plans', closable: true },
 )
 const emit = defineEmits<{
   'start-plan': [w: Workout]
@@ -129,6 +130,7 @@ function segDur(min: number) {
           class="hr-zone-opt"
           :class="{ on: activeHrTarget === t }"
           :style="{ '--zc': t.color }"
+          :disabled="!hrConnected"
           @click="emit('start-hr', t)"
         >
           <span class="hr-zone-name"><span class="hr-zone-dot"></span>{{ t.name }}</span>
@@ -138,7 +140,10 @@ function segDur(min: number) {
       <button v-if="activeHrTarget" class="btn ghost hr-picker-stop" @click="emit('stop-hr')">
         Stop HR workout
       </button>
-      <p v-if="!connected" class="hint">
+      <p v-if="!hrConnected" class="hint">
+        Connect a heart-rate sensor first — there's nothing to steer by without one.
+      </p>
+      <p v-else-if="!connected" class="hint">
         Not connected — connect the treadmill first, or start it and connect after.
       </p>
     </div>
@@ -308,6 +313,10 @@ function segDur(min: number) {
   padding: 12px 14px;
   color: inherit;
   cursor: pointer;
+}
+.hr-zone-opt:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 .hr-zone-opt.on {
   border-color: var(--zc);

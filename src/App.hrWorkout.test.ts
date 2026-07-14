@@ -236,6 +236,31 @@ describe('HR workout', () => {
     fakeHr.connected = true // reset for other tests sharing the mocked reactive object
   })
 
+  it('HR targets are disabled without a sensor, with an explanatory hint (#63)', async () => {
+    const App = (await import('./App.vue')).default
+    const w = (mounted = mount(App))
+    await toMain(w)
+    fakeHr.connected = false
+    // reach the HR tab via the header workout menu (no HR badge without a sensor)
+    await w
+      .findAll('button')
+      .find((b) => b.text() === '☰')!
+      .trigger('click')
+    await w
+      .findAll('button')
+      .find((b) => b.text().includes('Workout'))!
+      .trigger('click')
+    await w
+      .findAll('.workout-tab')
+      .find((b) => b.text().includes('Heart rate'))!
+      .trigger('click')
+    for (const opt of w.findAll('.hr-zone-opt')) {
+      expect(opt.attributes('disabled')).toBeDefined()
+    }
+    expect(w.text()).toContain('Connect a heart-rate sensor first')
+    fakeHr.connected = true // restore for other tests sharing the mock
+  })
+
   it('offers a Light target at 90–113 bpm (default 190 max HR)', async () => {
     const App = (await import('./App.vue')).default
     const w = (mounted = mount(App))

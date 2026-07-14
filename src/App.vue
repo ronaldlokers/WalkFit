@@ -53,21 +53,29 @@ const strava = useStrava()
 const origin = window.location.origin
 
 // --- onboarding wizard ---
-const wizardOpen = ref(true)
+// The onboarding wizard shows only until it's been completed or dismissed once —
+// returning users (and mid-walk reloads) go straight to the main screen (#63).
+const wizardOpen = ref(localStorage.getItem('walkfit.setupDone') !== '1')
+function markSetupDone() {
+  localStorage.setItem('walkfit.setupDone', '1')
+}
 const wizardStep = ref(1) // 1 treadmill · 2 heart rate · 3 mode · 4 pick workout
 function wizardWalk() {
   active.value = null
   wizardOpen.value = false
+  markSetupDone()
 }
 // Wizard's own start handlers: same shared start logic as the header-button menu, plus
 // closing the wizard (WorkoutPicker itself has no "close" affordance in the wizard step —
 // :closable="false" — the wizard's own Back button is the only way out besides picking).
 function wizardStartPlan(w: Workout) {
   wizardOpen.value = false
+  markSetupDone()
   startWorkout(w)
 }
 function wizardStartHr(t: HrTarget) {
   wizardOpen.value = false
+  markSetupDone()
   startHrWorkout(t)
 }
 
@@ -187,6 +195,7 @@ function hrTargetRange(t: HrTarget) {
 const hrTarget = ref<HrTarget | null>(null) // active HR_TARGETS entry while the autopilot is steering speed
 let lastHrAdjustElapsed = 0
 function startHrWorkout(t: HrTarget) {
+  if (!hr.state.connected) return // nothing to steer by (#63) — the picker disables these too
   finalizeSession() // log an in-progress free walk (≥50 m) instead of wiping it (#55)
   active.value = null // mutually exclusive with a weight-loss workout
   hrTarget.value = t
@@ -628,12 +637,13 @@ function syncWeightKg() {
 // The Settings weight field doubles as a manual weigh-in. @change fires on commit
 // (blur/enter), not per keystroke, so edits don't spam the log.
 function weightSettingChanged() {
-  if (weightKg.value >= 30 && weightKg.value <= 250)
-    weightLog.value = addWeighIn({
-      date: new Date().toISOString(),
-      kg: weightKg.value,
-      source: 'manual',
-    })
+  if (weightKg.value < 30 || weightKg.value > 250) return
+  // Day-keyed (#63): corrective edits in the same day overwrite one entry instead of
+  // polluting the weight trend with a burst of same-day points (the merge keys manual
+  // entries on source+date, so an identical date string replaces).
+  const d = new Date()
+  d.setHours(12, 0, 0, 0)
+  weightLog.value = addWeighIn({ date: d.toISOString(), kg: weightKg.value, source: 'manual' })
 }
 
 // --- health services (weigh-in sync providers — see health.ts) ---
@@ -1163,6 +1173,7 @@ const pace = computed(() => {
           :hr-targets="HR_TARGETS"
           :active-hr-target="hrTarget"
           :adjust-interval="HR_ADJUST_INTERVAL"
+          :hr-connected="hr.state.connected"
           :start-tab="workoutTab"
           @start-plan="startWorkout"
           @start-hr="startHrWorkout"
@@ -1437,7 +1448,13 @@ const pace = computed(() => {
           <div class="wiz-dots">
             <span v-for="n in 3" :key="n" :class="{ on: wizardStep >= n }"></span>
           </div>
-          <button class="x" aria-label="Skip setup" @click="wizardOpen = false">✕</button>
+          <button
+            class="x"
+            aria-label="Skip setup"
+            @click="((wizardOpen = false), markSetupDone())"
+          >
+            ✕
+          </button>
         </div>
 
         <!-- 1: treadmill -->
@@ -1518,6 +1535,7 @@ const pace = computed(() => {
             :hr-targets="HR_TARGETS"
             :active-hr-target="hrTarget"
             :adjust-interval="HR_ADJUST_INTERVAL"
+            :hr-connected="hr.state.connected"
             :closable="false"
             @start-plan="wizardStartPlan"
             @start-hr="wizardStartHr"
@@ -1597,7 +1615,7 @@ const pace = computed(() => {
                 v-model.number="weightKg"
                 type="number"
                 min="30"
-                max="200"
+                max="250"
                 @change="weightSettingChanged"
               />
               <span class="set-unit">kg</span>

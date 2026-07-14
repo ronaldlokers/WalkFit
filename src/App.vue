@@ -639,15 +639,24 @@ function finalizeSession() {
 // Chromium-only is fine (Web Bluetooth already requires it). The UA auto-releases
 // the lock when the tab hides; re-acquire on return if the walk is still going.
 let wakeLock: WakeLockSentinel | null = null
+// The walk can end while a request is still in flight (the deceleration bounce makes
+// a brief running=true realistic) — releasing before the await resolves would leak
+// the sentinel and keep the screen awake forever. Track intent and re-check it after
+// the await (#133).
+let wakeLockWanted = false
 async function acquireWakeLock() {
   if (!('wakeLock' in navigator)) return
+  wakeLockWanted = true
   try {
-    wakeLock = await navigator.wakeLock.request('screen')
+    const sentinel = await navigator.wakeLock.request('screen')
+    if (wakeLockWanted && !wakeLock) wakeLock = sentinel
+    else sentinel.release().catch(() => {})
   } catch {
     // low battery or platform refusal — walking works fine without it
   }
 }
 function releaseWakeLock() {
+  wakeLockWanted = false
   wakeLock?.release().catch(() => {})
   wakeLock = null
 }

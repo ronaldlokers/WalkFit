@@ -86,8 +86,9 @@ Keep pinned Playwright version and image tag in sync.
 - `src/heartrate.ts` — `useHeartRate()` composable: standard BLE Heart Rate Service (`0x180D`).
 - `src/workouts.ts` — weight-loss workout presets (segments of `{speed, minutes}`),
   `workoutStats`, `timeline`, `metForSpeed` (MET-based kcal estimate, also used for live
-  session kcal), and the shared `Workout`/`Segment`/`HrTarget` types (SFCs can't export
-  types, so App.vue's HR_TARGETS shape lives here).
+  session kcal), `hrTargetRange` (steer target → bpm range, shared by App.vue and
+  WorkoutPicker.vue), and the shared `Workout`/`Segment`/`HrTarget` types (SFCs can't
+  export types, so App.vue's HR_TARGETS shape lives here).
 - `src/statistics.ts` — completed-session log persisted to `localStorage` (key stays
   `walkfit.history` for backward compat): `Session` type (optional `steps`/`hrMin`/`hrMax`
   are absent on pre-#43 logs — readers must null-guard), `addSession`, `loadStatistics`,
@@ -105,16 +106,26 @@ Keep pinned Playwright version and image tag in sync.
   Unit-tested in `src/withings.test.ts` (envelope, measure parsing, refresh rotation).
 - `src/strava.ts` — `useStrava()` composable: OAuth2 connect + per-session upload. See
   "Strava upload" below.
+- `src/format.ts` — shared display formatting (`mmss`), used by App.vue and the sheet
+  components instead of per-component copies.
 - `src/WorkoutPicker.vue` — the tabbed weight-loss/HR workout picker, shared verbatim
   between the wizard's step 4 and the header's workout menu (see "Workouts" below).
+- `src/StatisticsSheet.vue` — the statistics sheet (activity rings, daily/weekly charts,
+  weight trend + manual weigh-in input); props `sessions`/`weightLog`/`goals`, emits
+  `close`/`weigh-in` — App.vue keeps the overlay wrapper and owns the logs.
+- `src/SettingsSheet.vue` — the settings sheet; composables passed through as props
+  (`tm`/`hr`/`strava`/`providers`), primitives via `defineModel`, emits
+  `close`/`weight-changed`/`sync-provider` — App.vue keeps the overlay wrapper.
 - `src/scenic.ts` — **pure, framework-free** world model for the 3D scenic walk (the
   400 m stadium-loop geometry, surroundings, day/night). Unit-tested in
   `src/scenic.test.ts`. See the scenic paragraph below.
 - `src/Scenic3D.vue` — the three.js first-person scenic renderer; async component, so
   three.js lives in a lazy chunk (see below).
-- `src/App.vue` — the rest of the UI (still mostly one component): loop, chart, controls,
+- `src/App.vue` — the rest of the UI: loop, chart, controls,
   header live-stat strip (time/distance/kcal/speed/pace — real zeros faded while idle),
-  header overflow menu, statistics view, settings, onboarding wizard. Below 900px it's a
+  header overflow menu, onboarding wizard; the statistics and settings sheets live in
+  their own components now (`StatisticsSheet.vue` / `SettingsSheet.vue`), App.vue keeps
+  their overlay wrappers, open-state refs, and the persisted state. Below 900px it's a
   single 460px column; at ≥900px a pure-CSS two-column grid (visual left, controls +
   chart right), the stat strip moves inline into the header row, and sheets center as
   640px dialogs instead of bottom sheets — template order is identical in both layouts.

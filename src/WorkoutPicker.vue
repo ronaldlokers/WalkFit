@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { SPEED_MAX } from './treadmill'
-import { workoutStats, timeline } from './workouts'
+import { workoutStats, timeline, hrTargetRange } from './workouts'
 import type { Workout, Segment, HrTarget } from './workouts'
+import { mmss } from './format'
 
 // Shared by the wizard's "pick a workout" step and the header/HR-badge menu — same
 // tabs, same lists, same start/stop behavior, so the two entry points can't drift apart.
@@ -33,12 +34,6 @@ const preview = ref<Workout | null>(null) // weight-loss workout shown in the de
 
 function stats(w: Workout) {
   return workoutStats(w, props.weightKg)
-}
-function hrTargetRange(t: HrTarget) {
-  return {
-    lo: Math.round((t.loPct / 100) * props.maxHr),
-    hi: Math.round((t.hiPct / 100) * props.maxHr) - 1,
-  }
 }
 
 // --- chart geometry (mirrors App.vue's own chart scale, duplicated here since scoped
@@ -71,10 +66,6 @@ function miniPath(w: { segments: Segment[] }) {
   return `M0,${H} L${pts.join(' L')} L${W},${H} Z`
 }
 
-function mmss(sec: number) {
-  sec = Math.max(0, Math.floor(sec))
-  return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`
-}
 function segDur(min: number) {
   const sec = Math.round(min * 60)
   return sec % 60 === 0
@@ -134,7 +125,9 @@ function segDur(min: number) {
           @click="emit('start-hr', t)"
         >
           <span class="hr-zone-name"><span class="hr-zone-dot"></span>{{ t.name }}</span>
-          <span class="hr-zone-range">{{ hrTargetRange(t).lo }}–{{ hrTargetRange(t).hi }} bpm</span>
+          <span class="hr-zone-range"
+            >{{ hrTargetRange(t, maxHr).lo }}–{{ hrTargetRange(t, maxHr).hi }} bpm</span
+          >
         </button>
       </div>
       <button v-if="activeHrTarget" class="btn ghost hr-picker-stop" @click="emit('stop-hr')">

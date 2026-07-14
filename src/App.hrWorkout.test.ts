@@ -280,6 +280,28 @@ describe('HR workout', () => {
     expect(light.text()).toContain('113')
   })
 
+  it('the HR badge shows the live zone, fat-burn highlighted (#17)', async () => {
+    const App = (await import('./App.vue')).default
+    const w = mount(App)
+    mounted = w
+    await toMain(w)
+    // default maxHr 190: 125 bpm = 65.8% -> Z2 Fat burn
+    fakeHr.bpm = 125
+    await w.vm.$nextTick()
+    const tag = w.find('.hr-zone-tag')
+    expect(tag.text()).toBe('Z2 Fat burn')
+    expect(tag.classes()).toContain('fatburn')
+    // 160 bpm = 84.2% -> Z4 Hard, no fat-burn highlight
+    fakeHr.bpm = 160
+    await w.vm.$nextTick()
+    expect(w.find('.hr-zone-tag').text()).toBe('Z4 Hard')
+    expect(w.find('.hr-zone-tag').classes()).not.toContain('fatburn')
+    // no reading -> no tag
+    fakeHr.bpm = 0
+    await w.vm.$nextTick()
+    expect(w.find('.hr-zone-tag').exists()).toBe(false)
+  })
+
   it('the header Workout menu item opens the weight-loss tab, not the HR tab', async () => {
     const App = (await import('./App.vue')).default
     const w = (mounted = mount(App))

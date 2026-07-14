@@ -2601,9 +2601,12 @@ input[type='range'] {
 .app.layout-immersive > .action-row {
   bottom: 20px;
 }
-.app.layout-immersive > .controls .goal-row,
 .app.layout-immersive > .chart-wrap {
   display: none;
+}
+/* the goal chips live inside the controls pill (#129) — compact row under the slider */
+.app.layout-immersive > .controls .goal-row {
+  margin-top: 8px;
 }
 /* fade the controls while walking untouched; the top bar and lap badge stay */
 .app.layout-immersive.hud-hidden > .action-row,

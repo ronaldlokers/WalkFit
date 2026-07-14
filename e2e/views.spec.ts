@@ -73,6 +73,11 @@ test.describe('main view', () => {
       await expect(page.getByRole('button', { name: label })).toBeVisible()
     }
     await expect(page.locator('.view-flip')).toBeVisible()
+    // free-walk goal chips must be reachable in the immersive pill (#129 regression:
+    // CSS hid them — only a real browser catches display:none)
+    await expect(page.locator('.goal-row')).toBeVisible()
+    await page.locator('.goal-chip', { hasText: '2 km' }).click()
+    await expect(page.locator('.goal-progress')).toBeVisible()
     await expect(page.locator('svg.track')).toBeVisible() // 2D track default
     // header menu: no Disconnect while not connected
     await page.getByRole('button', { name: 'Menu' }).click()

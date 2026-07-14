@@ -248,3 +248,36 @@ describe('useWithings syncWeight', () => {
     expect((measureCall[1]!.headers as Record<string, string>).Authorization).toBe('Bearer at-tab2')
   })
 })
+
+describe('page-cap cursor (#139)', () => {
+  it('a capped fetch resumes from the oldest fetched timestamp, not the newest', async () => {
+    localStorage.setItem(
+      'walkfit.withings',
+      JSON.stringify({
+        accessToken: 'at',
+        refreshToken: 'rt',
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    )
+    // every page reports more data remaining -> the 50-page cap trips
+    const fetchMock = vi.fn(async () => ({
+      json: async () => ({
+        status: 0,
+        body: {
+          measuregrps: [
+            grp({ grpid: 1, date: 1783926000, modified: 1783926000 }),
+            grp({ grpid: 2, date: 1783839600, modified: 1783839600 }),
+          ],
+          more: 1,
+          offset: 123,
+        },
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { syncWeight } = useWithings()
+    const res = await syncWeight()
+    expect(fetchMock).toHaveBeenCalledTimes(50)
+    // cursor = OLDEST modified so the next sync continues the backfill
+    expect(res.cursor).toBe(1783839600 * 1000)
+  })
+})

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { t } from './i18n'
 import { SPEED_MAX } from './treadmill'
 import { workoutStats, timeline, hrTargetRange } from './workouts'
 import type { Workout, Segment, HrTarget } from './workouts'
@@ -114,21 +115,26 @@ function segDur(min: number) {
   <div class="wp">
     <div v-if="closable || preview" class="wp-head">
       <button v-if="preview" class="x" @click="preview = null">‹</button>
-      <h2>{{ preview ? preview.name : 'Workout' }}</h2>
+      <h2>{{ preview ? preview.name : t('picker.title') }}</h2>
       <button v-if="closable" class="x" @click="emit('close')">✕</button>
     </div>
 
     <div v-if="!preview" class="workout-tabs">
       <button class="workout-tab" :class="{ on: tab === 'plans' }" @click="tab = 'plans'">
-        Weight loss
+        {{ t('picker.tabPlans') }}
       </button>
       <button class="workout-tab" :class="{ on: tab === 'hr' }" @click="tab = 'hr'">
-        Heart rate
+        {{ t('picker.tabHr') }}
       </button>
     </div>
 
     <div v-if="building" class="builder">
-      <input v-model="buildName" class="builder-name" placeholder="Workout name" maxlength="40" />
+      <input
+        v-model="buildName"
+        class="builder-name"
+        :placeholder="t('picker.namePlaceholder')"
+        maxlength="40"
+      />
       <div v-for="(seg, i) in buildSegs" :key="i" class="builder-seg">
         <span class="seg-i">{{ i + 1 }}</span>
         <input v-model.number="seg.speed" type="number" min="1" max="6" step="0.1" />
@@ -139,10 +145,10 @@ function segDur(min: number) {
           ✕
         </button>
       </div>
-      <button class="btn ghost sm" @click="addSeg">+ Add segment</button>
+      <button class="btn ghost sm" @click="addSeg">{{ t('picker.addSegment') }}</button>
       <div class="detail-actions">
-        <button class="btn ghost" @click="building = false">Cancel</button>
-        <button class="btn go" @click="saveBuild">Save workout</button>
+        <button class="btn ghost" @click="building = false">{{ t('picker.cancel') }}</button>
+        <button class="btn go" @click="saveBuild">{{ t('picker.save') }}</button>
       </div>
     </div>
 
@@ -164,7 +170,7 @@ function segDur(min: number) {
       </button>
 
       <template v-if="customWorkouts.length">
-        <h3 class="tlist-heading">My workouts</h3>
+        <h3 class="tlist-heading">{{ t('picker.myWorkouts') }}</h3>
         <button v-for="w in customWorkouts" :key="w.id" class="tcard" @click="preview = w">
           <div class="tcard-main">
             <span class="tname">{{ w.name }}</span>
@@ -181,38 +187,37 @@ function segDur(min: number) {
           </svg>
         </button>
       </template>
-      <button class="btn ghost sm tlist-new" @click="openBuilder">+ New workout</button>
+      <button class="btn ghost sm tlist-new" @click="openBuilder">{{ t('picker.new') }}</button>
     </div>
 
     <div v-else-if="!preview" class="hr-workout-pane">
       <p class="hint hr-picker-hint">
-        Belt speed auto-adjusts every {{ adjustInterval }}s to hold your heart rate in the picked
-        range.
+        {{ t('picker.hrHint', { s: adjustInterval }) }}
       </p>
       <div class="hr-zone-list">
         <button
-          v-for="t in hrTargets"
-          :key="t.id"
+          v-for="tg in hrTargets"
+          :key="tg.id"
           class="hr-zone-opt"
-          :class="{ on: activeHrTarget === t }"
-          :style="{ '--zc': t.color }"
+          :class="{ on: activeHrTarget === tg }"
+          :style="{ '--zc': tg.color }"
           :disabled="!hrConnected"
-          @click="emit('start-hr', t)"
+          @click="emit('start-hr', tg)"
         >
-          <span class="hr-zone-name"><span class="hr-zone-dot"></span>{{ t.name }}</span>
+          <span class="hr-zone-name"><span class="hr-zone-dot"></span>{{ tg.name }}</span>
           <span class="hr-zone-range"
-            >{{ hrTargetRange(t, maxHr).lo }}–{{ hrTargetRange(t, maxHr).hi }} bpm</span
+            >{{ hrTargetRange(tg, maxHr).lo }}–{{ hrTargetRange(tg, maxHr).hi }} bpm</span
           >
         </button>
       </div>
       <button v-if="activeHrTarget" class="btn ghost hr-picker-stop" @click="emit('stop-hr')">
-        Stop HR workout
+        {{ t('picker.stopHr') }}
       </button>
       <p v-if="!hrConnected" class="hint">
-        Connect a heart-rate sensor first — there's nothing to steer by without one.
+        {{ t('picker.needHr') }}
       </p>
       <p v-else-if="!connected" class="hint">
-        Not connected — connect the treadmill first, or start it and connect after.
+        {{ t('picker.needTm') }}
       </p>
     </div>
 
@@ -221,15 +226,15 @@ function segDur(min: number) {
       <div class="detail-tiles">
         <div>
           <span class="v">{{ mmss(stats(preview).minutes * 60) }}</span
-          ><span class="k">time</span>
+          ><span class="k">{{ t('picker.time') }}</span>
         </div>
         <div>
           <span class="v">{{ stats(preview).distanceKm.toFixed(1) }}</span
-          ><span class="k">km</span>
+          ><span class="k">{{ t('picker.km') }}</span>
         </div>
         <div>
           <span class="v">~{{ stats(preview).kcal }}</span
-          ><span class="k">kcal</span>
+          ><span class="k">{{ t('picker.kcal') }}</span>
         </div>
       </div>
       <svg viewBox="0 0 320 120" class="chart">
@@ -248,18 +253,18 @@ function segDur(min: number) {
         </li>
       </ol>
       <div class="detail-actions">
-        <button class="btn ghost" @click="preview = null">Back</button>
+        <button class="btn ghost" @click="preview = null">{{ t('wizard.back') }}</button>
         <button
           v-if="preview.id.startsWith('custom-')"
           class="btn ghost delete-custom"
           @click="(emit('delete-custom', preview.id), (preview = null))"
         >
-          Delete
+          {{ t('picker.delete') }}
         </button>
-        <button class="btn go" @click="emit('start-plan', preview)">Start workout</button>
+        <button class="btn go" @click="emit('start-plan', preview)">{{ t('picker.start') }}</button>
       </div>
       <p v-if="!connected" class="hint">
-        Not connected — connect the treadmill first, or start it and connect after.
+        {{ t('picker.needTm') }}
       </p>
     </div>
   </div>

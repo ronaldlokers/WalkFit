@@ -30,6 +30,7 @@ defineProps<{
 }>()
 import { exportData, importData } from './backup'
 import { ref } from 'vue'
+import { t, locale, LOCALES } from './i18n'
 
 // --- backup & restore (#69) ---
 const includeTokens = ref(false)
@@ -79,25 +80,25 @@ const goalSteps = defineModel<number>('goalSteps', { required: true })
 const goalMinutes = defineModel<number>('goalMinutes', { required: true })
 
 function fmtSynced(ms: number | null) {
-  return ms ? new Date(ms).toLocaleString() : 'never'
+  return ms ? new Date(ms).toLocaleString() : t('settings.never')
 }
 </script>
 
 <template>
   <div class="sheet">
     <div class="sheet-head">
-      <h2>Settings</h2>
+      <h2>{{ t('settings.title') }}</h2>
       <button class="x" @click="emit('close')">✕</button>
     </div>
     <div class="settings">
-      <h3>Treadmill</h3>
+      <h3>{{ t('settings.treadmill') }}</h3>
       <div class="set-row">
         <span>{{
           tm.state.connected
             ? tm.state.deviceName
             : tm.state.remembered
-              ? 'Remembered'
-              : 'Not connected'
+              ? t('settings.remembered')
+              : t('settings.notConnected')
         }}</span>
         <div class="set-actions">
           <button
@@ -106,23 +107,25 @@ function fmtSynced(ms: number | null) {
             :disabled="tm.state.connecting"
             @click="tm.connect"
           >
-            {{ tm.state.connecting ? 'Connecting…' : 'Connect' }}
+            {{ tm.state.connecting ? t('settings.connecting') : t('settings.connect') }}
           </button>
-          <button v-else class="btn ghost sm" @click="tm.disconnect">Disconnect</button>
+          <button v-else class="btn ghost sm" @click="tm.disconnect">
+            {{ t('settings.disconnect') }}
+          </button>
           <button v-if="tm.state.remembered" class="btn ghost sm forget" @click="tm.forget">
-            Forget
+            {{ t('settings.forget') }}
           </button>
         </div>
       </div>
 
-      <h3>Heart rate</h3>
+      <h3>{{ t('settings.heartRate') }}</h3>
       <div class="set-row">
         <span>{{
           hr.state.connected
             ? hr.state.deviceName
             : hr.state.remembered
-              ? 'Remembered'
-              : 'Not connected'
+              ? t('settings.remembered')
+              : t('settings.notConnected')
         }}</span>
         <div class="set-actions">
           <button
@@ -131,23 +134,27 @@ function fmtSynced(ms: number | null) {
             :disabled="hr.state.connecting"
             @click="hr.connect"
           >
-            {{ hr.state.connecting ? 'Connecting…' : 'Connect' }}
+            {{ hr.state.connecting ? t('settings.connecting') : t('settings.connect') }}
           </button>
-          <button v-else class="btn ghost sm" @click="hr.disconnect">Disconnect</button>
+          <button v-else class="btn ghost sm" @click="hr.disconnect">
+            {{ t('settings.disconnect') }}
+          </button>
           <button v-if="hr.state.remembered" class="btn ghost sm forget" @click="hr.forget">
-            Forget
+            {{ t('settings.forget') }}
           </button>
         </div>
       </div>
       <div class="set-row">
-        <span>Max HR</span>
+        <span>{{ t('settings.maxHr') }}</span>
         <input v-model.number="maxHr" type="number" min="120" max="220" />
       </div>
       <p class="set-note">
-        Fat-burn zone: {{ Math.round(maxHr * 0.6) }}–{{ Math.round(maxHr * 0.7) }} bpm
+        {{
+          t('settings.fatburnNote', { lo: Math.round(maxHr * 0.6), hi: Math.round(maxHr * 0.7) })
+        }}
       </p>
       <div class="set-row">
-        <span>Weight</span>
+        <span>{{ t('settings.weight') }}</span>
         <span class="set-inline">
           <input
             v-model.number="weightKg"
@@ -159,40 +166,40 @@ function fmtSynced(ms: number | null) {
           <span class="set-unit">kg</span>
         </span>
       </div>
-      <p class="set-note">Used to estimate calories burned.</p>
+      <p class="set-note">{{ t('settings.weightNote') }}</p>
       <div class="set-row">
-        <span>Goal weight</span>
+        <span>{{ t('settings.goalWeight') }}</span>
         <span class="set-inline">
           <input v-model.number="goalWeight" type="number" min="0" max="250" placeholder="—" />
           <span class="set-unit">kg</span>
         </span>
       </div>
-      <p class="set-note">Draws a target line on the weight trend. 0 = no goal.</p>
+      <p class="set-note">{{ t('settings.goalWeightNote') }}</p>
 
-      <h3>Daily goals</h3>
+      <h3>{{ t('settings.dailyGoals') }}</h3>
       <div class="set-row">
-        <span>Calories</span>
+        <span>{{ t('settings.calories') }}</span>
         <span class="set-inline">
           <input v-model.number="goalKcal" type="number" min="50" max="5000" step="50" />
           <span class="set-unit">kcal</span>
         </span>
       </div>
       <div class="set-row">
-        <span>Steps</span>
+        <span>{{ t('settings.steps') }}</span>
         <input v-model.number="goalSteps" type="number" min="500" max="50000" step="500" />
       </div>
       <div class="set-row">
-        <span>Activity time</span>
+        <span>{{ t('settings.activityTime') }}</span>
         <span class="set-inline">
           <input v-model.number="goalMinutes" type="number" min="5" max="300" step="5" />
           <span class="set-unit">min</span>
         </span>
       </div>
-      <p class="set-note">The activity rings in Statistics fill toward these.</p>
+      <p class="set-note">{{ t('settings.goalsNote') }}</p>
 
-      <h3>Display</h3>
+      <h3>{{ t('settings.display') }}</h3>
       <div class="set-row">
-        <span>Track view</span>
+        <span>{{ t('settings.trackView') }}</span>
         <div class="set-actions">
           <button
             :class="viewMode === 'track' ? 'btn primary sm' : 'btn ghost sm'"
@@ -203,7 +210,7 @@ function fmtSynced(ms: number | null) {
           <button
             :class="viewMode === 'scenic' ? 'btn primary sm' : 'btn ghost sm'"
             :disabled="!scenicSupported"
-            :title="scenicSupported ? undefined : 'Needs WebGL'"
+            :title="scenicSupported ? undefined : t('settings.needsWebgl')"
             @click="viewMode = 'scenic'"
           >
             3D
@@ -211,17 +218,23 @@ function fmtSynced(ms: number | null) {
         </div>
       </div>
       <div class="set-row">
-        <span>Big numbers (kiosk)</span>
+        <span>{{ t('settings.bigNumbers') }}</span>
         <input v-model="bigNumbers" type="checkbox" />
       </div>
       <div class="set-row">
-        <span>3D time of day</span>
+        <span>{{ t('settings.language') }}</span>
+        <select v-model="locale" class="set-select">
+          <option v-for="l in LOCALES" :key="l.id" :value="l.id">{{ l.label }}</option>
+        </select>
+      </div>
+      <div class="set-row">
+        <span>{{ t('settings.timeOfDay') }}</span>
         <select v-model="scenicTime" class="set-select">
-          <option value="auto">Auto (follows distance)</option>
-          <option value="dawn">Dawn</option>
-          <option value="day">Day</option>
-          <option value="sunset">Sunset</option>
-          <option value="night">Night</option>
+          <option value="auto">{{ t('settings.todAuto') }}</option>
+          <option value="dawn">{{ t('settings.todDawn') }}</option>
+          <option value="day">{{ t('settings.todDay') }}</option>
+          <option value="sunset">{{ t('settings.todSunset') }}</option>
+          <option value="night">{{ t('settings.todNight') }}</option>
         </select>
       </div>
 
@@ -229,7 +242,9 @@ function fmtSynced(ms: number | null) {
         <h3>Strava</h3>
         <div class="set-row">
           <span>{{
-            strava.state.connected ? strava.state.athleteName || 'Connected' : 'Not connected'
+            strava.state.connected
+              ? strava.state.athleteName || t('settings.connected')
+              : t('settings.notConnected')
           }}</span>
           <div class="set-actions">
             <button
@@ -238,22 +253,20 @@ function fmtSynced(ms: number | null) {
               :disabled="strava.state.connecting"
               @click="strava.connect"
             >
-              {{ strava.state.connecting ? 'Connecting…' : 'Connect' }}
+              {{ strava.state.connecting ? t('settings.connecting') : t('settings.connect') }}
             </button>
-            <button v-else class="btn ghost sm" @click="strava.disconnect">Disconnect</button>
+            <button v-else class="btn ghost sm" @click="strava.disconnect">
+              {{ t('settings.disconnect') }}
+            </button>
           </div>
         </div>
         <p v-if="strava.state.error" class="set-note warn-note">{{ strava.state.error }}</p>
         <div v-if="strava.state.connected" class="set-row">
-          <span>Auto-upload walks</span>
+          <span>{{ t('settings.autoUpload') }}</span>
           <input v-model="stravaAutoUpload" type="checkbox" class="set-check" />
         </div>
         <p class="set-note">
-          {{
-            stravaAutoUpload
-              ? 'Finished walks upload automatically; failures fall back to the prompt.'
-              : 'Prompts to upload each finished walk once connected.'
-          }}
+          {{ stravaAutoUpload ? t('settings.autoUploadOn') : t('settings.autoUploadOff') }}
         </p>
       </template>
 
@@ -262,7 +275,9 @@ function fmtSynced(ms: number | null) {
           <h3>{{ p.name }}</h3>
           <div class="set-row">
             <span>{{
-              p.state.connected ? p.state.accountLabel || 'Connected' : 'Not connected'
+              p.state.connected
+                ? p.state.accountLabel || t('settings.connected')
+                : t('settings.notConnected')
             }}</span>
             <div class="set-actions">
               <button
@@ -271,7 +286,7 @@ function fmtSynced(ms: number | null) {
                 :disabled="p.state.connecting"
                 @click="p.connect"
               >
-                {{ p.state.connecting ? 'Connecting…' : 'Connect' }}
+                {{ p.state.connecting ? t('settings.connecting') : t('settings.connect') }}
               </button>
               <template v-else>
                 <button
@@ -279,27 +294,34 @@ function fmtSynced(ms: number | null) {
                   :disabled="p.state.syncing"
                   @click="emit('sync-provider', p)"
                 >
-                  {{ p.state.syncing ? 'Syncing…' : 'Sync now' }}
+                  {{ p.state.syncing ? t('settings.syncing') : t('settings.syncNow') }}
                 </button>
-                <button class="btn ghost sm" @click="p.disconnect">Disconnect</button>
+                <button class="btn ghost sm" @click="p.disconnect">
+                  {{ t('settings.disconnect') }}
+                </button>
               </template>
             </div>
           </div>
           <p v-if="p.state.error" class="set-note warn-note">{{ p.state.error }}</p>
           <p class="set-note">
-            Weigh-ins sync into the weight log{{
-              p.state.connected ? ` — last synced ${fmtSynced(p.state.lastSync)}` : ''
+            {{ t('settings.weighInsSync')
+            }}{{
+              p.state.connected
+                ? t('settings.lastSynced', { when: fmtSynced(p.state.lastSync) })
+                : ''
             }}.
           </p>
         </template>
       </template>
 
-      <h3>Data</h3>
+      <h3>{{ t('settings.data') }}</h3>
       <div class="set-row">
-        <span>Backup</span>
+        <span>{{ t('settings.backup') }}</span>
         <div class="set-actions">
-          <button class="btn ghost sm" @click="doExport">Export</button>
-          <button class="btn ghost sm" @click="fileInput?.click()">Import</button>
+          <button class="btn ghost sm" @click="doExport">{{ t('settings.export') }}</button>
+          <button class="btn ghost sm" @click="fileInput?.click()">
+            {{ t('settings.import') }}
+          </button>
           <input
             ref="fileInput"
             type="file"
@@ -311,22 +333,22 @@ function fmtSynced(ms: number | null) {
       </div>
       <label class="set-note tokens-opt">
         <input v-model="includeTokens" type="checkbox" />
-        include connection tokens (device-specific secrets)
+        {{ t('settings.includeTokens') }}
       </label>
       <p class="set-note">
-        {{ dataMsg || 'Sessions and weigh-ins merge on import; settings overwrite.' }}
+        {{ dataMsg || t('settings.importNote') }}
       </p>
 
-      <h3>Sound</h3>
+      <h3>{{ t('settings.sound') }}</h3>
       <label class="set-row toggle">
-        <span>Audio cues</span>
+        <span>{{ t('settings.audioCues') }}</span>
         <input v-model="audioOn" type="checkbox" />
       </label>
-      <p class="set-note">Countdown beeps + spoken speed at segment changes, lap chime.</p>
+      <p class="set-note">{{ t('settings.soundNote') }}</p>
 
-      <h3>Advanced</h3>
+      <h3>{{ t('settings.advanced') }}</h3>
       <label class="set-row toggle">
-        <span>Debug panel</span>
+        <span>{{ t('settings.debug') }}</span>
         <input v-model="debugOn" type="checkbox" />
       </label>
     </div>

@@ -15,6 +15,7 @@ import type { Workout, HrTarget } from './workouts'
 import { loadStatistics, addSession, removeSession, loadGoals, saveGoals } from './statistics'
 import type { Session } from './statistics'
 import { mmss } from './format'
+import { t, localeTag } from './i18n'
 import {
   trackPoint,
   laneStaggers,
@@ -137,6 +138,9 @@ function speak(text: string) {
   if (!audioOn.value) return
   try {
     const u = new SpeechSynthesisUtterance(text)
+    // match the UI language so cues get a Dutch voice when available (#26); browsers
+    // fall back to another voice if no matching one is installed
+    u.lang = localeTag()
     u.rate = 1.1
     speechSynthesis.cancel()
     speechSynthesis.speak(u)
@@ -157,18 +161,18 @@ watch(goalWeight, (v) => localStorage.setItem('walkfit.weight.goal', String(v ||
 watch(weightKg, (v) => localStorage.setItem('walkfit.weight', String(v)))
 // Shared by the live HR badge (hrZone) and the HR-steered autopilot's target picker below,
 // so the two can't drift apart. hi is a %-of-maxHr upper bound; Infinity for the top zone.
-const HR_ZONES = [
-  { z: 1, name: 'Warm up', color: '#6ab0ff', hi: 60 },
-  { z: 2, name: 'Fat burn', color: '#2ed573', hi: 70 },
-  { z: 3, name: 'Cardio', color: '#f5a623', hi: 80 },
-  { z: 4, name: 'Hard', color: '#ff7f50', hi: 90 },
-  { z: 5, name: 'Max', color: '#ff4757', hi: Infinity },
-]
+const HR_ZONES = computed(() => [
+  { z: 1, name: t('zone.warmup'), color: '#6ab0ff', hi: 60 },
+  { z: 2, name: t('zone.fatburn'), color: '#2ed573', hi: 70 },
+  { z: 3, name: t('zone.cardio'), color: '#f5a623', hi: 80 },
+  { z: 4, name: t('zone.hard'), color: '#ff7f50', hi: 90 },
+  { z: 5, name: t('zone.max'), color: '#ff4757', hi: Infinity },
+])
 const hrZone = computed(() => {
   const bpm = hr.state.bpm
   if (!bpm) return { z: 0, name: '—', color: '#8a93a3' }
   const p = (bpm / maxHr.value) * 100
-  return HR_ZONES.find((zn) => p < zn.hi) || HR_ZONES[HR_ZONES.length - 1]
+  return HR_ZONES.value.find((zn) => p < zn.hi) || HR_ZONES.value[HR_ZONES.value.length - 1]
 })
 const hrSpark = computed(() => {
   const h = hr.state.history
@@ -189,12 +193,12 @@ const hrSpark = computed(() => {
 // Own table rather than reusing HR_ZONES: steer targets need a "Light" range below
 // fat-burn (47.5–60% — 90–113 bpm at the default 190 max) that the display zones
 // don't have, and the top "Max" zone is not a sane steer target.
-const HR_TARGETS: HrTarget[] = [
-  { id: 'light', name: 'Light', color: '#6ab0ff', loPct: 47.5, hiPct: 60 },
-  { id: 'fatburn', name: 'Fat burn', color: '#2ed573', loPct: 60, hiPct: 70 },
-  { id: 'cardio', name: 'Cardio', color: '#f5a623', loPct: 70, hiPct: 80 },
-  { id: 'hard', name: 'Hard', color: '#ff7f50', loPct: 80, hiPct: 90 },
-]
+const HR_TARGETS = computed<HrTarget[]>(() => [
+  { id: 'light', name: t('target.light'), color: '#6ab0ff', loPct: 47.5, hiPct: 60 },
+  { id: 'fatburn', name: t('zone.fatburn'), color: '#2ed573', loPct: 60, hiPct: 70 },
+  { id: 'cardio', name: t('zone.cardio'), color: '#f5a623', loPct: 70, hiPct: 80 },
+  { id: 'hard', name: t('zone.hard'), color: '#ff7f50', loPct: 80, hiPct: 90 },
+])
 const HR_NUDGE_STEP = 0.3 // km/h per adjustment
 const HR_ADJUST_INTERVAL = 20 // seconds between nudges (issue #18 calls for 15–30s)
 const hrTarget = ref<HrTarget | null>(null) // active HR_TARGETS entry while the autopilot is steering speed
@@ -266,18 +270,18 @@ function toggleGoal(g: WalkGoal) {
 const goalProgress = computed(() => {
   const g = walkGoal.value
   if (!g) return 0
-  const t = sessionTotals()
-  return Math.min(1, (g.type === 'distance' ? t.distance : t.elapsed) / g.value)
+  const tot = sessionTotals()
+  return Math.min(1, (g.type === 'distance' ? tot.distance : tot.elapsed) / g.value)
 })
 watch(goalProgress, (p) => {
   if (!walkGoal.value || !state.running) return
   if (p >= 1 && goalAnnounced < 2) {
     goalAnnounced = 2
     beep(1320, 300)
-    speak('Goal reached!')
+    speak(t('speech.goalReached'))
   } else if (p >= 0.5 && goalAnnounced < 1) {
     goalAnnounced = 1
-    speak('Halfway there')
+    speak(t('speech.halfway'))
   }
 })
 
@@ -547,18 +551,18 @@ function sessionTotals() {
 let lastSnapshotDistance = -Infinity
 function writeSnapshot() {
   if (!sessionStart) return
-  const t = sessionTotals()
+  const tot = sessionTotals()
   const snap: SessionSnapshot = {
     date: sessionStart.toISOString(),
     name: sessionName,
-    ...t,
+    ...tot,
     hrSum,
     hrCount,
     hrLo,
     hrHi,
   }
   localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snap))
-  lastSnapshotDistance = t.distance
+  lastSnapshotDistance = tot.distance
 }
 watch(
   () => hr.state.bpm,
@@ -598,16 +602,16 @@ function rebaseWatermarks() {
 // logged instead of silently wiped by their resetStats().
 function finalizeSession() {
   if (!sessionStart) return
-  const t = sessionTotals()
-  const distance = Math.round(t.distance)
+  const tot = sessionTotals()
+  const distance = Math.round(tot.distance)
   if (distance >= MIN_SESSION_DISTANCE) {
     const session: Session = {
       date: sessionStart.toISOString(),
       distance,
-      duration: Math.round(t.elapsed),
-      kcal: Math.round(t.kcal),
+      duration: Math.round(tot.elapsed),
+      kcal: Math.round(tot.kcal),
       // belt's own pedometer count (0 if FW never reported one)
-      steps: Math.round(t.steps),
+      steps: Math.round(tot.steps),
       avgHr: hrCount ? Math.round(hrSum / hrCount) : null,
       ...(hrCount ? { hrMin: hrLo, hrMax: hrHi } : {}),
     }
@@ -618,7 +622,7 @@ function finalizeSession() {
         const name = sessionName
         strava
           .uploadSession(session, name)
-          .then(() => showToast('Uploaded to Strava ✓'))
+          .then(() => showToast(t('strava.uploaded')))
           .catch(() => {
             stravaPrompt.value = { session, name }
           })
@@ -671,11 +675,11 @@ watch(
       if (pausedWalk.value) {
         // paused, not finished: bank the progress so the resume continues from here,
         // and rebase so the live delta restarts at zero (no double counting)
-        const t = sessionTotals()
-        carryDistance = t.distance
-        carryElapsed = t.elapsed
-        carryKcal = t.kcal
-        carrySteps = t.steps
+        const tot = sessionTotals()
+        carryDistance = tot.distance
+        carryElapsed = tot.elapsed
+        carryKcal = tot.kcal
+        carrySteps = tot.steps
         rebaseWatermarks()
         writeSnapshot()
       } else {
@@ -848,7 +852,9 @@ watch(
       const delta = nextSeg.value.speed - curSeg.value.speed
       if (Math.abs(delta) >= 0.05) {
         speak(
-          `${delta > 0 ? 'speeding up' : 'slowing down'} to ${nextSeg.value.speed.toFixed(1)} in 5 seconds`,
+          t(delta > 0 ? 'speech.speedUp' : 'speech.slowDown', {
+            v: nextSeg.value.speed.toFixed(1),
+          }),
         )
       }
     }
@@ -862,7 +868,7 @@ watch(
 )
 watch(curSegIndex, (i, old) => {
   if (!active.value || !state.running || i <= 0 || old < 0) return
-  speak(`${activeTl.value!.segs[i].speed.toFixed(1)} kilometers per hour`)
+  speak(t('speech.speed', { v: activeTl.value!.segs[i].speed.toFixed(1) }))
 })
 
 // Drive the belt through the plan: set the target to the current segment's speed at
@@ -927,12 +933,12 @@ function endWorkout() {
   stopWalk()
 }
 function finishWorkout() {
-  const t = active.value
+  const w = active.value
   active.value = null
   stop()
-  if (t) {
-    speak(`${t.name} complete`)
-    alert(`${t.name} complete! ${(state.distance / 1000).toFixed(2)} km walked.`)
+  if (w) {
+    speak(t('speech.complete', { name: w.name }))
+    alert(t('workout.completeAlert', { name: w.name, km: (state.distance / 1000).toFixed(2) }))
   }
 }
 
@@ -1030,23 +1036,23 @@ const pace = computed(() => {
       <div class="stat-strip" :class="{ idle: !state.running }">
         <div class="sstat">
           <span class="sv">{{ mmss(state.elapsed) }}</span>
-          <span class="sk">time</span>
+          <span class="sk">{{ t('stat.time') }}</span>
         </div>
         <div class="sstat">
           <span class="sv">{{ fmtDist }}</span>
-          <span class="sk">distance</span>
+          <span class="sk">{{ t('stat.distance') }}</span>
         </div>
         <div class="sstat">
           <span class="sv">{{ liveKcal }}</span>
-          <span class="sk">kcal</span>
+          <span class="sk">{{ t('stat.kcal') }}</span>
         </div>
         <div class="sstat speed">
           <span class="sv">{{ state.speed.toFixed(1) }}</span>
-          <span class="sk">km/h</span>
+          <span class="sk">{{ t('stat.kmh') }}</span>
         </div>
         <div class="sstat">
           <span class="sv">{{ pace }}</span>
-          <span class="sk">min/km</span>
+          <span class="sk">{{ t('stat.pace') }}</span>
         </div>
       </div>
       <div class="head-actions">
@@ -1054,7 +1060,7 @@ const pace = computed(() => {
           v-if="hr.state.connected"
           class="hr-badge"
           :class="{ on: !!hrTarget }"
-          :title="hrTarget ? 'HR workout — tap to change' : `${hrZone.name} — tap for HR workout`"
+          :title="hrTarget ? t('hr.tapChange') : t('hr.tapStart', { zone: hrZone.name })"
           @click="openWorkoutMenu('hr')"
         >
           <svg
@@ -1087,35 +1093,33 @@ const pace = computed(() => {
           :disabled="state.connecting"
           @click="connect"
         >
-          {{ state.connecting ? 'Connecting…' : 'Connect' }}
+          {{ state.connecting ? t('header.connecting') : t('header.connect') }}
         </button>
         <!-- anchor wrapper: the dropdown panel positions itself relative to this,
              directly under the ☰ button, instead of guessing header height in CSS -->
         <div class="menu-anchor">
-          <button class="cog" aria-label="Menu" @click="moreMenuOpen = true">☰</button>
+          <button class="cog" :aria-label="t('menu.label')" @click="moreMenuOpen = true">☰</button>
 
           <!-- click-outside-to-close backdrop, invisible, full-screen, below the panel -->
           <div v-if="moreMenuOpen" class="menu-backdrop" @click="moreMenuOpen = false"></div>
           <div v-if="moreMenuOpen" class="menu-panel">
-            <button class="menu-item" @click="menuOpenWorkouts">📋 Workout</button>
-            <button class="menu-item" @click="menuOpenStatistics">📈 Statistics</button>
-            <button v-if="state.connected" class="menu-item" @click="menuDisconnect">
-              🔌 Disconnect
+            <button class="menu-item" @click="menuOpenWorkouts">{{ t('menu.workout') }}</button>
+            <button class="menu-item" @click="menuOpenStatistics">
+              {{ t('menu.statistics') }}
             </button>
-            <button class="menu-item" @click="menuOpenSettings">⚙ Settings</button>
+            <button v-if="state.connected" class="menu-item" @click="menuDisconnect">
+              {{ t('menu.disconnect') }}
+            </button>
+            <button class="menu-item" @click="menuOpenSettings">{{ t('menu.settings') }}</button>
           </div>
         </div>
       </div>
     </header>
 
     <p v-if="!state.secure" class="warn">
-      <b>Insecure context.</b> Web Bluetooth needs <code>https://</code> or <code>localhost</code>.
-      You’re on <code>{{ origin }}</code> — reopen at <code>http://localhost:5173</code>.
+      <b>{{ t('warn.insecureTitle') }}</b> {{ t('warn.insecure', { origin }) }}
     </p>
-    <p v-else-if="!state.hasApi" class="warn">
-      Web Bluetooth is disabled. <b>On Linux</b> enable
-      <code>chrome://flags/#enable-experimental-web-platform-features</code> → Enabled → relaunch.
-    </p>
+    <p v-else-if="!state.hasApi" class="warn">{{ t('warn.noApi') }}</p>
     <p v-if="state.error" class="warn">{{ state.error }}</p>
 
     <!-- virtual loop / scenic walk -->
@@ -1204,10 +1208,10 @@ const pace = computed(() => {
         </g>
         <text class="lap-num" x="200" y="120">{{ laps }}</text>
         <text class="lap-label" x="200" y="150">
-          {{ laps === 1 ? 'lap' : 'laps' }} · 400 m track
+          {{ laps === 1 ? t('track.lap') : t('track.laps') }} {{ t('track.suffix') }}
         </text>
         <text v-if="lastLap !== null" class="lap-times" x="200" y="174">
-          last {{ mmss(lastLap) }} · best {{ mmss(bestLap!) }}
+          {{ t('track.lastBest', { last: mmss(lastLap), best: mmss(bestLap!) }) }}
         </text>
       </svg>
 
@@ -1232,7 +1236,9 @@ const pace = computed(() => {
           </div>
           <div class="scene-badge3d-sub">
             {{
-              lastLap !== null ? `last ${mmss(lastLap)} · best ${mmss(bestLap!)}` : 'walk to start'
+              lastLap !== null
+                ? t('track.lastBest', { last: mmss(lastLap), best: mmss(bestLap!) })
+                : t('track.walkToStart')
             }}
           </div>
         </div>
@@ -1241,7 +1247,7 @@ const pace = computed(() => {
 
     <section class="action-row" :class="{ disabled: !state.connected }">
       <button class="btn go" :disabled="!state.connected" @click="startWalk">
-        {{ pausedWalk ? '▶ Resume' : '▶ Start' }}
+        {{ pausedWalk ? t('actions.resume') : t('actions.start') }}
       </button>
       <button
         v-if="state.running"
@@ -1249,17 +1255,21 @@ const pace = computed(() => {
         :disabled="!state.connected"
         @click="pauseWalk"
       >
-        ❚❚ Pause
+        {{ t('actions.pause') }}
       </button>
-      <button class="btn halt" :disabled="!state.connected" @click="stopWalk">■ Stop</button>
-      <button class="btn ghost" @click="resetStats">Reset</button>
+      <button class="btn halt" :disabled="!state.connected" @click="stopWalk">
+        {{ t('actions.stop') }}
+      </button>
+      <button class="btn ghost" @click="resetStats">{{ t('actions.reset') }}</button>
     </section>
 
     <section v-if="!active && !hrTarget" class="controls" :class="{ disabled: !state.connected }">
       <div class="speed-row">
         <button class="btn round" :disabled="!state.connected" @click="bump(-SPEED_STEP)">−</button>
         <div class="speed-set">
-          <span class="target">{{ speedInput.toFixed(1) }} <small>km/h target</small></span>
+          <span class="target"
+            >{{ speedInput.toFixed(1) }} <small>{{ t('controls.target') }}</small></span
+          >
           <input
             v-model.number="speedInput"
             type="range"
@@ -1274,7 +1284,7 @@ const pace = computed(() => {
       </div>
       <!-- free-walk goal (#68): tap to set/clear; announces halfway + reached -->
       <div class="goal-row">
-        <span class="goal-label">🎯 Goal</span>
+        <span class="goal-label">{{ t('goal.label') }}</span>
         <button
           v-for="g in GOAL_PRESETS"
           :key="g.label"
@@ -1290,7 +1300,7 @@ const pace = computed(() => {
           <div class="goal-fill" :style="{ width: goalProgress * 100 + '%' }"></div>
         </div>
         <span class="goal-pct">{{
-          goalProgress >= 1 ? '✓ reached' : Math.round(goalProgress * 100) + '%'
+          goalProgress >= 1 ? t('goal.reached') : Math.round(goalProgress * 100) + '%'
         }}</span>
       </div>
     </section>
@@ -1301,11 +1311,12 @@ const pace = computed(() => {
         <div>
           <span class="workout-name">{{ active.name }}</span>
           <span v-if="curSeg" class="workout-seg">
-            seg {{ curSegIndex + 1 }}/{{ activeTl!.segs.length }} · now
-            {{ curSeg.speed.toFixed(1) }} km/h · next in {{ mmss(timeToNext) }}
+            {{ t('workout.seg', { n: curSegIndex + 1, total: activeTl!.segs.length }) }} ·
+            {{ t('workout.now') }} {{ curSeg.speed.toFixed(1) }} km/h ·
+            {{ t('workout.nextIn', { t: mmss(timeToNext) }) }}
           </span>
         </div>
-        <button class="btn halt sm" @click="endWorkout">End</button>
+        <button class="btn halt sm" @click="endWorkout">{{ t('workout.end') }}</button>
       </div>
       <svg viewBox="0 0 320 120" class="chart">
         <rect class="done" x="0" y="0" :width="progressX" height="120" />
@@ -1321,25 +1332,32 @@ const pace = computed(() => {
       </svg>
       <div class="workout-foot">
         <span>{{ mmss(state.elapsed) }} / {{ mmss(activeTl!.total) }}</span>
-        <span>{{ mmss(remaining) }} left</span>
+        <span>{{ t('workout.left', { t: mmss(remaining) }) }}</span>
       </div>
     </section>
 
     <section v-else class="chart-wrap">
       <div v-if="hrTarget" class="workout-banner">
         <div>
-          <span class="workout-name">HR workout · {{ hrTarget.name }}</span>
+          <span class="workout-name">{{ t('workout.hrTitle', { name: hrTarget.name }) }}</span>
           <span class="workout-seg">
-            target {{ hrTargetRange(hrTarget, maxHr).lo }}–{{ hrTargetRange(hrTarget, maxHr).hi }}
-            bpm · now
-            {{ hr.state.bpm || '–' }} bpm · {{ state.targetSpeed.toFixed(1) }} km/h
+            {{
+              t('workout.hrStatus', {
+                lo: hrTargetRange(hrTarget, maxHr).lo,
+                hi: hrTargetRange(hrTarget, maxHr).hi,
+                bpm: hr.state.bpm || '–',
+                speed: state.targetSpeed.toFixed(1),
+              })
+            }}
           </span>
         </div>
-        <button class="btn halt sm" @click="endHrWorkout">End</button>
+        <button class="btn halt sm" @click="endHrWorkout">{{ t('workout.end') }}</button>
       </div>
       <div v-else class="chart-head">
-        <span class="chart-title">Speed over time</span>
-        <span v-if="peakSpeed" class="chart-peak">peak {{ peakSpeed.toFixed(1) }} km/h</span>
+        <span class="chart-title">{{ t('chart.speedOverTime') }}</span>
+        <span v-if="peakSpeed" class="chart-peak">{{
+          t('chart.peak', { v: peakSpeed.toFixed(1) })
+        }}</span>
       </div>
       <svg viewBox="0 0 320 120" class="chart">
         <g v-for="g in gridLines" :key="g.s">
@@ -1349,7 +1367,7 @@ const pace = computed(() => {
         <path v-if="walkArea" class="area" :d="walkArea" />
         <polyline v-if="walkLine" class="actual" :points="walkLine" />
       </svg>
-      <p v-if="state.history.length < 2" class="chart-empty">Start walking, or pick a workout.</p>
+      <p v-if="state.history.length < 2" class="chart-empty">{{ t('chart.empty') }}</p>
     </section>
 
     <!-- immersive-only workout ribbon (#103): the chart-wrap is hidden fullscreen,
@@ -1383,24 +1401,25 @@ const pace = computed(() => {
             </div>
             <div class="imm-meta">
               <span class="imm-name">
-                {{ active.name }} · seg {{ curSegIndex + 1 }}/{{ activeTl!.segs.length }}
+                {{ active.name }} ·
+                {{ t('workout.seg', { n: curSegIndex + 1, total: activeTl!.segs.length }) }}
               </span>
-              <span class="imm-time">{{ mmss(remaining) }} left</span>
+              <span class="imm-time">{{ t('workout.left', { t: mmss(remaining) }) }}</span>
             </div>
           </div>
           <!-- now → next speeds (#110): see the change coming before the belt moves -->
           <div class="imm-nownext">
             <div class="imm-now">
-              <span class="imm-nn-k">now</span>
+              <span class="imm-nn-k">{{ t('workout.now') }}</span>
               <span class="imm-nn-v">{{ curSeg?.speed.toFixed(1) ?? '–' }}</span>
             </div>
             <span class="imm-nn-arrow">›</span>
             <div class="imm-next">
-              <span class="imm-nn-k">next</span>
+              <span class="imm-nn-k">{{ t('workout.next') }}</span>
               <span class="imm-nn-v">{{ nextSeg ? nextSeg.speed.toFixed(1) : '✓' }}</span>
             </div>
           </div>
-          <button class="btn halt sm" @click="endWorkout">End</button>
+          <button class="btn halt sm" @click="endWorkout">{{ t('workout.end') }}</button>
         </div>
       </template>
       <template v-else>
@@ -1412,14 +1431,15 @@ const pace = computed(() => {
             bpm
           </span>
           <span class="imm-time">
-            now {{ hr.state.bpm || '–' }} bpm · {{ state.targetSpeed.toFixed(1) }} km/h
+            {{ t('workout.now') }} {{ hr.state.bpm || '–' }} bpm ·
+            {{ state.targetSpeed.toFixed(1) }} km/h
           </span>
-          <button class="btn halt sm" @click="endHrWorkout">End</button>
+          <button class="btn halt sm" @click="endHrWorkout">{{ t('workout.end') }}</button>
         </div>
       </template>
     </div>
 
-    <p v-if="hr.state.error" class="warn">Heart rate: {{ hr.state.error }}</p>
+    <p v-if="hr.state.error" class="warn">{{ t('warn.hrPrefix', { error: hr.state.error }) }}</p>
 
     <transition name="toast">
       <div v-if="toast" class="toast">{{ toast }}</div>
@@ -1464,17 +1484,17 @@ const pace = computed(() => {
     <div v-if="stravaPrompt" class="overlay" @click.self="stravaPrompt = null">
       <div class="sheet strava-sheet">
         <div class="sheet-head">
-          <h2>Upload to Strava?</h2>
+          <h2>{{ t('strava.uploadTitle') }}</h2>
           <button class="x" @click="stravaPrompt = null">✕</button>
         </div>
         <div class="detail-tiles">
           <div>
             <span class="v">{{ (stravaPrompt.session.distance / 1000).toFixed(2) }}</span>
-            <span class="k">km</span>
+            <span class="k">{{ t('strava.km') }}</span>
           </div>
           <div>
             <span class="v">{{ mmss(stravaPrompt.session.duration) }}</span>
-            <span class="k">time</span>
+            <span class="k">{{ t('strava.time') }}</span>
           </div>
           <div>
             <span class="v">{{
@@ -1484,16 +1504,16 @@ const pace = computed(() => {
                 (stravaPrompt.session.duration / 3600)
               ).toFixed(1)
             }}</span>
-            <span class="k">km/h avg</span>
+            <span class="k">{{ t('strava.avg') }}</span>
           </div>
         </div>
         <p v-if="strava.state.error" class="hint warn-note">{{ strava.state.error }}</p>
         <div class="detail-actions">
           <button class="btn ghost" :disabled="strava.state.uploading" @click="stravaPrompt = null">
-            Skip
+            {{ t('strava.skip') }}
           </button>
           <button class="btn go" :disabled="strava.state.uploading" @click="uploadToStrava">
-            {{ strava.state.uploading ? 'Uploading…' : 'Upload' }}
+            {{ strava.state.uploading ? t('strava.uploading') : t('strava.upload') }}
           </button>
         </div>
       </div>
@@ -1522,7 +1542,7 @@ const pace = computed(() => {
           </div>
           <button
             class="x"
-            aria-label="Skip setup"
+            :aria-label="t('wizard.skipSetup')"
             @click="((wizardOpen = false), markSetupDone())"
           >
             ✕
@@ -1532,22 +1552,22 @@ const pace = computed(() => {
         <!-- 1: treadmill -->
         <div v-if="wizardStep === 1" class="wiz-step">
           <div class="wiz-icon">🏃</div>
-          <h2>Connect your treadmill</h2>
-          <p>Turn the belt on, then connect over Bluetooth.</p>
+          <h2>{{ t('wizard.tmTitle') }}</h2>
+          <p>{{ t('wizard.tmBody') }}</p>
           <button
             v-if="!state.connected"
             class="btn go wiz-cta"
             :disabled="state.connecting"
             @click="connect"
           >
-            {{ state.connecting ? 'Connecting…' : 'Connect treadmill' }}
+            {{ state.connecting ? t('header.connecting') : t('wizard.tmConnect') }}
           </button>
-          <p v-else class="wiz-ok">✓ {{ state.deviceName }} connected</p>
+          <p v-else class="wiz-ok">{{ t('wizard.connected', { name: state.deviceName }) }}</p>
           <p v-if="state.error" class="warn">{{ state.error }}</p>
           <div class="wiz-nav">
             <span></span>
             <button class="btn ghost" @click="wizardStep = 2">
-              {{ state.connected ? 'Next' : 'Skip' }}
+              {{ state.connected ? t('wizard.next') : t('wizard.skip') }}
             </button>
           </div>
         </div>
@@ -1555,22 +1575,22 @@ const pace = computed(() => {
         <!-- 2: heart rate -->
         <div v-else-if="wizardStep === 2" class="wiz-step">
           <div class="wiz-icon">❤️</div>
-          <h2>Connect heart rate</h2>
-          <p>Optional. Broadcast HR from your Garmin or a chest strap to see live zones.</p>
+          <h2>{{ t('wizard.hrTitle') }}</h2>
+          <p>{{ t('wizard.hrBody') }}</p>
           <button
             v-if="!hr.state.connected"
             class="btn go wiz-cta"
             :disabled="hr.state.connecting"
             @click="hr.connect"
           >
-            {{ hr.state.connecting ? 'Connecting…' : 'Connect sensor' }}
+            {{ hr.state.connecting ? t('header.connecting') : t('wizard.hrConnect') }}
           </button>
-          <p v-else class="wiz-ok">✓ {{ hr.state.deviceName }} connected</p>
+          <p v-else class="wiz-ok">{{ t('wizard.connected', { name: hr.state.deviceName }) }}</p>
           <p v-if="hr.state.error" class="warn">{{ hr.state.error }}</p>
           <div class="wiz-nav">
-            <button class="btn ghost" @click="wizardStep = 1">Back</button>
+            <button class="btn ghost" @click="wizardStep = 1">{{ t('wizard.back') }}</button>
             <button class="btn ghost" @click="wizardStep = 3">
-              {{ hr.state.connected ? 'Next' : 'Skip' }}
+              {{ hr.state.connected ? t('wizard.next') : t('wizard.skip') }}
             </button>
           </div>
         </div>
@@ -1578,21 +1598,21 @@ const pace = computed(() => {
         <!-- 3: mode -->
         <div v-else-if="wizardStep === 3" class="wiz-step">
           <div class="wiz-icon">🎯</div>
-          <h2>What today?</h2>
+          <h2>{{ t('wizard.modeTitle') }}</h2>
           <div class="mode-grid">
             <button class="mode-card" @click="wizardWalk">
               <span class="mode-emoji">🚶</span>
-              <span class="mode-name">Free walk</span>
-              <span class="mode-desc">Set your own pace</span>
+              <span class="mode-name">{{ t('wizard.freeWalk') }}</span>
+              <span class="mode-desc">{{ t('wizard.freeWalkDesc') }}</span>
             </button>
             <button class="mode-card" @click="wizardStep = 4">
               <span class="mode-emoji">📋</span>
-              <span class="mode-name">Workout</span>
-              <span class="mode-desc">Weight-loss plan, or HR-steered</span>
+              <span class="mode-name">{{ t('wizard.workout') }}</span>
+              <span class="mode-desc">{{ t('wizard.workoutDesc') }}</span>
             </button>
           </div>
           <div class="wiz-nav">
-            <button class="btn ghost" @click="wizardStep = 2">Back</button>
+            <button class="btn ghost" @click="wizardStep = 2">{{ t('wizard.back') }}</button>
             <span></span>
           </div>
         </div>
@@ -1616,7 +1636,7 @@ const pace = computed(() => {
             @start-hr="wizardStartHr"
           />
           <div class="wiz-nav">
-            <button class="btn ghost" @click="wizardStep = 3">Back</button>
+            <button class="btn ghost" @click="wizardStep = 3">{{ t('wizard.back') }}</button>
             <span></span>
           </div>
         </div>

@@ -940,6 +940,21 @@ function planPath(t: Workout) {
 }
 
 const activePlan = computed(() => (active.value ? planPath(active.value) : null))
+// immersive workout ribbon (#103): per-segment mini profile bar. Height maps the
+// segment speed onto 6-24px; the current segment shows elapsed progress as a fill.
+function immSegStyle(sg: { speed: number; start: number; end: number }, i: number) {
+  const h = 6 + ((sg.speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN)) * 18
+  const style: Record<string, string> = {
+    flexGrow: String(sg.end - sg.start),
+    height: `${h.toFixed(1)}px`,
+  }
+  if (i === curSegIndex.value) {
+    const pct = Math.min(100, ((state.elapsed - sg.start) / (sg.end - sg.start)) * 100)
+    style.background = `linear-gradient(90deg, var(--accent) ${pct}%, #2a5a3d ${pct}%)`
+  }
+  return style
+}
+
 const progressX = computed(() =>
   activeTl.value ? Math.min(state.elapsed / activeTl.value.total, 1) * CH_W : 0,
 )
@@ -1314,6 +1329,44 @@ const pace = computed(() => {
       </svg>
       <p v-if="state.history.length < 2" class="chart-empty">Start walking, or pick a workout.</p>
     </section>
+
+    <!-- immersive-only workout ribbon (#103): the chart-wrap is hidden fullscreen,
+         so mid-workout state (segments / HR target) gets a compact always-visible strip -->
+    <div v-if="layout === 'immersive' && (active || hrTarget)" class="imm-workout">
+      <template v-if="active">
+        <div class="imm-segs">
+          <div
+            v-for="(sg, i) in activeTl!.segs"
+            :key="i"
+            class="imm-seg"
+            :class="{ done: i < curSegIndex, cur: i === curSegIndex }"
+            :style="immSegStyle(sg, i)"
+          ></div>
+        </div>
+        <div class="imm-meta">
+          <span class="imm-name">
+            {{ active.name }} · seg {{ curSegIndex + 1 }}/{{ activeTl!.segs.length
+            }}<template v-if="curSeg"> · {{ curSeg.speed.toFixed(1) }} km/h</template>
+          </span>
+          <span class="imm-time">next {{ mmss(timeToNext) }} · {{ mmss(remaining) }} left</span>
+          <button class="btn halt sm" @click="endWorkout">End</button>
+        </div>
+      </template>
+      <template v-else>
+        <div class="imm-meta">
+          <span class="imm-name">
+            HR · {{ hrTarget!.name }} · {{ hrTargetRange(hrTarget!, maxHr).lo }}–{{
+              hrTargetRange(hrTarget!, maxHr).hi
+            }}
+            bpm
+          </span>
+          <span class="imm-time">
+            now {{ hr.state.bpm || '–' }} bpm · {{ state.targetSpeed.toFixed(1) }} km/h
+          </span>
+          <button class="btn halt sm" @click="endHrWorkout">End</button>
+        </div>
+      </template>
+    </div>
 
     <!-- dashboard-only widgets (#103): today vs goals + recent walks -->
     <section v-if="layout === 'dashboard'" class="dash-widget card-widget">
@@ -2507,6 +2560,66 @@ input[type='range'] {
   opacity: 0;
   pointer-events: none;
 }
+/* workout ribbon: compact segment profile + status, never fades (it IS the
+   mid-walk information); sits above the controls pill */
+.imm-workout {
+  display: none;
+}
+.app.layout-immersive > .imm-workout {
+  display: block;
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  /* the speed controls hide during any workout, so the ribbon takes their slot */
+  bottom: 104px;
+  z-index: 10;
+  width: min(560px, 94vw);
+  background: rgba(10, 12, 16, 0.62);
+  backdrop-filter: blur(6px);
+  border: 1px solid #232833;
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+.app.layout-immersive.hud-big > .imm-workout {
+  bottom: 130px;
+}
+.imm-segs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 24px;
+  margin-bottom: 8px;
+}
+.imm-seg {
+  flex-basis: 0;
+  border-radius: 2px 2px 0 0;
+  background: #2a3140;
+  min-width: 3px;
+}
+.imm-seg.done {
+  background: #2a5a3d;
+}
+.imm-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+.imm-name {
+  color: #e8ecf3;
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.imm-time {
+  color: #8a93a3;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* kiosk fold-in: big numbers for treadmill-distance reading */
 .app.layout-immersive.hud-big .sstat .sv {
   font-size: 30px;

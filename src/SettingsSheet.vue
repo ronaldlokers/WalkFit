@@ -73,6 +73,8 @@ const stravaAutoUpload = defineModel<boolean>('stravaAutoUpload', { required: tr
 const goalWeight = defineModel<number>('goalWeight', { required: true })
 const scenicTime = defineModel<string>('scenicTime', { required: true })
 const viewMode = defineModel<'track' | 'scenic'>('viewMode', { required: true })
+const layout = defineModel<string>('layout', { required: true })
+const bigNumbers = defineModel<boolean>('bigNumbers', { required: true })
 const goalKcal = defineModel<number>('goalKcal', { required: true })
 const goalSteps = defineModel<number>('goalSteps', { required: true })
 const goalMinutes = defineModel<number>('goalMinutes', { required: true })
@@ -208,6 +210,18 @@ function fmtSynced(ms: number | null) {
             3D
           </button>
         </div>
+      </div>
+      <div class="set-row">
+        <span>Layout (experimental)</span>
+        <select v-model="layout" class="set-select">
+          <option value="current">Current</option>
+          <option value="immersive">Immersive</option>
+          <option value="dashboard">Dashboard</option>
+        </select>
+      </div>
+      <div v-if="layout === 'immersive'" class="set-row">
+        <span>Big numbers (kiosk)</span>
+        <input v-model="bigNumbers" type="checkbox" />
       </div>
       <div class="set-row">
         <span>3D time of day</span>

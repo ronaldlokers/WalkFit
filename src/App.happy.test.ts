@@ -307,3 +307,62 @@ describe('App happy path', () => {
     expect(w.find('.mode-grid').exists()).toBe(true)
   })
 })
+
+describe('experimental layouts (#103)', () => {
+  it('defaults to the current layout and persists a switch', async () => {
+    localStorage.setItem('walkfit.setupDone', '1')
+    const w = mount(App)
+    expect(w.find('.app').classes()).toContain('layout-current')
+    await clickButton(w, '☰')
+    await clickButton(w, 'Settings')
+    const select = w
+      .findAll('select')
+      .find((s) => s.findAll('option').some((o) => o.attributes('value') === 'immersive'))!
+    await select.setValue('immersive')
+    expect(w.find('.app').classes()).toContain('layout-immersive')
+    expect(localStorage.getItem('walkfit.layout')).toBe('immersive')
+  })
+
+  it('persisted immersive layout applies on load, big-numbers option adds hud-big', () => {
+    localStorage.setItem('walkfit.setupDone', '1')
+    localStorage.setItem('walkfit.layout', 'immersive')
+    localStorage.setItem('walkfit.layout.big', '1')
+    const w = mount(App)
+    expect(w.find('.app').classes()).toContain('layout-immersive')
+    expect(w.find('.app').classes()).toContain('hud-big')
+    // dashboard widgets stay out of the other layouts
+    expect(w.find('.dash-widget').exists()).toBe(false)
+  })
+
+  it('dashboard layout renders the Today and Recent walks widgets', () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T20:00:00.000Z') })
+    localStorage.setItem('walkfit.setupDone', '1')
+    localStorage.setItem('walkfit.layout', 'dashboard')
+    localStorage.setItem('walkfit.goals', JSON.stringify({ kcal: 400, steps: 6000, minutes: 30 }))
+    localStorage.setItem(
+      'walkfit.history',
+      JSON.stringify([
+        { date: '2026-07-12T08:00:00.000Z', distance: 900, duration: 900, kcal: 40, avgHr: null },
+        {
+          date: '2026-07-13T08:00:00.000Z',
+          distance: 1500,
+          duration: 1200,
+          kcal: 72,
+          steps: 1800,
+          avgHr: 112,
+        },
+      ]),
+    )
+    const w = mount(App)
+    expect(w.find('.app').classes()).toContain('layout-dashboard')
+    const widgets = w.findAll('.dash-widget')
+    expect(widgets).toHaveLength(2)
+    expect(widgets[0]!.text()).toContain('Today')
+    expect(widgets[0]!.text()).toContain('72 / 400') // today's kcal vs goal
+    expect(widgets[0]!.text()).toContain('1800 / 6000')
+    expect(widgets[1]!.text()).toContain('Recent walks')
+    expect(widgets[1]!.findAll('.dw-walk')).toHaveLength(2)
+    expect(widgets[1]!.findAll('.dw-walk')[0]!.text()).toContain('1.50 km') // newest first
+    vi.useRealTimers()
+  })
+})

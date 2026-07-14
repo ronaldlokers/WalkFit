@@ -46,7 +46,7 @@ export function addWeighIn(entry: WeightEntry): WeightEntry[] {
 export function mergeWeighIns(entries: WeightEntry[]): WeightEntry[] {
   const list = loadWeightLog()
   for (const e of entries) {
-    let i = -1
+    let i: number
     if (e.grpid !== undefined) {
       i = list.findIndex((x) => x.source === e.source && x.grpid === e.grpid)
       // adopt a legacy same-date entry (pre-grpid data) — but never one that carries a

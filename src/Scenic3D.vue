@@ -8,6 +8,7 @@
 // motion stays smooth despite the ~4 Hz distance updates from the treadmill ticker.
 import { onMounted, onBeforeUnmount, watch, ref } from 'vue'
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import {
   trackPoint,
   LAP_M,
@@ -376,8 +377,49 @@ onMounted(() => {
 
   for (const p of surroundings()) scene.add(buildProp(p))
 
+  // Bake the static world into one mesh per material (#62): the loop ribbons, cross
+  // strips, and ~50 scenery groups otherwise cost ~350 draw calls per frame on a scene
+  // that never changes. Textured meshes (signposts, lane numbers) keep their own
+  // uv-specific draws; the dome and lights stay live.
+  {
+    scene.updateMatrixWorld(true)
+    const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>()
+    const keepTextured: THREE.Mesh[] = []
+    const staticRoots = scene.children.filter((c) => c !== dome && !(c as THREE.Light).isLight)
+    for (const root of staticRoots) {
+      root.traverse((o) => {
+        const m = o as THREE.Mesh
+        if (!m.isMesh) return
+        const material = m.material as THREE.Material & { map?: THREE.Texture }
+        if (material.map) {
+          keepTextured.push(m)
+          return
+        }
+        const g = (m.geometry as THREE.BufferGeometry).clone()
+        g.applyMatrix4(m.matrixWorld)
+        g.deleteAttribute('uv') // primitives carry uv, the custom ribbons don't — unify
+        const arr = byMat.get(material) ?? []
+        arr.push(g)
+        byMat.set(material, arr)
+      })
+    }
+    // preserve world transforms of the textured meshes while their parents go away
+    for (const m of keepTextured) scene.attach(m)
+    for (const root of staticRoots) {
+      if (!keepTextured.includes(root as THREE.Mesh)) scene.remove(root)
+    }
+    for (const [material, geoms] of byMat) {
+      const merged = mergeGeometries(geoms)
+      geoms.forEach((g) => g.dispose())
+      if (!merged) continue
+      disposables.push(merged)
+      scene.add(new THREE.Mesh(merged, material))
+    }
+  }
+
   // --- camera + sky per frame ---
   let display = props.distance // smoothed distance the camera actually sits at
+  let lastDomeKey = -1 // repaint the ~350 dome vertex colors only when the sky changed (#62)
   function update(d: number) {
     const p = trackPoint(d)
     camera.position.set(p.x, EYE_HEIGHT, p.z)
@@ -385,7 +427,11 @@ onMounted(() => {
     camera.lookAt(ahead.x, EYE_HEIGHT - 0.2, ahead.z)
     const sky = skyAt(dayPhase(d))
     scene.fog!.color.setHex(sky.fog)
-    paintDome(sky.sky, sky.fog)
+    const domeKey = sky.sky * 0x1000000 + sky.fog
+    if (domeKey !== lastDomeKey) {
+      lastDomeKey = domeKey
+      paintDome(sky.sky, sky.fog)
+    }
     dome.position.set(camera.position.x, 0, camera.position.z)
     sun.intensity = sky.sunIntensity
     sun.color.setHex(sky.sunColor)
@@ -395,6 +441,7 @@ onMounted(() => {
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   let last = performance.now()
+  let lastRendered = Infinity // skip GPU work while the belt is stopped and nothing moved (#62)
   function frame(now: number) {
     if (disposed) return
     const dt = Math.min(0.1, (now - last) / 1000)
@@ -403,7 +450,10 @@ onMounted(() => {
     if (Math.abs(target - display) > LAP_M / 4) display = target // view (re)opened — snap
     // advance at belt speed, gently corrected toward the true integrated distance
     display += ((props.speed * 1000) / 3600) * dt + (target - display) * dt * 1.5
-    update(display)
+    if (Math.abs(display - lastRendered) > 0.003) {
+      lastRendered = display
+      update(display)
+    }
     raf = requestAnimationFrame(frame)
   }
 

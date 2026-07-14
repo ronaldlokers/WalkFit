@@ -920,6 +920,10 @@ async function stopWalk() {
 
 async function startWorkout(t: Workout) {
   finalizeSession() // log an in-progress free walk (≥50 m) instead of wiping it (#55)
+  // fresh audio-cue state: without this, a plan ended during segment N leaves
+  // warnedSeg pointing at N and the next plan's segment-N 5s warning is skipped (#131)
+  warnedSeg = -1
+  lastCountdown = 0
   active.value = t
   hrTarget.value = null // mutually exclusive with an HR workout
   resetStats()

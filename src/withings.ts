@@ -202,7 +202,10 @@ export function useWithings(): HealthProvider {
         return freshAccessToken(true)
       }
       disconnect() // definitive: refresh token expired/revoked — needs a fresh connect
-      throw new Error(`Withings session expired — reconnect in Settings. (${(e as Error).message})`)
+      throw new Error(
+        `Withings session expired — reconnect in Settings. (${(e as Error).message})`,
+        { cause: e },
+      )
     }
     applyTokenResponse(body)
     return body.access_token

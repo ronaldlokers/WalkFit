@@ -353,8 +353,8 @@ function realTreadmill() {
     onDisconnected()
   }
 
-  // FTMS: request control + start. Belt still needs its physical safety key / a foot
-  // on the belt; it beeps and counts down 3-2-1 before the belt moves.
+  // FTMS: request control + start. The belt beeps, counts down 3-2-1, and simply moves —
+  // this device has NO safety key or other physical stop-guard.
   async function start() {
     if (!control) return
     await control.writeValueWithResponse(Uint8Array.of(0x00)) // request control

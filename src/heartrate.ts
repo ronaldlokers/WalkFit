@@ -43,19 +43,47 @@ export function useHeartRate() {
     }
   }
 
+  // Same lifecycle discipline as treadmill.ts (#56): generation counter invalidates
+  // orphaned attach attempts; state/listeners commit only after everything resolved.
+  let attachGen = 0
+
+  function detach() {
+    if (char) char.removeEventListener('characteristicvaluechanged', onMeasurement)
+    if (device) device.removeEventListener('gattserverdisconnected', onDisconnected)
+    char = null
+    device = null
+  }
+
   async function attach(dev: BluetoothDevice) {
-    device = dev
-    device.addEventListener('gattserverdisconnected', onDisconnected)
-    state.history = []
-    const gatt = await device.gatt!.connect()
-    const svc = await gatt.getPrimaryService(HR_SERVICE)
-    char = await svc.getCharacteristic(HR_MEASUREMENT)
-    await char.startNotifications()
-    char.addEventListener('characteristicvaluechanged', onMeasurement)
-    state.deviceName = device.name || 'Heart rate'
-    state.connected = true
-    state.remembered = true
-    localStorage.setItem('walkfit.hr.id', device.id)
+    const gen = ++attachGen
+    try {
+      const gatt = await dev.gatt!.connect()
+      const svc = await gatt.getPrimaryService(HR_SERVICE)
+      const c = await svc.getCharacteristic(HR_MEASUREMENT)
+      await c.startNotifications()
+      if (gen !== attachGen) {
+        // superseded while connecting — release the link instead of hijacking state
+        try {
+          dev.gatt?.disconnect()
+        } catch {}
+        return
+      }
+      detach()
+      device = dev
+      char = c
+      dev.addEventListener('gattserverdisconnected', onDisconnected)
+      c.addEventListener('characteristicvaluechanged', onMeasurement)
+      state.history = []
+      state.deviceName = dev.name || 'Heart rate'
+      state.connected = true
+      state.remembered = true
+      localStorage.setItem('walkfit.hr.id', dev.id)
+    } catch (e) {
+      try {
+        dev.gatt?.disconnect()
+      } catch {}
+      throw e
+    }
   }
 
   async function connect() {
@@ -63,6 +91,7 @@ export function useHeartRate() {
       state.error = 'Web Bluetooth unavailable here.'
       return
     }
+    if (state.connecting) return // reentrancy guard
     state.error = ''
     state.connecting = true
     try {
@@ -72,7 +101,10 @@ export function useHeartRate() {
       })
       await attach(dev)
     } catch (e) {
-      state.error = (e as Error).message || String(e)
+      // cancelling the chooser is a normal action, not an error to banner
+      if ((e as DOMException).name !== 'NotFoundError') {
+        state.error = (e as Error).message || String(e)
+      }
     } finally {
       state.connecting = false
     }
@@ -90,6 +122,7 @@ export function useHeartRate() {
       return
     }
     if (!dev) return
+    if (state.connecting) return // a manual connect is already in flight
     state.connecting = true
     try {
       await Promise.race([
@@ -97,17 +130,21 @@ export function useHeartRate() {
         new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
       ])
     } catch {
-      /* not broadcasting / off */
+      // not broadcasting / off — invalidate the still-running attach so it can't
+      // finish late and hijack state (#56)
+      attachGen++
     } finally {
       state.connecting = false
     }
   }
 
   function onDisconnected() {
+    detach()
     state.connected = false
     state.bpm = 0
   }
   function disconnect() {
+    attachGen++ // user intent: also invalidate any in-flight attach
     try {
       if (device?.gatt?.connected) device.gatt.disconnect()
     } catch {}
@@ -115,6 +152,7 @@ export function useHeartRate() {
   }
 
   async function forget() {
+    attachGen++ // user intent: also invalidate any in-flight attach
     const id = localStorage.getItem('walkfit.hr.id')
     try {
       let d = device

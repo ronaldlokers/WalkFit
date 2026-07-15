@@ -334,7 +334,8 @@ watch(viewMode, async (v) => {
 // pill proportions taken from the mockup — not IAAF geometry. The marker/progress
 // map walked distance as a fraction of a 400 m lap onto the path length, so the
 // shape is free to be whatever reads best.
-const RING = { cx: 200, cy: 130, straight: 150, bendR: 93, w: 38 }
+// values measured off the mockup PNG (1 unit = 1.6 rendered px at the 640px card)
+const RING = { cx: 200, cy: 130, straight: 142, bendR: 75, w: 29 }
 const ringPath = (() => {
   const { cx, cy, bendR: r } = RING
   const hs = RING.straight / 2
@@ -1139,30 +1140,30 @@ const pace = computed(() => {
              interior), grey band, gradient progress, knob marker riding the same path -->
         <defs>
           <linearGradient id="progress-grad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stop-color="#0a6de0" />
-            <stop offset="1" stop-color="#5ac8fa" />
+            <stop offset="0" stop-color="#0a84ff" />
+            <stop offset="1" stop-color="#56c5ff" />
           </linearGradient>
         </defs>
-        <path class="track-glow" :d="ringPath" :stroke-width="RING.w + 16" />
+        <path class="track-glow" :d="ringPath" :stroke-width="RING.w + 25" />
         <path class="track-band" :d="ringPath" :stroke-width="RING.w" />
         <!-- invisible guide path: getTotalLength/getPointAtLength drive the marker -->
         <path ref="trackEl" class="track-line" :d="ringPath" />
         <path
           class="track-progress"
           :d="ringPath"
-          :stroke-width="RING.w - 4"
+          :stroke-width="RING.w"
           :stroke-dasharray="pathLen"
           :stroke-dashoffset="dashOffset"
         />
+        <!-- the mock's knob: white core inside a thick blue ring, no outer halo -->
         <g :transform="`translate(${marker.x},${marker.y})`" class="runner">
-          <circle class="halo" r="19" />
-          <circle class="body" r="12" />
+          <circle class="body" r="11" />
         </g>
-        <text class="lap-num" x="200" y="152">{{ laps }}</text>
-        <text class="lap-label" x="200" y="180">
+        <text class="lap-num" x="200" y="145">{{ laps }}</text>
+        <text class="lap-label" x="200" y="166">
           {{ laps === 1 ? t('track.lap') : t('track.laps') }} {{ t('track.suffix') }}
         </text>
-        <text v-if="lastLap !== null" class="lap-times" x="200" y="192">
+        <text v-if="lastLap !== null" class="lap-times" x="200" y="182">
           {{ t('track.lastBest', { last: mmss(lastLap), best: mmss(bestLap!) }) }}
         </text>
       </svg>
@@ -1702,15 +1703,16 @@ code {
   width: 100%;
   display: block;
 }
-/* the minimal mock ring: soft grey band on a white glow ring */
+/* the minimal mock ring: soft grey band on a white glow ring (colors sampled
+   off the mockup PNG) */
 .track-band {
   fill: none;
-  stroke: #dde2e8;
+  stroke: #dce2e6;
 }
 .track-glow {
   /* the fill frosts the ring's interior white, like the mock's card-less centre */
-  fill: rgba(255, 255, 255, 0.45);
-  stroke: rgba(255, 255, 255, 0.85);
+  fill: rgba(255, 255, 255, 0.62);
+  stroke: rgba(255, 255, 255, 0.92);
 }
 /* geometry guide only — the runner marker and progress ring follow it via
    getTotalLength/getPointAtLength, so it never needs to be painted */
@@ -1725,14 +1727,11 @@ code {
   stroke-linecap: round;
   transition: stroke-dashoffset 0.25s linear;
 }
-/* white knob with a blue ring, riding the progress head (radii in the template) */
-.runner .halo {
-  fill: #fff;
-}
+/* white knob core with a thick blue ring, riding the progress head */
 .runner .body {
   fill: #fff;
   stroke: var(--accent);
-  stroke-width: 7;
+  stroke-width: 5;
 }
 .runner {
   transition: transform 0.25s linear;
@@ -1740,23 +1739,23 @@ code {
 /* headline lap counter (sizes are viewBox units — the svg scales them up) */
 .lap-num {
   text-anchor: middle;
-  font-size: 64px;
+  font-size: 56px;
   font-weight: 800;
   letter-spacing: -2px;
   fill: #17324d;
 }
 .lap-label {
   text-anchor: middle;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
-  fill: #5a789a;
+  fill: #8b9aac;
   letter-spacing: 0.5px;
 }
 .lap-times {
   text-anchor: middle;
   font-size: 8px;
   font-weight: 600;
-  fill: #5a789a;
+  fill: #8b9aac;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2439,7 +2438,7 @@ input[type='range']::-webkit-slider-thumb {
 .app.layout-immersive > .track-wrap.flat {
   inset: auto;
   left: 50%;
-  top: 80px;
+  top: max(96px, 13vh); /* ring centre lands at the mock's ~38% viewport height */
   transform: translateX(-50%);
   width: min(640px, 92vw);
   height: min(58vh, 460px);
@@ -2447,6 +2446,8 @@ input[type='range']::-webkit-slider-thumb {
 .app.layout-immersive > .track-wrap.flat .track {
   height: 100%;
   width: 100%;
+  /* the mock's soft shadow pooling under the ring */
+  filter: drop-shadow(0 24px 36px rgba(23, 50, 77, 0.14));
 }
 .app.layout-immersive .track-wrap.flat .view-flip {
   top: 0;

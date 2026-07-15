@@ -4,6 +4,10 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import App from './App.vue'
 
 // jsdom doesn't implement SVG geometry; stub what the loop/marker code calls.
+// Full-App mounts under a loaded parallel run can exceed vitest's 5 s default —
+// generous ceiling, not a wait (same rationale as App.hrWorkout.test.ts).
+vi.setConfig({ testTimeout: 20000 })
+
 type SvgGeometryStub = { getTotalLength(): number; getPointAtLength(d: number): DOMPoint }
 beforeAll(() => {
   const proto = SVGElement.prototype as unknown as SvgGeometryStub
@@ -68,7 +72,7 @@ describe('App happy path', () => {
     // header stat strip shows the live values, faded while idle (#46)
     expect(w.find('.stat-strip').exists()).toBe(true)
     expect(w.find('.stat-strip').classes()).toContain('idle')
-    expect(w.find('.stat-strip').text()).toContain('min/km')
+    expect(w.find('.stat-strip').text()).toContain('kcal')
     expect(w.find('.workout-banner').exists()).toBe(false)
   })
 
@@ -371,12 +375,10 @@ describe('App happy path', () => {
 })
 
 describe('immersive layout (#103)', () => {
-  it('is always immersive; the persisted big-numbers option adds hud-big', () => {
+  it('is always immersive', () => {
     localStorage.setItem('walkfit.setupDone', '1')
-    localStorage.setItem('walkfit.layout.big', '1')
     const w = mount(App)
     expect(w.find('.app').classes()).toContain('layout-immersive')
-    expect(w.find('.app').classes()).toContain('hud-big')
   })
 
   it('shows the workout ribbon during a plan and End clears it', async () => {

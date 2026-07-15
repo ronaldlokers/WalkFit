@@ -51,7 +51,7 @@ withDefaults(defineProps<{ size?: number; mark?: boolean }>(), { size: 26, mark:
 .logo-word {
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: #e8ecf2;
+  color: #17324d;
 }
 .logo-fit {
   color: var(--accent);

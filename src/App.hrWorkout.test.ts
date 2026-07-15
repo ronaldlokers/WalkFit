@@ -284,7 +284,7 @@ describe('HR workout', () => {
     expect(light.text()).toContain('113')
   })
 
-  it('the HR badge shows the live zone, fat-burn highlighted (#17)', async () => {
+  it('the HR badge carries the live zone in its title (#17; the visible tag is gone)', async () => {
     const App = (await import('./App.vue')).default
     const w = mount(App)
     mounted = w
@@ -292,18 +292,13 @@ describe('HR workout', () => {
     // default maxHr 190: 125 bpm = 65.8% -> Z2 Fat burn
     fakeHr.bpm = 125
     await w.vm.$nextTick()
-    const tag = w.find('.hr-zone-tag')
-    expect(tag.text()).toBe('Z2 Fat burn')
-    expect(tag.classes()).toContain('fatburn')
-    // 160 bpm = 84.2% -> Z4 Hard, no fat-burn highlight
+    const badge = w.find('.hr-badge')
+    expect(badge.text()).toContain('125')
+    expect(badge.attributes('title')).toContain('Fat burn')
+    // 160 bpm = 84.2% -> Z4 Hard
     fakeHr.bpm = 160
     await w.vm.$nextTick()
-    expect(w.find('.hr-zone-tag').text()).toBe('Z4 Hard')
-    expect(w.find('.hr-zone-tag').classes()).not.toContain('fatburn')
-    // no reading -> no tag
-    fakeHr.bpm = 0
-    await w.vm.$nextTick()
-    expect(w.find('.hr-zone-tag').exists()).toBe(false)
+    expect(w.find('.hr-badge').attributes('title')).toContain('Hard')
   })
 
   it('locale switch mid-workout keeps the picker highlight and re-renders the name (#130)', async () => {

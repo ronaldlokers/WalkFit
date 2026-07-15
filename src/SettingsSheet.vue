@@ -74,7 +74,6 @@ const stravaAutoUpload = defineModel<boolean>('stravaAutoUpload', { required: tr
 const goalWeight = defineModel<number>('goalWeight', { required: true })
 const scenicTime = defineModel<string>('scenicTime', { required: true })
 const viewMode = defineModel<'track' | 'scenic'>('viewMode', { required: true })
-const bigNumbers = defineModel<boolean>('bigNumbers', { required: true })
 const goalKcal = defineModel<number>('goalKcal', { required: true })
 const goalSteps = defineModel<number>('goalSteps', { required: true })
 const goalMinutes = defineModel<number>('goalMinutes', { required: true })
@@ -218,10 +217,6 @@ function fmtSynced(ms: number | null) {
         </div>
       </div>
       <div class="set-row">
-        <span>{{ t('settings.bigNumbers') }}</span>
-        <input v-model="bigNumbers" type="checkbox" />
-      </div>
-      <div class="set-row">
         <span>{{ t('settings.language') }}</span>
         <select v-model="locale" class="set-select">
           <option v-for="l in LOCALES" :key="l.id" :value="l.id">{{ l.label }}</option>
@@ -360,8 +355,11 @@ function fmtSynced(ms: number | null) {
    styles are scoped, so they don't reach into this component — each sheet component
    carries its own copy. Keep in sync with App.vue. */
 .sheet {
-  background: #12151b;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  color: #17324d;
+  backdrop-filter: blur(24px);
+  box-shadow: 0 18px 50px rgba(23, 50, 77, 0.2);
   border-radius: 20px 20px 0 0;
   width: 100%;
   max-width: 460px;
@@ -383,7 +381,7 @@ function fmtSynced(ms: number | null) {
   gap: 10px;
   position: sticky;
   top: 0;
-  background: #12151b;
+  background: transparent;
   padding: 10px 0;
 }
 .sheet-head h2 {
@@ -393,9 +391,9 @@ function fmtSynced(ms: number | null) {
   text-align: center;
 }
 .x {
-  background: #1b1f27;
+  background: rgba(255, 255, 255, 0.7);
   border: none;
-  color: #cbd3df;
+  color: #17324d;
   width: 34px;
   height: 34px;
   border-radius: 10px;
@@ -415,7 +413,7 @@ function fmtSynced(ms: number | null) {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  color: #8a93a3;
+  color: #5a789a;
   margin-top: 10px;
 }
 .set-row {
@@ -423,17 +421,18 @@ function fmtSynced(ms: number | null) {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: #171a21;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  color: #17324d;
   border-radius: 12px;
   padding: 12px 14px;
   font-size: 14px;
 }
 .set-row input[type='number'] {
   width: 72px;
-  background: #12151b;
-  border: 1px solid #232833;
-  color: #e8ecf2;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(23, 50, 77, 0.15);
+  color: #17324d;
   border-radius: 8px;
   padding: 6px 8px;
   font-size: 14px;
@@ -445,7 +444,7 @@ function fmtSynced(ms: number | null) {
   gap: 6px;
 }
 .set-unit {
-  color: #8a93a3;
+  color: #5a789a;
   font-size: 13px;
 }
 .set-row input[type='checkbox'] {
@@ -458,7 +457,7 @@ function fmtSynced(ms: number | null) {
 }
 .set-note {
   font-size: 12.5px;
-  color: #8a93a3;
+  color: #5a789a;
   padding: 0 2px;
 }
 .set-actions {
@@ -475,8 +474,8 @@ function fmtSynced(ms: number | null) {
   cursor: pointer;
 }
 .set-select {
-  background: #171a21;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(23, 50, 77, 0.15);
   border-radius: 8px;
   color: inherit;
   font: inherit;

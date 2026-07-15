@@ -159,9 +159,9 @@ snapshot — reload resumes the session), `walkfit.weight.log` (weigh-ins),
 `walkfit.strava` / `walkfit.withings` (OAuth tokens), `walkfit.strava.autoUpload`, `walkfit.health.lastSync.<provider>`
 (display-only last-sync times), `walkfit.health.cursor.<provider>` (server-derived
 incremental sync cursors), `walkfit.view` (`track` | `scenic`),
-`walkfit.layout.big` (big-numbers/kiosk option — the app is always the immersive
+(the app is always the immersive
 layout since #103: fullscreen visual, fading HUD pills, workout state in the
-`.imm-workout` ribbon), `walkfit.scenic.time`
+`.imm-workout` ribbon; the big-numbers/kiosk option was removed), `walkfit.scenic.time`
 (3D time-of-day override), `walkfit.bestLap` (all-time best 400 m lap — scenic ghost),
 `walkfit.capture` (raw BLE frame
 debug logging, off unless `'1'`), `walkfit.demo` (demo mode — src/demo.ts simulates the

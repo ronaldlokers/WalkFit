@@ -11,26 +11,26 @@ Control a **Dreaver Motion One** walking treadmill (FitShow FS-BT-T4) from the b
 weight-loss and heart-rate-steered workouts, and track your progress week by week.
 No account, no backend: everything lives in your browser.
 
-![First-person 3D walk around the 400 m track, mid-workout](docs/hero-scenic.png)
+![First-person 3D walk around the 400 m track, mid-walk](docs/hero-scenic.png)
 
 ## Features
 
-- **Virtual 400 m track** — a top-down 2D view and a first-person 3D scenic walk around the
-  same IAAF-convention track (real lane staggers, relay zones, hurdle marks, waterfall
-  start), with a day/night cycle driven by walked distance and a ghost pacing your all-time
-  best lap.
+- **Virtual 400 m track** — a clean 2D lap ring and a first-person 3D scenic walk around a
+  survey-exact IAAF track (real lane staggers, relay zones, hurdle marks, waterfall start),
+  with a day/night cycle driven by walked distance and a ghost pacing your all-time best
+  lap.
 - **Workouts** — preset weight-loss plans, a custom workout builder, and HR-steered sessions
   that nudge belt speed to hold your heart rate in a target zone. Mid-walk you get a
   countdown ring, the next segment's speed before the belt changes, and spoken cues.
 - **Heart rate** — connect any standard BLE HR source (chest strap, or a Garmin watch
-  broadcasting HR) and see live bpm with your zone; fat-burn is highlighted.
+  broadcasting HR) and see live bpm with your zone.
 - **Statistics** — a full-page dashboard per calendar week (Mon–Sun): distance, calories,
   active time, day streak, daily goals ring, per-day charts, HR ranges, the walk log, and a
   weight trend with body-fat % and muscle mass when a smart scale provides them.
 - **Integrations** — one-tap (or automatic) walk upload to **Strava**; weigh-in sync from a
   **Withings** scale. Both optional.
-- **Quality of life** — installable PWA, screen wake lock during walks, session
-  pause/resume, mid-walk reload recovery, JSON backup/import, English + Dutch.
+- **Quality of life** — installable PWA, screen wake lock during walks, mid-walk reload
+  recovery, JSON backup/import, English + Dutch.
 
 | 2D track                                     | Statistics                                          | Workouts                             |
 | -------------------------------------------- | --------------------------------------------------- | ------------------------------------ |
@@ -68,10 +68,9 @@ the API to CoreBluetooth — open the app's URL there and connect as usual.
 2. **Start** — the belt beeps and counts 3-2-1, then moves. Note: this treadmill has **no
    safety key or other physical stop-guard** — stand ready, and keep the Stop control in
    reach.
-3. Set speed with the slider or ± buttons, or pick a free-walk goal (1/2/5 km, 20/30 min) —
-   you'll hear a cue at halfway and on reaching it. Watch your runner lap the 400 m track,
-   or flip to the 3D scenic walk.
-4. **Pause** keeps the session open (Start resumes it); **Stop** ends and logs the walk.
+3. Set speed with the slider. Watch your runner lap the 400 m track, or flip to the 3D
+   scenic walk.
+4. **Stop** ends and logs the walk.
 
 ### Workouts
 

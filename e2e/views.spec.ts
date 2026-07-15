@@ -69,15 +69,14 @@ test.describe('main view', () => {
     await expect(page.locator('.app')).toHaveClass(/layout-immersive/)
     await expect(page.locator('.stat-strip.idle')).toBeVisible()
     await expect(page.locator('.stat-strip')).toContainText('min/km')
-    for (const label of ['Start', 'Stop', 'Reset']) {
+    // the Morning Glass dock is Start + Stop only; Pause/Reset and the goal chips
+    // are parked (deliberately display:none) until they earn a spot in the design
+    for (const label of ['Start', 'Stop']) {
       await expect(page.getByRole('button', { name: label })).toBeVisible()
     }
+    await expect(page.getByRole('button', { name: 'Reset' })).toBeHidden()
+    await expect(page.locator('.goal-row')).toBeHidden()
     await expect(page.locator('.view-flip')).toBeVisible()
-    // free-walk goal chips must be reachable in the immersive pill (#129 regression:
-    // CSS hid them — only a real browser catches display:none)
-    await expect(page.locator('.goal-row')).toBeVisible()
-    await page.locator('.goal-chip', { hasText: '2 km' }).click()
-    await expect(page.locator('.goal-progress')).toBeVisible()
     await expect(page.locator('svg.track')).toBeVisible() // 2D track default
     // header menu: no Disconnect while not connected
     await page.getByRole('button', { name: 'Menu' }).click()

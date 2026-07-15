@@ -346,8 +346,6 @@ function pillPath(r: number): string {
   )
 }
 const ringPath = pillPath(RING.bendR)
-// the mock's interior: a light-blue card inset from the band, white margin between
-const ringInnerPath = pillPath(RING.bendR - RING.w / 2 - 4)
 
 const trackEl = ref<SVGPathElement | null>(null)
 const pathLen = ref(0)
@@ -1146,20 +1144,11 @@ const pace = computed(() => {
             <stop offset="0" stop-color="#0a84ff" />
             <stop offset="1" stop-color="#56c5ff" />
           </linearGradient>
-          <filter id="glow-soft" x="-15%" y="-15%" width="130%" height="130%">
-            <feGaussianBlur stdDeviation="2.5" />
-          </filter>
         </defs>
-        <!-- white base plate with a soft-blurred halo, then a crisp thin rim -->
-        <path
-          class="track-glow"
-          :d="ringPath"
-          :stroke-width="RING.w + 10"
-          filter="url(#glow-soft)"
-        />
-        <path class="track-rim" :d="ringPath" :stroke-width="RING.w + 7" />
+        <!-- one flat plate: wide border around the band, same color as the interior
+             (stroke + fill share the color), no shadow, no inner rim -->
+        <path class="track-plate" :d="ringPath" :stroke-width="RING.w + 28" />
         <path class="track-band" :d="ringPath" :stroke-width="RING.w" />
-        <path class="track-inner" :d="ringInnerPath" />
         <!-- invisible guide path: getTotalLength/getPointAtLength drive the marker -->
         <path ref="trackEl" class="track-line" :d="ringPath" />
         <path
@@ -1725,17 +1714,9 @@ code {
   fill: none;
   stroke: #dce2e6;
 }
-.track-glow {
-  /* white base plate (fill) + gaussian-blurred stroke = the mock's faded outer halo */
-  fill: rgba(255, 255, 255, 0.85);
-  stroke: rgba(255, 255, 255, 0.8);
-}
-.track-rim {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.95);
-}
-.track-inner {
-  fill: rgba(238, 246, 253, 0.8);
+.track-plate {
+  fill: #eff6fc;
+  stroke: #eff6fc;
 }
 /* geometry guide only — the runner marker and progress ring follow it via
    getTotalLength/getPointAtLength, so it never needs to be painted */
@@ -2472,8 +2453,6 @@ input[type='range']::-webkit-slider-thumb {
 .app.layout-immersive > .track-wrap.flat .track {
   height: 100%;
   width: 100%;
-  /* the mock's soft shadow pooling under the ring */
-  filter: drop-shadow(0 24px 36px rgba(23, 50, 77, 0.14));
 }
 .app.layout-immersive .track-wrap.flat .view-flip {
   top: 0;

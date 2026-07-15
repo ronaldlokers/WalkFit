@@ -2578,7 +2578,7 @@ input[type='range']::-webkit-slider-thumb {
 }
 .app.layout-immersive .sstat,
 .app.layout-immersive .hr-badge {
-  flex: 0 1 110px;
+  flex: 0 0 auto; /* size to content — no fixed pill width */
 }
 .app.layout-immersive > .warn {
   position: fixed;

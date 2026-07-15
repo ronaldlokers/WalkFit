@@ -1184,7 +1184,12 @@ const pace = computed(() => {
       <svg v-if="viewMode === 'track'" viewBox="0 0 400 260" class="track">
         <!-- top-down render of the same 400 m track model the 3D view walks (scenic.ts):
              six lanes, common finish line, staggered starts -->
-
+        <defs>
+          <linearGradient id="progress-grad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#0a6de0" />
+            <stop offset="1" stop-color="#5ac8fa" />
+          </linearGradient>
+        </defs>
         <path class="track-glow" :d="track2d.band" :stroke-width="track2d.bandW + 16" />
         <path class="track-band" :d="track2d.band" :stroke-width="track2d.bandW" />
         <path v-for="(d, i) in track2d.laneLines" :key="`lane-${i}`" class="track-lane" :d="d" />
@@ -1239,12 +1244,12 @@ const pace = computed(() => {
         >
           {{ n.lane }}
         </text>
-        <!-- invisible guide path: the lane-1 centreline the marker + progress follow -->
-        <path ref="trackEl" class="track-line" :d="track2d.lane1" />
+        <!-- invisible guide path: the marker + progress ride the band's centreline so
+             the dot sits centred ON the ring (lane 1 would hug its inner edge) -->
+        <path ref="trackEl" class="track-line" :d="track2d.band" />
         <path
           class="track-progress"
-          :d="track2d.lane1"
-          :stroke-width="track2d.laneW - 1.6"
+          :d="track2d.band"
           :stroke-dasharray="pathLen"
           :stroke-dashoffset="dashOffset"
         />
@@ -1804,7 +1809,8 @@ code {
   stroke: #dde2e8; /* width bound from the lane count so lanes stay true */
 }
 .track-glow {
-  fill: none;
+  /* the fill frosts the ring's interior white, like the mock's card-less centre */
+  fill: rgba(255, 255, 255, 0.45);
   stroke: rgba(255, 255, 255, 0.85);
 }
 .track-lane,
@@ -1825,8 +1831,8 @@ code {
 }
 .track-progress {
   fill: none;
-  stroke: var(--accent);
-  stroke-width: 30; /* nearly fills the band (overrides the template's lane width) */
+  stroke: url(#progress-grad); /* deep-to-light blue like the mock */
+  stroke-width: 30; /* nearly fills the band */
   stroke-linecap: round;
   transition: stroke-dashoffset 0.25s linear;
 }

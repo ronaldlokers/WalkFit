@@ -162,7 +162,7 @@ incremental sync cursors), `walkfit.view` (`track` | `scenic`),
 (the app is always the immersive
 layout since #103: fullscreen visual, fading HUD pills, workout state in the
 `.imm-workout` ribbon; the big-numbers/kiosk option was removed), `walkfit.scenic.time`
-(3D time-of-day override), `walkfit.bestLap` (all-time best 400 m lap — scenic ghost),
+(3D time-of-day override),
 `walkfit.capture` (raw BLE frame
 debug logging, off unless `'1'`), `walkfit.demo` (demo mode — src/demo.ts simulates the
 treadmill + HR strap behind the composable interfaces and seeds a fixture dataset;

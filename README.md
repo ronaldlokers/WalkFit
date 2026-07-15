@@ -17,8 +17,7 @@ No account, no backend: everything lives in your browser.
 
 - **Virtual 400 m track** — a clean 2D lap ring and a first-person 3D scenic walk around a
   survey-exact IAAF track (real lane staggers, relay zones, hurdle marks, waterfall start),
-  with a day/night cycle driven by walked distance and a ghost pacing your all-time best
-  lap.
+  with a day/night cycle driven by walked distance.
 - **Workouts** — preset weight-loss plans, a custom workout builder, and HR-steered sessions
   that nudge belt speed to hold your heart rate in a target zone. Mid-walk you get a
   countdown ring, the next segment's speed before the belt changes, and spoken cues.

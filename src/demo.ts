@@ -243,5 +243,4 @@ export function seedDemoData() {
   localStorage.setItem('walkfit.weight', '82.1')
   localStorage.setItem('walkfit.weight.goal', '80')
   localStorage.setItem('walkfit.workouts.custom', JSON.stringify(custom))
-  localStorage.setItem('walkfit.bestLap', '412')
 }

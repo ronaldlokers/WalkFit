@@ -539,14 +539,17 @@ function logWeighIn() {
 </template>
 
 <style scoped>
-/* Full-page dashboard (#115, mock №3): hero week band + tab panels.
-   Shares the app's dark theme tokens. */
+/* Full-page dashboard (#115, mock №3): hero week band + tab panels. */
 .statspage {
   position: fixed;
   inset: 0;
   z-index: 40;
   overflow-y: auto;
-  background: radial-gradient(120% 90% at 50% 0%, #12151b 0%, #0c0e13 60%, #090b0f 100%);
+  background:
+    radial-gradient(340px 90px at 12% 10%, rgba(255, 255, 255, 0.8) 40%, transparent 70%),
+    radial-gradient(260px 70px at 84% 16%, rgba(255, 255, 255, 0.7) 40%, transparent 70%),
+    linear-gradient(165deg, #aee3ff 0%, #dff2fe 40%, #ffe9d6 100%);
+  color: #17324d;
   padding-bottom: 28px;
 }
 .stats-topbar {
@@ -554,24 +557,25 @@ function logWeighIn() {
   align-items: center;
   gap: 14px;
   padding: 14px 22px;
-  border-bottom: 1px solid #232833;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.9);
   position: sticky;
   top: 0;
-  background: #0d1015;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(16px);
   z-index: 2;
 }
 .stats-topbar h2 {
   font-size: 15px;
   font-weight: 600;
-  color: #8a93a3;
+  color: #5a789a;
   margin-right: auto;
   padding-left: 10px;
-  border-left: 1px solid #232833;
+  border-left: 1px solid rgba(23, 50, 77, 0.15);
 }
 .x {
-  background: #1b1f27;
-  border: 1px solid #232833;
-  color: #cbd3df;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(23, 50, 77, 0.1);
+  color: #17324d;
   width: 34px;
   height: 34px;
   border-radius: 10px;
@@ -591,8 +595,9 @@ function logWeighIn() {
   font-size: 13.5px;
   font-weight: 700;
   padding: 7px 12px;
-  background: #171a21;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  color: #17324d;
   border-radius: 10px;
   cursor: pointer;
   font-variant-numeric: tabular-nums;
@@ -606,9 +611,9 @@ function logWeighIn() {
   cursor: pointer;
 }
 .chip {
-  background: #1b1f27;
-  border: 1px solid #232833;
-  color: #cbd3df;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  color: #17324d;
   border-radius: 999px;
   padding: 6px 18px;
   font-size: 13px;
@@ -617,20 +622,20 @@ function logWeighIn() {
 .chip.on {
   background: var(--accent);
   border-color: transparent;
-  color: #05210f;
+  color: #fff;
   font-weight: 700;
 }
 .today-chip {
   background: var(--accent);
   border-color: transparent;
-  color: #05210f;
+  color: #fff;
   font-weight: 700;
   padding: 5px 12px;
   font-size: 12px;
 }
 .hint {
   font-size: 12.5px;
-  color: #8a93a3;
+  color: #5a789a;
   line-height: 1.5;
 }
 /* --- hero band --- */
@@ -641,8 +646,8 @@ function logWeighIn() {
   align-items: center;
   flex-wrap: wrap;
   padding: 26px 22px;
-  border-bottom: 1px solid #232833;
-  background: linear-gradient(180deg, #12151b, transparent);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.7);
+  background: transparent;
 }
 .hero-stat {
   text-align: center;
@@ -656,12 +661,12 @@ function logWeighIn() {
 }
 .hero-v small {
   font-size: 15px;
-  color: #8a93a3;
+  color: #5a789a;
   font-weight: 600;
 }
 .hero-k {
   font-size: 12px;
-  color: #8a93a3;
+  color: #5a789a;
 }
 .hero-ring {
   position: relative;
@@ -680,7 +685,7 @@ function logWeighIn() {
   stroke-width: 7;
 }
 .hero-ring-track {
-  stroke: #22371f;
+  stroke: rgba(23, 50, 77, 0.12);
 }
 .hero-ring-fill {
   stroke: var(--accent);
@@ -713,8 +718,9 @@ function logWeighIn() {
   gap: 12px;
 }
 .card {
-  background: #171a21;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(14px);
   border-radius: 14px;
   padding: 16px;
 }
@@ -727,7 +733,7 @@ function logWeighIn() {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.7px;
-  color: #8a93a3;
+  color: #5a789a;
   margin: 0 0 12px;
 }
 .card-total {
@@ -788,7 +794,7 @@ function logWeighIn() {
   width: 56%;
   height: 2px;
   border-radius: 1px;
-  background: #e8ecf2;
+  background: #17324d;
 }
 .bar-labels {
   display: flex;
@@ -799,7 +805,7 @@ function logWeighIn() {
   flex: 1;
   text-align: center;
   font-size: 11px;
-  color: #8a93a3;
+  color: #5a789a;
 }
 .label-today {
   color: var(--accent);
@@ -819,8 +825,8 @@ function logWeighIn() {
   align-items: center;
   gap: 10px;
   padding: 11px 14px;
-  background: #12151b;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 12px;
   color: inherit;
   font: inherit;
@@ -828,7 +834,7 @@ function logWeighIn() {
   transition: border-color 0.15s;
 }
 .walk-row:hover {
-  border-color: #333a46;
+  border-color: var(--accent);
 }
 .walk-when {
   display: flex;
@@ -841,7 +847,7 @@ function logWeighIn() {
 }
 .walk-time {
   font-size: 11px;
-  color: #8a93a3;
+  color: #5a789a;
 }
 .walk-stats {
   display: flex;
@@ -850,7 +856,7 @@ function logWeighIn() {
 .walk-stat {
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
-  color: #cbd3df;
+  color: #17324d;
 }
 .walk-detail {
   padding: 10px 6px 4px;
@@ -859,7 +865,7 @@ function logWeighIn() {
   margin-bottom: 10px;
 }
 .walk-delete {
-  color: #ff7f7f;
+  color: #e0284a;
 }
 .detail-tiles {
   display: grid;
@@ -867,8 +873,8 @@ function logWeighIn() {
   gap: 10px;
 }
 .detail-tiles > div {
-  background: #12151b;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 12px;
   padding: 10px;
   text-align: center;
@@ -883,7 +889,7 @@ function logWeighIn() {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #8a93a3;
+  color: #5a789a;
 }
 .hist-tiles .unit {
   margin-left: 3px;
@@ -898,15 +904,15 @@ function logWeighIn() {
   display: block;
   width: 100%;
   height: 80px;
-  background: #12151b;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 12px;
 }
 .weight-area {
-  fill: rgba(46, 213, 115, 0.12);
+  fill: rgba(10, 132, 255, 0.12);
 }
 .weight-goal-line {
-  stroke: #6ab0ff;
+  stroke: #1c6dd0;
   stroke-width: 1.2;
   stroke-dasharray: 5 4;
   vector-effect: non-scaling-stroke;
@@ -921,7 +927,7 @@ function logWeighIn() {
 .weight-range {
   text-align: right;
   font-size: 11px;
-  color: #8a93a3;
+  color: #5a789a;
   margin-top: 4px;
 }
 .comp-tiles {
@@ -947,17 +953,17 @@ function logWeighIn() {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: #12151b;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 12px;
   padding: 12px 14px;
   font-size: 14px;
 }
 .set-row input[type='number'] {
   width: 72px;
-  background: #171a21;
-  border: 1px solid #232833;
-  color: #e8ecf2;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(23, 50, 77, 0.15);
+  color: #17324d;
   border-radius: 8px;
   padding: 6px 8px;
   font-size: 14px;
@@ -969,7 +975,7 @@ function logWeighIn() {
   gap: 6px;
 }
 .set-unit {
-  color: #8a93a3;
+  color: #5a789a;
   font-size: 13px;
 }
 </style>

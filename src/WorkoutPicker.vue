@@ -284,9 +284,9 @@ function segDur(min: number) {
   text-align: center;
 }
 .x {
-  background: #1b1f27;
+  background: rgba(255, 255, 255, 0.7);
   border: none;
-  color: #cbd3df;
+  color: #17324d;
   width: 34px;
   height: 34px;
   border-radius: 10px;
@@ -301,9 +301,9 @@ function segDur(min: number) {
 }
 .workout-tab {
   flex: 1;
-  background: #171a21;
-  border: 1px solid #232833;
-  color: #8a93a3;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  color: #5a789a;
   border-radius: 10px;
   padding: 9px;
   font-size: 13px;
@@ -311,9 +311,9 @@ function segDur(min: number) {
   cursor: pointer;
 }
 .workout-tab.on {
-  color: #e8ecf2;
-  border-color: var(--accent);
-  background: #1a2420;
+  color: #fff;
+  border-color: transparent;
+  background: var(--accent);
 }
 
 .tlist {
@@ -326,8 +326,9 @@ function segDur(min: number) {
   align-items: center;
   gap: 12px;
   text-align: left;
-  background: #171a21;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  color: #17324d;
   border-radius: 14px;
   padding: 12px;
   cursor: pointer;
@@ -344,7 +345,7 @@ function segDur(min: number) {
 }
 .tfocus {
   font-size: 12.5px;
-  color: #8a93a3;
+  color: #5a789a;
   line-height: 1.4;
 }
 .tmeta {
@@ -359,7 +360,7 @@ function segDur(min: number) {
   flex: none;
 }
 .mini path {
-  fill: rgba(46, 213, 115, 0.18);
+  fill: rgba(10, 132, 255, 0.14);
   stroke: var(--accent);
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
@@ -368,7 +369,7 @@ function segDur(min: number) {
 .hint {
   margin-top: 14px;
   font-size: 12.5px;
-  color: #8a93a3;
+  color: #5a789a;
   line-height: 1.5;
 }
 .hr-picker-hint {
@@ -387,8 +388,8 @@ function segDur(min: number) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #171a21;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 12px;
   padding: 12px 14px;
   color: inherit;
@@ -417,7 +418,7 @@ function segDur(min: number) {
 }
 .hr-zone-range {
   font-size: 12.5px;
-  color: #8a93a3;
+  color: #5a789a;
   font-variant-numeric: tabular-nums;
 }
 .hr-picker-stop {
@@ -436,8 +437,8 @@ function segDur(min: number) {
   gap: 10px;
 }
 .detail-tiles > div {
-  background: #171a21;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 12px;
   padding: 10px;
   text-align: center;
@@ -452,29 +453,29 @@ function segDur(min: number) {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #8a93a3;
+  color: #5a789a;
 }
 .chart {
   width: 100%;
   display: block;
-  background: #12151b;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 14px;
 }
 .chart .grid {
-  stroke: #232833;
+  stroke: rgba(23, 50, 77, 0.1);
   stroke-width: 1;
 }
 .chart .grid-label {
-  fill: #5b6473;
+  fill: #7b8da1;
   font-size: 7px;
 }
 .chart .area {
-  fill: rgba(46, 213, 115, 0.12);
+  fill: rgba(10, 132, 255, 0.12);
 }
 .chart .plan {
   fill: none;
-  stroke: rgba(46, 213, 115, 0.7);
+  stroke: rgba(10, 132, 255, 0.7);
   stroke-width: 2;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
@@ -491,15 +492,15 @@ function segDur(min: number) {
   gap: 10px;
   font-size: 13px;
   padding: 7px 10px;
-  background: #171a21;
+  background: rgba(255, 255, 255, 0.6);
   border-radius: 8px;
 }
 .seg-i {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #232833;
-  color: #cbd3df;
+  background: rgba(23, 50, 77, 0.12);
+  color: #17324d;
   display: grid;
   place-items: center;
   font-size: 11px;
@@ -510,7 +511,7 @@ function segDur(min: number) {
 }
 .seg-mn {
   margin-left: auto;
-  color: #8a93a3;
+  color: #5a789a;
 }
 .detail-actions {
   display: flex;
@@ -524,7 +525,7 @@ function segDur(min: number) {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  color: #8a93a3;
+  color: #5a789a;
   margin: 10px 0 2px 2px;
 }
 .tlist-new {
@@ -537,8 +538,8 @@ function segDur(min: number) {
   padding: 6px 0 14px;
 }
 .builder-name {
-  background: #171a21;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(23, 50, 77, 0.15);
   border-radius: 10px;
   color: inherit;
   font: inherit;
@@ -551,8 +552,8 @@ function segDur(min: number) {
 }
 .builder-seg input {
   width: 72px;
-  background: #171a21;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(23, 50, 77, 0.15);
   border-radius: 8px;
   color: inherit;
   font: inherit;
@@ -561,12 +562,12 @@ function segDur(min: number) {
 }
 .builder-unit {
   font-size: 12px;
-  color: #8a93a3;
+  color: #5a789a;
 }
 .builder-x {
   margin-left: auto;
 }
 .delete-custom {
-  color: #ff7f7f;
+  color: #e0284a;
 }
 </style>

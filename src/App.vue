@@ -1068,6 +1068,11 @@ const fmtDist = computed(() =>
     ? (state.distance / 1000).toFixed(2) + ' km'
     : Math.round(state.distance) + ' m',
 )
+const pace = computed(() => {
+  if (state.speed <= 0) return '—'
+  const s = 3600 / state.speed
+  return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
+})
 </script>
 
 <template>
@@ -1095,8 +1100,11 @@ const fmtDist = computed(() =>
           <span class="sv">{{ liveKcal }}</span>
           <span class="sk">{{ t('stat.kcal') }}</span>
         </div>
-      </div>
-      <div class="head-actions">
+        <div class="sstat">
+          <span class="sv">{{ pace }}</span>
+          <span class="sk">{{ t('stat.pace') }}</span>
+        </div>
+        <!-- the HR badge rides the pill row (align-items: stretch keeps heights equal) -->
         <button
           v-if="hr.state.connected"
           class="hr-badge"
@@ -1118,7 +1126,7 @@ const fmtDist = computed(() =>
             />
           </svg>
           <span class="hr-badge-content">
-            <span>♥ {{ hr.state.bpm || '–' }}</span>
+            <span class="sv">♥ {{ hr.state.bpm || '–' }}</span>
             <span
               v-if="hrZone.z"
               class="hr-zone-tag"
@@ -1128,6 +1136,8 @@ const fmtDist = computed(() =>
             >
           </span>
         </button>
+      </div>
+      <div class="head-actions">
         <button
           v-if="!state.connected"
           class="btn primary sm"
@@ -1163,8 +1173,9 @@ const fmtDist = computed(() =>
     <p v-else-if="!state.hasApi" class="warn">{{ t('warn.noApi') }}</p>
     <p v-if="state.error" class="warn">{{ tmError }}</p>
 
-    <!-- virtual loop / scenic walk -->
-    <section class="track-wrap">
+    <!-- virtual loop / scenic walk: the 2D ring floats as a centred card ('flat'),
+         the 3D scenic walk fills the viewport -->
+    <section class="track-wrap" :class="{ flat: viewMode === 'track' }">
       <!-- quick 2D/3D flip overlaid on the visual; the same toggle lives in Settings -->
       <div class="view-flip">
         <button :class="{ on: viewMode === 'track' }" @click="viewMode = 'track'">2D</button>
@@ -1737,9 +1748,9 @@ h1 {
 }
 
 .warn {
-  background: #3a1d1d;
-  border: 1px solid #7a2e2e;
-  color: #ffb4b4;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(224, 40, 74, 0.35);
+  color: #b02040;
   padding: 10px 12px;
   border-radius: 10px;
   font-size: 13px;
@@ -1763,15 +1774,17 @@ code {
   z-index: 2;
   display: flex;
   gap: 2px;
-  background: rgba(10, 12, 16, 0.72);
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
   border-radius: 999px;
   padding: 2px;
+  box-shadow: 0 4px 14px rgba(23, 50, 77, 0.12);
 }
 .view-flip button {
   background: none;
   border: 0;
-  color: #8a93a3;
+  color: #7b8da1;
   font-size: 11px;
   font-weight: 700;
   padding: 3px 10px;
@@ -1780,7 +1793,7 @@ code {
 }
 .view-flip button.on {
   background: var(--accent);
-  color: #05210f;
+  color: #fff;
 }
 .view-flip button:disabled {
   opacity: 0.4;
@@ -1790,19 +1803,26 @@ code {
   width: 100%;
   display: block;
 }
+/* the minimal mock ring: soft grey band on a white glow ring; the surveyed detail
+   layers (lanes, staggers, relay/hurdle marks…) stay in the template but hidden —
+   easy to re-enable later */
 .track-band {
   fill: none;
-  stroke: #83392d; /* tartan red; width bound from the lane count so lanes stay true */
+  stroke: #dde2e8; /* width bound from the lane count so lanes stay true */
 }
-/* soft outer ring behind the band — painted by the theme stylesheet */
 .track-glow {
   fill: none;
-  stroke: none;
+  stroke: rgba(255, 255, 255, 0.85);
 }
-.track-lane {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.3);
-  stroke-width: 0.8;
+.track-lane,
+.stagger,
+.breakline,
+.relay-line,
+.hurdle-tick,
+.waterfall,
+.lane-num,
+.startline {
+  display: none;
 }
 /* geometry guide only — the runner marker and progress ring follow it via
    getTotalLength/getPointAtLength, so it never needs to be painted */
@@ -1813,69 +1833,44 @@ code {
 .track-progress {
   fill: none;
   stroke: var(--accent);
-  /* stroke-width bound in the template: one exaggerated lane minus a margin */
+  stroke-width: 30; /* nearly fills the band (overrides the template's lane width) */
   stroke-linecap: round;
   transition: stroke-dashoffset 0.25s linear;
-  filter: drop-shadow(0 0 6px rgba(46, 213, 115, 0.5));
 }
-.startline {
-  stroke: #eee;
-  stroke-width: 2;
-}
-.stagger {
-  stroke: rgba(255, 255, 255, 0.8);
-  stroke-width: 1.2;
-}
-.breakline {
-  stroke: #3ba55d;
-  stroke-width: 1.2;
-  stroke-dasharray: 2.5 2;
-}
-.relay-line {
-  stroke: rgba(216, 182, 56, 0.8);
-  stroke-width: 0.8;
-}
-.hurdle-tick {
-  stroke: rgba(46, 125, 79, 0.8);
-  stroke-width: 0.7;
-}
-.waterfall {
-  fill: none;
-  stroke: rgba(240, 244, 249, 0.85);
-  stroke-width: 0.9;
-}
-.lane-num {
-  fill: rgba(240, 244, 249, 0.85);
-  font-size: 6px;
-  font-weight: 700;
-  text-anchor: middle;
-  dominant-baseline: central;
-}
+/* white knob with a blue ring, riding the progress head */
 .runner .halo {
-  fill: rgba(46, 213, 115, 0.18);
+  fill: #fff;
+  r: 15;
 }
 .runner .body {
-  fill: var(--accent);
+  fill: #fff;
+  stroke: var(--accent);
+  stroke-width: 5;
+  r: 10;
 }
 .runner {
   transition: transform 0.25s linear;
 }
+/* headline lap counter (sizes are viewBox units — the svg scales them up) */
 .lap-num {
   text-anchor: middle;
-  font-size: 46px;
+  font-size: 58px;
   font-weight: 800;
-  fill: #fff;
+  letter-spacing: -2px;
+  fill: #17324d;
 }
 .lap-label {
   text-anchor: middle;
-  font-size: 12px;
-  fill: #8a93a3;
+  font-size: 9px;
+  font-weight: 600;
+  fill: #5a789a;
   letter-spacing: 0.5px;
 }
 .lap-times {
   text-anchor: middle;
-  font-size: 11px;
-  fill: #8a93a3;
+  font-size: 8px;
+  font-weight: 600;
+  fill: #5a789a;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1995,15 +1990,18 @@ code {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #171a21;
-  border: 1px solid #232833;
-  border-radius: 10px;
-  padding: 5px 4px 4px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 16px;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 6px 18px rgba(23, 50, 77, 0.1);
+  padding: 10px 20px;
   transition: opacity 0.35s;
 }
 .sv {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 700;
+  color: #17324d;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -2014,7 +2012,7 @@ code {
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #8a93a3;
+  color: #7b8da1;
   white-space: nowrap;
 }
 /* idle: real zeros, faded — the strip never hides, so no layout jump on start */
@@ -2068,25 +2066,31 @@ code {
 }
 
 .cog {
-  background: #1b1f27;
-  border: 1px solid #2a303c;
-  color: #cbd3df;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  color: #17324d;
   border-radius: 10px;
   padding: 5px 11px;
   font-size: 24px;
   line-height: 1;
   cursor: pointer;
 }
+/* lives inside the stat strip — same frosted card as .sstat, stretched to its height */
 .hr-badge {
   position: relative;
   overflow: hidden;
+  flex: 1;
+  min-width: 0;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  background: #1b1f27;
-  border: 1px solid #2a303c;
-  border-radius: 10px;
-  padding: 8px 12px;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 16px;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 6px 18px rgba(23, 50, 77, 0.1);
+  padding: 10px 20px;
   font-size: 14px;
   font-weight: 800;
   font-family: inherit;
@@ -2119,8 +2123,11 @@ code {
   color: #ff4757;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   line-height: 1.15;
+}
+.hr-badge-content .sv {
+  color: inherit;
 }
 .controls.disabled {
   opacity: 0.55;
@@ -2130,24 +2137,59 @@ code {
   align-items: center;
   gap: 12px;
 }
+/* the mock's dock row: speed headline left, slider filling the rest */
 .speed-set {
   flex: 1;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  align-items: center;
+  gap: 18px;
 }
 .target {
-  font-weight: 700;
-  font-size: 15px;
+  font-weight: 800;
+  font-size: 36px;
+  letter-spacing: -1px;
+  color: #17324d;
+  white-space: nowrap;
 }
 .target small {
-  color: #8a93a3;
-  font-weight: 400;
-  font-size: 12px;
+  color: #7b8da1;
+  font-weight: 600;
+  font-size: 14px;
 }
+/* blue fill up to the value (--slider-fill bound in the template), grey rest,
+   floating white knob. appearance:none on the INPUT is what lets the track/thumb
+   pseudo-elements take styling at all. */
 input[type='range'] {
+  flex: 1;
   width: 100%;
-  accent-color: var(--accent);
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 26px;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(
+    90deg,
+    var(--accent) 0 var(--slider-fill, 0%),
+    rgba(23, 50, 77, 0.12) var(--slider-fill, 0%)
+  );
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: #fff;
+  border: 0;
+  box-shadow: 0 3px 10px rgba(23, 50, 77, 0.3);
+}
+/* the mock's dock has no ± buttons */
+.speed-row .btn.round {
+  display: none;
 }
 .action-row {
   display: flex;
@@ -2177,7 +2219,8 @@ input[type='range'] {
 .overlay {
   position: fixed;
   inset: 0;
-  background: #000a;
+  background: rgba(120, 160, 200, 0.25);
+  backdrop-filter: blur(6px);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -2185,7 +2228,7 @@ input[type='range'] {
 }
 .wizard-overlay {
   align-items: center;
-  background: #0b0d12;
+  background: rgba(174, 227, 255, 0.35);
   padding: 16px;
 }
 .menu-anchor {
@@ -2201,15 +2244,16 @@ input[type='range'] {
   top: calc(100% + 8px);
   right: 0;
   z-index: 21;
-  background: #12151b;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 1);
+  backdrop-filter: blur(18px);
   border-radius: 14px;
   padding: 6px;
   min-width: 190px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 12px 28px rgba(23, 50, 77, 0.25);
 }
 .menu-item {
   display: flex;
@@ -2218,7 +2262,7 @@ input[type='range'] {
   text-align: left;
   background: none;
   border: none;
-  color: #e8ecf2;
+  color: #17324d;
   padding: 11px 12px;
   border-radius: 10px;
   font-size: 14px;
@@ -2226,13 +2270,16 @@ input[type='range'] {
   cursor: pointer;
 }
 .menu-item:hover {
-  background: #1b1f27;
+  background: rgba(23, 50, 77, 0.06);
 }
 .wizard {
   width: 100%;
   max-width: 440px;
-  background: #12151b;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  color: #17324d;
+  backdrop-filter: blur(24px);
+  box-shadow: 0 18px 50px rgba(23, 50, 77, 0.2);
   border-radius: 20px;
   padding: 18px;
   max-height: 92vh;
@@ -2252,7 +2299,7 @@ input[type='range'] {
   width: 22px;
   height: 5px;
   border-radius: 3px;
-  background: #232833;
+  background: rgba(23, 50, 77, 0.15);
   transition: 0.2s;
 }
 .wiz-dots span.on {
@@ -2276,7 +2323,7 @@ input[type='range'] {
   font-weight: 800;
 }
 .wiz-step > p {
-  color: #8a93a3;
+  color: #56718c;
   font-size: 14px;
   line-height: 1.5;
 }
@@ -2309,8 +2356,8 @@ input[type='range'] {
   align-items: center;
   gap: 6px;
   padding: 20px 12px;
-  background: #171a21;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 16px;
   cursor: pointer;
   color: inherit;
@@ -2327,11 +2374,14 @@ input[type='range'] {
 }
 .mode-desc {
   font-size: 12px;
-  color: #8a93a3;
+  color: #5a789a;
 }
 .sheet {
-  background: #12151b;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  color: #17324d;
+  backdrop-filter: blur(24px);
+  box-shadow: 0 18px 50px rgba(23, 50, 77, 0.2);
   border-radius: 20px 20px 0 0;
   width: 100%;
   max-width: 460px;
@@ -2361,7 +2411,7 @@ input[type='range'] {
   gap: 10px;
   position: sticky;
   top: 0;
-  background: #12151b;
+  background: transparent;
   padding: 10px 0;
 }
 .sheet-head h2 {
@@ -2371,9 +2421,9 @@ input[type='range'] {
   text-align: center;
 }
 .x {
-  background: #1b1f27;
+  background: rgba(255, 255, 255, 0.7);
   border: none;
-  color: #cbd3df;
+  color: #17324d;
   width: 34px;
   height: 34px;
   border-radius: 10px;
@@ -2387,8 +2437,8 @@ input[type='range'] {
   gap: 10px;
 }
 .detail-tiles > div {
-  background: #171a21;
-  border: 1px solid #232833;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 12px;
   padding: 10px;
   text-align: center;
@@ -2425,9 +2475,9 @@ input[type='range'] {
   margin-right: 2px;
 }
 .goal-chip {
-  background: #1b1f27;
-  border: 1px solid #232833;
-  color: #cbd3df;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  color: #17324d;
   border-radius: 999px;
   padding: 3px 11px;
   font-size: 12px;
@@ -2436,7 +2486,7 @@ input[type='range'] {
 .goal-chip.on {
   background: var(--accent);
   border-color: transparent;
-  color: #05210f;
+  color: #fff;
   font-weight: 700;
 }
 .goal-progress {
@@ -2449,7 +2499,7 @@ input[type='range'] {
   flex: 1;
   height: 6px;
   border-radius: 3px;
-  background: #1b1f27;
+  background: rgba(23, 50, 77, 0.12);
   overflow: hidden;
 }
 .goal-fill {
@@ -2470,9 +2520,10 @@ input[type='range'] {
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: #1a2420;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
   border: 1px solid var(--accent);
-  color: #e8ecf2;
+  color: #17324d;
   border-radius: 999px;
   padding: 9px 18px;
   font-size: 13.5px;
@@ -2507,6 +2558,24 @@ input[type='range'] {
   aspect-ratio: auto;
   border-radius: 0;
 }
+/* 2D ring ('flat'): a centred floating card on the sky instead of the full viewport;
+   the 3D scenic walk keeps the fullscreen rules above */
+.app.layout-immersive > .track-wrap.flat {
+  inset: auto;
+  left: 50%;
+  top: 64px;
+  transform: translateX(-50%);
+  width: min(640px, 92vw);
+  height: min(58vh, 460px);
+}
+.app.layout-immersive > .track-wrap.flat .track {
+  height: 100%;
+  width: 100%;
+}
+.app.layout-immersive .track-wrap.flat .view-flip {
+  top: 0;
+  right: 0;
+}
 .app.layout-immersive > header {
   position: fixed;
   top: 10px;
@@ -2516,17 +2585,17 @@ input[type='range'] {
   margin: 0;
   transition: opacity 0.4s;
 }
+/* mock header: brand left, stat pills gathered at the right edge */
 .app.layout-immersive .stat-strip {
   order: 0;
   flex-basis: auto;
   flex: 1;
-  justify-content: center;
+  justify-content: flex-end;
   margin: 0 10px;
 }
-.app.layout-immersive .sstat {
+.app.layout-immersive .sstat,
+.app.layout-immersive .hr-badge {
   flex: 0 1 110px;
-  background: rgba(10, 12, 16, 0.62);
-  backdrop-filter: blur(6px);
 }
 .app.layout-immersive > .warn {
   position: fixed;
@@ -2536,6 +2605,7 @@ input[type='range'] {
   z-index: 10;
   max-width: 90vw;
 }
+/* the dock: speed card and action row fuse into the mock's single floating card */
 .app.layout-immersive > .action-row,
 .app.layout-immersive > .controls {
   position: fixed;
@@ -2543,16 +2613,19 @@ input[type='range'] {
   transform: translateX(-50%);
   z-index: 10;
   margin: 0;
-  background: rgba(10, 12, 16, 0.62);
-  backdrop-filter: blur(6px);
-  border: 1px solid #232833;
-  border-radius: 18px;
-  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  color: #17324d;
   transition: opacity 0.4s;
 }
 .app.layout-immersive > .controls {
-  bottom: 104px;
-  width: min(520px, 92vw);
+  /* flush against the action-row's top edge: 20px inset + its ~73px height */
+  bottom: 93px;
+  width: min(600px, 94vw);
+  border-radius: 24px 24px 0 0;
+  border-bottom: 0;
+  padding: 18px 22px 8px;
 }
 /* the header row is the HUD now; the fullscreen badges drop below the header bar */
 .app.layout-immersive .view-flip {
@@ -2561,13 +2634,37 @@ input[type='range'] {
 }
 .app.layout-immersive > .action-row {
   bottom: 20px;
+  width: min(600px, 94vw);
+  justify-content: stretch;
+  border-radius: 0 0 24px 24px;
+  border-top: 0;
+  padding: 8px 22px 18px;
+  box-shadow: 0 10px 28px rgba(23, 50, 77, 0.14);
+}
+.app.layout-immersive > .action-row .btn {
+  flex: 1;
+  padding: 14px 16px;
+}
+.app.layout-immersive > .action-row .btn.go {
+  flex: 1.6;
+  font-size: 16px;
+}
+/* the mock's dock: Start + Stop only (no pause/reset) */
+.app.layout-immersive > .action-row .btn.ghost {
+  display: none;
+}
+/* workouts hide the speed card — the action row then stands alone, fully rounded */
+.app.layout-immersive:not(:has(> .controls)) > .action-row {
+  border-radius: 24px;
+  padding: 14px 22px;
 }
 .app.layout-immersive > .chart-wrap {
   display: none;
 }
-/* the goal chips live inside the controls pill (#129) — compact row under the slider */
-.app.layout-immersive > .controls .goal-row {
-  margin-top: 8px;
+/* goal chips (#129) parked while the dock stays mock-faithful */
+.app.layout-immersive > .controls .goal-row,
+.app.layout-immersive > .controls .goal-progress {
+  display: none;
 }
 /* fade the controls while walking untouched; the top bar and lap badge stay */
 .app.layout-immersive.hud-hidden > .action-row,
@@ -2589,10 +2686,12 @@ input[type='range'] {
   bottom: 104px;
   z-index: 10;
   width: min(560px, 94vw);
-  background: rgba(10, 12, 16, 0.62);
-  backdrop-filter: blur(6px);
-  border: 1px solid #232833;
-  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 10px 28px rgba(23, 50, 77, 0.14);
+  color: #17324d;
+  border-radius: 20px;
   padding: 10px 14px;
 }
 .app.layout-immersive.hud-big > .imm-workout {
@@ -2621,7 +2720,7 @@ input[type='range'] {
   stroke-linecap: round;
 }
 .imm-ring-track {
-  stroke: #2a3140;
+  stroke: rgba(23, 50, 77, 0.12);
 }
 .imm-ring-fill {
   stroke: var(--accent);
@@ -2634,6 +2733,7 @@ input[type='range'] {
   place-items: center;
   font-size: 17px;
   font-weight: 700;
+  color: #17324d;
   font-variant-numeric: tabular-nums;
 }
 .imm-mid {
@@ -2651,11 +2751,12 @@ input[type='range'] {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #8a93a3;
+  color: #7b8da1;
 }
 .imm-nn-v {
   font-size: 18px;
   font-weight: 700;
+  color: #17324d;
   font-variant-numeric: tabular-nums;
 }
 .imm-next .imm-nn-v {
@@ -2675,11 +2776,11 @@ input[type='range'] {
 .imm-seg {
   flex-basis: 0;
   border-radius: 2px 2px 0 0;
-  background: #2a3140;
+  background: rgba(23, 50, 77, 0.15);
   min-width: 3px;
 }
 .imm-seg.done {
-  background: #2a5a3d;
+  background: rgba(10, 132, 255, 0.4);
 }
 .imm-meta {
   display: flex;
@@ -2688,7 +2789,7 @@ input[type='range'] {
   font-size: 12.5px;
 }
 .imm-name {
-  color: #e8ecf3;
+  color: #17324d;
   font-weight: 600;
   flex: 1;
   min-width: 0;
@@ -2697,7 +2798,7 @@ input[type='range'] {
   text-overflow: ellipsis;
 }
 .imm-time {
-  color: #8a93a3;
+  color: #7b8da1;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -2713,7 +2814,8 @@ input[type='range'] {
     flex: 1 1 100%;
     margin: 6px 0 0;
   }
-  .app.layout-immersive .sstat {
+  .app.layout-immersive .sstat,
+  .app.layout-immersive .hr-badge {
     flex: 1 1 0;
     padding: 4px 2px 3px;
   }
@@ -2744,7 +2846,7 @@ input[type='range'] {
   padding: 18px 30px;
 }
 .app.layout-immersive.hud-big > .controls .target {
-  font-size: 28px;
+  font-size: 42px;
 }
 .app.layout-immersive.hud-big .imm-ring-val {
   font-size: 20px;

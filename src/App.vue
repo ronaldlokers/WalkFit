@@ -334,7 +334,7 @@ watch(viewMode, async (v) => {
 // pill proportions taken from the mockup — not IAAF geometry. The marker/progress
 // map walked distance as a fraction of a 400 m lap onto the path length, so the
 // shape is free to be whatever reads best.
-const RING = { cx: 200, cy: 130, straight: 150, bendR: 88, w: 48 }
+const RING = { cx: 200, cy: 130, straight: 150, bendR: 93, w: 38 }
 const ringPath = (() => {
   const { cx, cy, bendR: r } = RING
   const hs = RING.straight / 2
@@ -1150,16 +1150,16 @@ const pace = computed(() => {
         <path
           class="track-progress"
           :d="ringPath"
-          :stroke-width="RING.w - 8"
+          :stroke-width="RING.w - 4"
           :stroke-dasharray="pathLen"
           :stroke-dashoffset="dashOffset"
         />
         <g :transform="`translate(${marker.x},${marker.y})`" class="runner">
-          <circle class="halo" r="20" />
-          <circle class="body" r="13" />
+          <circle class="halo" r="19" />
+          <circle class="body" r="12" />
         </g>
-        <text class="lap-num" x="200" y="150">{{ laps }}</text>
-        <text class="lap-label" x="200" y="178">
+        <text class="lap-num" x="200" y="152">{{ laps }}</text>
+        <text class="lap-label" x="200" y="180">
           {{ laps === 1 ? t('track.lap') : t('track.laps') }} {{ t('track.suffix') }}
         </text>
         <text v-if="lastLap !== null" class="lap-times" x="200" y="192">
@@ -1740,14 +1740,14 @@ code {
 /* headline lap counter (sizes are viewBox units — the svg scales them up) */
 .lap-num {
   text-anchor: middle;
-  font-size: 58px;
+  font-size: 64px;
   font-weight: 800;
   letter-spacing: -2px;
   fill: #17324d;
 }
 .lap-label {
   text-anchor: middle;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   fill: #5a789a;
   letter-spacing: 0.5px;
@@ -2439,7 +2439,7 @@ input[type='range']::-webkit-slider-thumb {
 .app.layout-immersive > .track-wrap.flat {
   inset: auto;
   left: 50%;
-  top: 64px;
+  top: 80px;
   transform: translateX(-50%);
   width: min(640px, 92vw);
   height: min(58vh, 460px);

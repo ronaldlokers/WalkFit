@@ -37,8 +37,6 @@ import type { Prop } from './scenic'
 const props = defineProps<{
   distance: number
   speed: number
-  elapsed?: number // session seconds — drives the best-lap ghost (#72)
-  bestLap?: number | null // all-time best 400 m lap in seconds; null = no ghost
   weatherSeed?: number // per-walk weather pick (#72); omitted = clear
   timeOfDay?: TimeOfDay // Settings override; 'auto' follows walked distance
 }>()
@@ -433,24 +431,6 @@ onMounted(() => {
   }
 
   // --- camera + sky per frame ---
-  // Best-lap ghost (#72): a translucent pace target lapping at the all-time best.
-  const ghost = new THREE.Group()
-  {
-    const body = new THREE.Mesh(
-      new THREE.ConeGeometry(0.32, 1.35, 6),
-      new THREE.MeshBasicMaterial({ color: 0x2ed573, transparent: true, opacity: 0.5 }),
-    )
-    body.position.y = 0.85
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.18, 8, 6),
-      new THREE.MeshBasicMaterial({ color: 0x2ed573, transparent: true, opacity: 0.5 }),
-    )
-    head.position.y = 1.7
-    ghost.add(body, head)
-    ghost.visible = false
-    scene.add(ghost)
-  }
-
   let display = props.distance // smoothed distance the camera actually sits at
   let lastDomeKey = -1 // repaint the ~350 dome vertex colors only when the sky changed (#62)
   function update(d: number) {
@@ -463,15 +443,6 @@ onMounted(() => {
     const phase = tod === 'auto' ? dayPhase(d) : TIME_PHASES[tod]
     // floodlights read as lit only after dark (#72) — one shared unlit material
     mat.floodOn.color.setHex(isNight(phase) ? 0xfff2c8 : 0x9aa0a8)
-    // ghost pace target at best-lap speed, hidden until there's a best lap to race
-    if (props.bestLap && props.elapsed) {
-      const ghostDist = (props.elapsed * LAP_M) / props.bestLap
-      const gp = trackPoint(ghostDist)
-      ghost.position.set(gp.x, 0, gp.z)
-      ghost.visible = true
-    } else {
-      ghost.visible = false
-    }
     const sky = skyAt(phase, weather)
     scene.fog!.color.setHex(sky.fog)
     const domeKey = sky.sky * 0x1000000 + sky.fog

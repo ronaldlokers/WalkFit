@@ -418,14 +418,6 @@ watch(laps, (n, old) => {
 })
 const lastLap = computed(() => lapTimes.value[lapTimes.value.length - 1] ?? null)
 const bestLap = computed(() => (lapTimes.value.length ? Math.min(...lapTimes.value) : null))
-// All-time best 400 m lap (#72): drives the scenic ghost pace target.
-const bestLapEver = ref<number | null>(Number(localStorage.getItem('walkfit.bestLap')) || null)
-watch(bestLap, (b) => {
-  if (b && (!bestLapEver.value || b < bestLapEver.value)) {
-    bestLapEver.value = Math.round(b)
-    localStorage.setItem('walkfit.bestLap', String(bestLapEver.value))
-  }
-})
 // per-walk weather seed (#72): fixed per mount, deterministic in the scene
 const weatherSeed = Date.now() % 100000
 // time-of-day override for the 3D view (Settings → Display)
@@ -1179,8 +1171,6 @@ const pace = computed(() => {
         <Scenic3D
           :distance="state.distance"
           :speed="state.speed"
-          :elapsed="state.elapsed"
-          :best-lap="bestLapEver"
           :weather-seed="weatherSeed"
           :time-of-day="scenicTime as never"
           @unsupported="scenicUnsupported"

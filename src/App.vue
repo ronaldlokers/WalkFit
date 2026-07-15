@@ -1146,7 +1146,9 @@ const pace = computed(() => {
           </linearGradient>
         </defs>
         <!-- one flat plate: wide border around the band, same color as the interior
-             (stroke + fill share the color), no shadow, no inner rim -->
+             (stroke + fill share the color), no shadow, no inner rim — plus a thin
+             brighter second border on the outside -->
+        <path class="track-plate-rim" :d="ringPath" :stroke-width="RING.w + 36" />
         <path class="track-plate" :d="ringPath" :stroke-width="RING.w + 28" />
         <path class="track-band" :d="ringPath" :stroke-width="RING.w" />
         <!-- invisible guide path: getTotalLength/getPointAtLength drive the marker -->
@@ -1713,6 +1715,10 @@ code {
 .track-band {
   fill: none;
   stroke: #dce2e6;
+}
+.track-plate-rim {
+  fill: none;
+  stroke: #f9fcfe;
 }
 .track-plate {
   fill: #eff6fc;

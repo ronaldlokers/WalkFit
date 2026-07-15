@@ -336,15 +336,18 @@ watch(viewMode, async (v) => {
 // shape is free to be whatever reads best.
 // values measured off the mockup PNG (1 unit = 1.6 rendered px at the 640px card)
 const RING = { cx: 200, cy: 130, straight: 142, bendR: 75, w: 29 }
-const ringPath = (() => {
-  const { cx, cy, bendR: r } = RING
+function pillPath(r: number): string {
+  const { cx, cy } = RING
   const hs = RING.straight / 2
   return (
     `M ${cx + hs} ${cy + r} L ${cx - hs} ${cy + r} ` +
     `A ${r} ${r} 0 0 1 ${cx - hs} ${cy - r} ` +
     `L ${cx + hs} ${cy - r} A ${r} ${r} 0 0 1 ${cx + hs} ${cy + r} Z`
   )
-})()
+}
+const ringPath = pillPath(RING.bendR)
+// the mock's interior: a light-blue card inset from the band, white margin between
+const ringInnerPath = pillPath(RING.bendR - RING.w / 2 - 4)
 
 const trackEl = ref<SVGPathElement | null>(null)
 const pathLen = ref(0)
@@ -1143,9 +1146,20 @@ const pace = computed(() => {
             <stop offset="0" stop-color="#0a84ff" />
             <stop offset="1" stop-color="#56c5ff" />
           </linearGradient>
+          <filter id="glow-soft" x="-15%" y="-15%" width="130%" height="130%">
+            <feGaussianBlur stdDeviation="2.5" />
+          </filter>
         </defs>
-        <path class="track-glow" :d="ringPath" :stroke-width="RING.w + 25" />
+        <!-- white base plate with a soft-blurred halo, then a crisp thin rim -->
+        <path
+          class="track-glow"
+          :d="ringPath"
+          :stroke-width="RING.w + 10"
+          filter="url(#glow-soft)"
+        />
+        <path class="track-rim" :d="ringPath" :stroke-width="RING.w + 7" />
         <path class="track-band" :d="ringPath" :stroke-width="RING.w" />
+        <path class="track-inner" :d="ringInnerPath" />
         <!-- invisible guide path: getTotalLength/getPointAtLength drive the marker -->
         <path ref="trackEl" class="track-line" :d="ringPath" />
         <path
@@ -1155,8 +1169,10 @@ const pace = computed(() => {
           :stroke-dasharray="pathLen"
           :stroke-dashoffset="dashOffset"
         />
-        <!-- the mock's knob: white core inside a thick blue ring, no outer halo -->
+        <!-- the mock's knob: white core inside a thick blue ring, thin white rim so it
+             still pops where the progress behind it is deep blue -->
         <g :transform="`translate(${marker.x},${marker.y})`" class="runner">
+          <circle class="halo" r="14.5" />
           <circle class="body" r="11" />
         </g>
         <text class="lap-num" x="200" y="145">{{ laps }}</text>
@@ -1710,9 +1726,16 @@ code {
   stroke: #dce2e6;
 }
 .track-glow {
-  /* the fill frosts the ring's interior white, like the mock's card-less centre */
-  fill: rgba(255, 255, 255, 0.62);
-  stroke: rgba(255, 255, 255, 0.92);
+  /* white base plate (fill) + gaussian-blurred stroke = the mock's faded outer halo */
+  fill: rgba(255, 255, 255, 0.85);
+  stroke: rgba(255, 255, 255, 0.8);
+}
+.track-rim {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.95);
+}
+.track-inner {
+  fill: rgba(238, 246, 253, 0.8);
 }
 /* geometry guide only — the runner marker and progress ring follow it via
    getTotalLength/getPointAtLength, so it never needs to be painted */
@@ -1728,6 +1751,9 @@ code {
   transition: stroke-dashoffset 0.25s linear;
 }
 /* white knob core with a thick blue ring, riding the progress head */
+.runner .halo {
+  fill: #fff;
+}
 .runner .body {
   fill: #fff;
   stroke: var(--accent);

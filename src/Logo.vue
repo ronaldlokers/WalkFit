@@ -15,7 +15,7 @@ withDefaults(defineProps<{ size?: number; mark?: boolean }>(), { size: 26, mark:
         height="16"
         rx="8"
         fill="none"
-        stroke="#2ed573"
+        stroke="var(--accent)"
         stroke-width="2.6"
       />
       <rect
@@ -25,11 +25,11 @@ withDefaults(defineProps<{ size?: number; mark?: boolean }>(), { size: 26, mark:
         height="6"
         rx="3"
         fill="none"
-        stroke="#2ed573"
+        stroke="var(--accent)"
         stroke-width="1.4"
         opacity="0.45"
       />
-      <circle cx="16" cy="24" r="2.8" fill="#2ed573" />
+      <circle cx="16" cy="24" r="2.8" fill="var(--accent)" />
     </svg>
     <span class="logo-word">Walk<span class="logo-fit">Fit</span></span>
   </span>
@@ -54,7 +54,6 @@ withDefaults(defineProps<{ size?: number; mark?: boolean }>(), { size: 26, mark:
   color: #17324d;
 }
 .logo-fit {
-  /* stays brand green (matches public/favicon.svg) even though the app accent is blue */
-  color: #2ed573;
+  color: var(--accent);
 }
 </style>

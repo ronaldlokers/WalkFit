@@ -1158,10 +1158,8 @@ const pace = computed(() => {
           :stroke-dasharray="pathLen"
           :stroke-dashoffset="dashOffset"
         />
-        <!-- the mock's knob: white core inside a thick blue ring, thin white rim so it
-             still pops where the progress behind it is deep blue -->
+        <!-- the mock's knob: white core inside a thick blue ring -->
         <g :transform="`translate(${marker.x},${marker.y})`" class="runner">
-          <circle class="halo" r="14.5" />
           <circle class="body" r="11" />
         </g>
         <text class="lap-num" x="200" y="145">{{ laps }}</text>
@@ -1735,9 +1733,6 @@ code {
   transition: stroke-dashoffset 0.25s linear;
 }
 /* white knob core with a thick blue ring, riding the progress head */
-.runner .halo {
-  fill: #fff;
-}
 .runner .body {
   fill: #fff;
   stroke: var(--accent);

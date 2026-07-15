@@ -1127,13 +1127,6 @@ const pace = computed(() => {
           </svg>
           <span class="hr-badge-content">
             <span class="sv">♥ {{ hr.state.bpm || '–' }}</span>
-            <span
-              v-if="hrZone.z"
-              class="hr-zone-tag"
-              :class="{ fatburn: hrZone.z === 2 }"
-              :style="{ color: hrZone.color }"
-              >Z{{ hrZone.z }} {{ hrZone.name }}</span
-            >
           </span>
         </button>
       </div>
@@ -2098,16 +2091,6 @@ code {
 }
 .hr-badge.on {
   border-color: var(--accent);
-}
-.hr-zone-tag {
-  font-size: 9.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-/* the fat-burn zone is the one most walkers aim for — make hitting it obvious */
-.hr-zone-tag.fatburn {
-  text-shadow: 0 0 8px rgba(46, 213, 115, 0.8);
 }
 .hr-badge-spark {
   position: absolute;

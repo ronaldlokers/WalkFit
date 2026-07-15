@@ -375,12 +375,10 @@ describe('App happy path', () => {
 })
 
 describe('immersive layout (#103)', () => {
-  it('is always immersive; the persisted big-numbers option adds hud-big', () => {
+  it('is always immersive', () => {
     localStorage.setItem('walkfit.setupDone', '1')
-    localStorage.setItem('walkfit.layout.big', '1')
     const w = mount(App)
     expect(w.find('.app').classes()).toContain('layout-immersive')
-    expect(w.find('.app').classes()).toContain('hud-big')
   })
 
   it('shows the workout ribbon during a plan and End clears it', async () => {

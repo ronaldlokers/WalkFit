@@ -289,8 +289,6 @@ function scenicUnsupported() {
 }
 // --- immersive layout (#103): the visual fills the viewport, HUD floats over it ---
 // Kiosk concept folded in as a big-numbers option.
-const bigNumbers = ref(localStorage.getItem('walkfit.layout.big') === '1')
-watch(bigNumbers, (v) => localStorage.setItem('walkfit.layout.big', v ? '1' : '0'))
 // Immersive HUD fades after 5 s untouched while walking; any interaction wakes it.
 const hudHidden = ref(false)
 let hudTimer: ReturnType<typeof setTimeout> | null = null
@@ -1033,7 +1031,7 @@ const pace = computed(() => {
 <template>
   <div
     class="app layout-immersive"
-    :class="{ 'hud-hidden': hudHidden, 'hud-big': bigNumbers }"
+    :class="{ 'hud-hidden': hudHidden }"
     @pointerdown="wakeHud"
     @pointermove="wakeHud"
   >
@@ -1601,7 +1599,6 @@ const pace = computed(() => {
         v-model:audio-on="audioOn"
         v-model:debug-on="debugOn"
         v-model:view-mode="viewMode"
-        v-model:big-numbers="bigNumbers"
         v-model:goal-kcal="goals.kcal"
         v-model:goal-steps="goals.steps"
         v-model:goal-minutes="goals.minutes"
@@ -2582,9 +2579,6 @@ input[type='range']::-webkit-slider-thumb {
   border-radius: 20px;
   padding: 10px 14px;
 }
-.app.layout-immersive.hud-big > .imm-workout {
-  bottom: 130px;
-}
 .imm-row {
   display: flex;
   align-items: center;
@@ -2705,13 +2699,13 @@ input[type='range']::-webkit-slider-thumb {
   .app.layout-immersive .sstat,
   .app.layout-immersive .hr-badge {
     flex: 1 1 0;
-    padding: 4px 2px 3px;
+    padding: 8px 6px;
   }
   .app.layout-immersive .sstat .sv {
-    font-size: 13px;
+    font-size: 16px;
   }
   .app.layout-immersive .sstat .sk {
-    font-size: 8.5px;
+    font-size: 9px;
   }
   .app.layout-immersive .view-flip {
     top: 118px;
@@ -2720,33 +2714,5 @@ input[type='range']::-webkit-slider-thumb {
     top: 168px;
     width: 92vw;
   }
-}
-
-/* kiosk fold-in: big numbers for treadmill-distance reading */
-.app.layout-immersive.hud-big .sstat .sv {
-  font-size: 30px;
-}
-.app.layout-immersive.hud-big .sstat .sk {
-  font-size: 11px;
-}
-.app.layout-immersive.hud-big > .action-row .btn {
-  font-size: 22px;
-  padding: 18px 30px;
-}
-.app.layout-immersive.hud-big > .controls .target {
-  font-size: 42px;
-}
-.app.layout-immersive.hud-big .imm-ring-val {
-  font-size: 20px;
-}
-.app.layout-immersive.hud-big .imm-nn-v {
-  font-size: 24px;
-}
-/* the bigger buttons need more clearance below the speed pill */
-.app.layout-immersive.hud-big > .controls {
-  bottom: 130px;
-}
-.app.layout-immersive.hud-big > .warn {
-  top: 96px;
 }
 </style>

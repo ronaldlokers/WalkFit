@@ -16,21 +16,6 @@ import { loadStatistics, addSession, removeSession, loadGoals, saveGoals } from 
 import type { Session } from './statistics'
 import { mmss } from './format'
 import { t, localeTag } from './i18n'
-import {
-  trackPoint,
-  laneStaggers,
-  laneNumbers,
-  BREAK_LINE_S,
-  relayZoneLines,
-  hurdleTicks,
-  waterfallPoints,
-  BEND_R,
-  STRAIGHT_M,
-  LANE_W,
-  LANES,
-  TRACK_IN,
-  TRACK_OUT,
-} from './scenic'
 import { loadWeightLog, addWeighIn } from './weight'
 import type { WeightEntry } from './weight'
 import { syncProvider } from './health'
@@ -344,53 +329,21 @@ watch(viewMode, async (v) => {
   }
 })
 
-// --- 2D track view: the same 400 m track model as the 3D walk (scenic.ts), top-down ---
-// Mapping: 3D (x, z) → SVG (cx + z·k, cy + x·k). Lateral offsets are exaggerated ×TE
-// (transit-map style) so the six lanes stay readable at map scale — at true proportion
-// the whole band is ~16 px and the lanes vanish. Loop paths use exact circular arcs, so
-// getTotalLength maps linearly to walked metres and the marker/progress stay true.
-const TK = 2.0 // px per metre along the loop
-const TE = 2.5 // lateral lane-width exaggeration
-const TCX = 200
-const TCY = 130
-function svgPt(s: number, o: number) {
-  const p = trackPoint(s, o * TE)
-  return { x: TCX + p.z * TK, y: TCY + p.x * TK }
-}
-// closed loop at (exaggerated) lateral offset o, starting at s = 0, walking direction
-function loopPath(o: number): string {
-  const r = (BEND_R + o * TE) * TK
-  const hs = (STRAIGHT_M / 2) * TK
+// --- 2D ring view: a mock-faithful progress dial, deliberately DECOUPLED from the
+// surveyed scenic.ts model (which still drives the 3D walk). One decorative lane,
+// pill proportions taken from the mockup — not IAAF geometry. The marker/progress
+// map walked distance as a fraction of a 400 m lap onto the path length, so the
+// shape is free to be whatever reads best.
+const RING = { cx: 200, cy: 130, straight: 150, bendR: 88, w: 48 }
+const ringPath = (() => {
+  const { cx, cy, bendR: r } = RING
+  const hs = RING.straight / 2
   return (
-    `M ${TCX + hs} ${TCY + r} L ${TCX - hs} ${TCY + r} ` +
-    `A ${r} ${r} 0 0 1 ${TCX - hs} ${TCY - r} ` +
-    `L ${TCX + hs} ${TCY - r} A ${r} ${r} 0 0 1 ${TCX + hs} ${TCY + r} Z`
+    `M ${cx + hs} ${cy + r} L ${cx - hs} ${cy + r} ` +
+    `A ${r} ${r} 0 0 1 ${cx - hs} ${cy - r} ` +
+    `L ${cx + hs} ${cy - r} A ${r} ${r} 0 0 1 ${cx + hs} ${cy + r} Z`
   )
-}
-const track2d = {
-  band: loopPath((TRACK_IN + TRACK_OUT) / 2),
-  bandW: (TRACK_OUT - TRACK_IN) * TE * TK,
-  laneW: LANE_W * TE * TK, // one lane in px — sizes the progress stroke
-  laneLines: Array.from({ length: LANES + 1 }, (_, i) => loopPath(TRACK_IN + i * LANE_W)),
-  lane1: loopPath(0), // the runner's guide path — lane-1 centreline, same as the 3D camera
-  // common finish line across all lanes at s = 0, same as the 3D view
-  finish: { a: svgPt(0, TRACK_IN), b: svgPt(0, TRACK_OUT) },
-  staggers: laneStaggers().map((st) => ({ a: svgPt(st.s, st.o0), b: svgPt(st.s, st.o1) })),
-  // painted lane numbers + the green 200 m break line, exactly where the 3D view (and a
-  // real track) has them: just past the finish line.
-  laneNums: laneNumbers().map((n) => ({ ...svgPt(n.s, n.o), lane: n.lane })),
-  breakLine: { a: svgPt(BREAK_LINE_S, TRACK_IN), b: svgPt(BREAK_LINE_S, TRACK_OUT) },
-  // relay exchange-zone limits (yellow, per lane), 400 mH ticks (green, on the lane
-  // boundaries, drawn along the running line), and the curved 1500 m waterfall start
-  relays: relayZoneLines().map((l) => ({ a: svgPt(l.s, l.o0), b: svgPt(l.s, l.o1) })),
-  hurdles: hurdleTicks().map((t) => ({ a: svgPt(t.s - 0.9, t.o), b: svgPt(t.s + 0.9, t.o) })),
-  waterfall: waterfallPoints()
-    .map((p) => {
-      const pt = svgPt(p.s, p.o)
-      return `${pt.x},${pt.y}`
-    })
-    .join(' '),
-}
+})()
 
 const trackEl = ref<SVGPathElement | null>(null)
 const pathLen = ref(0)
@@ -1182,86 +1135,34 @@ const pace = computed(() => {
         </button>
       </div>
       <svg v-if="viewMode === 'track'" viewBox="0 0 400 260" class="track">
-        <!-- top-down render of the same 400 m track model the 3D view walks (scenic.ts):
-             six lanes, common finish line, staggered starts -->
+        <!-- the mock's single-lane progress ring: white glow ring (its fill frosts the
+             interior), grey band, gradient progress, knob marker riding the same path -->
         <defs>
           <linearGradient id="progress-grad" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0" stop-color="#0a6de0" />
             <stop offset="1" stop-color="#5ac8fa" />
           </linearGradient>
         </defs>
-        <path class="track-glow" :d="track2d.band" :stroke-width="track2d.bandW + 16" />
-        <path class="track-band" :d="track2d.band" :stroke-width="track2d.bandW" />
-        <path v-for="(d, i) in track2d.laneLines" :key="`lane-${i}`" class="track-lane" :d="d" />
-        <line
-          class="startline"
-          :x1="track2d.finish.a.x"
-          :y1="track2d.finish.a.y"
-          :x2="track2d.finish.b.x"
-          :y2="track2d.finish.b.y"
-        />
-        <line
-          v-for="(st, i) in track2d.staggers"
-          :key="`stagger-${i}`"
-          class="stagger"
-          :x1="st.a.x"
-          :y1="st.a.y"
-          :x2="st.b.x"
-          :y2="st.b.y"
-        />
-        <line
-          class="breakline"
-          :x1="track2d.breakLine.a.x"
-          :y1="track2d.breakLine.a.y"
-          :x2="track2d.breakLine.b.x"
-          :y2="track2d.breakLine.b.y"
-        />
-        <line
-          v-for="(r, i) in track2d.relays"
-          :key="`relay-${i}`"
-          class="relay-line"
-          :x1="r.a.x"
-          :y1="r.a.y"
-          :x2="r.b.x"
-          :y2="r.b.y"
-        />
-        <line
-          v-for="(h, i) in track2d.hurdles"
-          :key="`hurdle-${i}`"
-          class="hurdle-tick"
-          :x1="h.a.x"
-          :y1="h.a.y"
-          :x2="h.b.x"
-          :y2="h.b.y"
-        />
-        <polyline class="waterfall" :points="track2d.waterfall" />
-        <text
-          v-for="n in track2d.laneNums"
-          :key="`num-${n.lane}`"
-          class="lane-num"
-          :x="n.x"
-          :y="n.y"
-        >
-          {{ n.lane }}
-        </text>
-        <!-- invisible guide path: the marker + progress ride the band's centreline so
-             the dot sits centred ON the ring (lane 1 would hug its inner edge) -->
-        <path ref="trackEl" class="track-line" :d="track2d.band" />
+        <path class="track-glow" :d="ringPath" :stroke-width="RING.w + 16" />
+        <path class="track-band" :d="ringPath" :stroke-width="RING.w" />
+        <!-- invisible guide path: getTotalLength/getPointAtLength drive the marker -->
+        <path ref="trackEl" class="track-line" :d="ringPath" />
         <path
           class="track-progress"
-          :d="track2d.band"
+          :d="ringPath"
+          :stroke-width="RING.w - 8"
           :stroke-dasharray="pathLen"
           :stroke-dashoffset="dashOffset"
         />
         <g :transform="`translate(${marker.x},${marker.y})`" class="runner">
-          <circle class="halo" r="12" />
-          <circle class="body" r="7" />
+          <circle class="halo" r="20" />
+          <circle class="body" r="13" />
         </g>
-        <text class="lap-num" x="200" y="120">{{ laps }}</text>
-        <text class="lap-label" x="200" y="150">
+        <text class="lap-num" x="200" y="150">{{ laps }}</text>
+        <text class="lap-label" x="200" y="178">
           {{ laps === 1 ? t('track.lap') : t('track.laps') }} {{ t('track.suffix') }}
         </text>
-        <text v-if="lastLap !== null" class="lap-times" x="200" y="174">
+        <text v-if="lastLap !== null" class="lap-times" x="200" y="192">
           {{ t('track.lastBest', { last: mmss(lastLap), best: mmss(bestLap!) }) }}
         </text>
       </svg>
@@ -1801,27 +1702,15 @@ code {
   width: 100%;
   display: block;
 }
-/* the minimal mock ring: soft grey band on a white glow ring; the surveyed detail
-   layers (lanes, staggers, relay/hurdle marks…) stay in the template but hidden —
-   easy to re-enable later */
+/* the minimal mock ring: soft grey band on a white glow ring */
 .track-band {
   fill: none;
-  stroke: #dde2e8; /* width bound from the lane count so lanes stay true */
+  stroke: #dde2e8;
 }
 .track-glow {
   /* the fill frosts the ring's interior white, like the mock's card-less centre */
   fill: rgba(255, 255, 255, 0.45);
   stroke: rgba(255, 255, 255, 0.85);
-}
-.track-lane,
-.stagger,
-.breakline,
-.relay-line,
-.hurdle-tick,
-.waterfall,
-.lane-num,
-.startline {
-  display: none;
 }
 /* geometry guide only — the runner marker and progress ring follow it via
    getTotalLength/getPointAtLength, so it never needs to be painted */
@@ -1832,20 +1721,18 @@ code {
 .track-progress {
   fill: none;
   stroke: url(#progress-grad); /* deep-to-light blue like the mock */
-  stroke-width: 30; /* nearly fills the band */
+  /* stroke-width bound in the template: the band minus a margin */
   stroke-linecap: round;
   transition: stroke-dashoffset 0.25s linear;
 }
-/* white knob with a blue ring, riding the progress head */
+/* white knob with a blue ring, riding the progress head (radii in the template) */
 .runner .halo {
   fill: #fff;
-  r: 15;
 }
 .runner .body {
   fill: #fff;
   stroke: var(--accent);
-  stroke-width: 5;
-  r: 10;
+  stroke-width: 7;
 }
 .runner {
   transition: transform 0.25s linear;

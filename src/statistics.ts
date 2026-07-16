@@ -3,6 +3,10 @@
 const KEY = 'walkfit.history'
 const MAX_ENTRIES = 500 // ~a year of daily walks; keeps localStorage bounded
 
+// [elapsed seconds since session start, speed km/h, bpm or null] — a tuple instead of
+// an object per point to keep the JSON compact; capped at ~180 downsampled points (#149).
+export type SeriesPoint = [number, number, number | null]
+
 export interface Session {
   date: string // ISO string, session start
   distance: number // metres
@@ -13,6 +17,7 @@ export interface Session {
   hrMin?: number // bpm low over the session; absent when no HR sensor / pre-#43 logs
   hrMax?: number // bpm high over the session; absent when no HR sensor / pre-#43 logs
   workout?: string // active plan/HR-target name (#142); absent on free walks + pre-#142 logs
+  series?: SeriesPoint[] // in-session speed/HR shape (#149); absent on pre-#149 logs
 }
 
 export interface WeekTotals {
@@ -89,6 +94,20 @@ function sanitizeSession(e: unknown): Session | null {
   if (hrMin !== null && hrMax !== null) {
     out.hrMin = hrMin
     out.hrMax = hrMax
+  }
+  // workout (#142) and series (#149) were missing here — a JSON backup/restore
+  // silently dropped both on merge-import instead of round-tripping them
+  if (typeof raw.workout === 'string') out.workout = raw.workout
+  if (Array.isArray(raw.series)) {
+    const series = raw.series.filter(
+      (p): p is SeriesPoint =>
+        Array.isArray(p) &&
+        p.length === 3 &&
+        typeof p[0] === 'number' &&
+        typeof p[1] === 'number' &&
+        (p[2] === null || typeof p[2] === 'number'),
+    )
+    if (series.length) out.series = series
   }
   return out
 }

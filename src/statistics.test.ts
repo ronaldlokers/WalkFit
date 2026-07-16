@@ -233,4 +233,41 @@ describe('mergeSessions (#69)', () => {
     ])
     expect(merged.map((s) => s.distance)).toEqual([700, 900])
   })
+
+  it('round-trips workout (#142) and series (#149) instead of dropping them', () => {
+    const merged = mergeSessions([
+      {
+        date: '2026-07-13T08:00:00.000Z',
+        distance: 900,
+        duration: 600,
+        kcal: 40,
+        avgHr: null,
+        workout: 'Fat Burn 30',
+        series: [
+          [10, 3, 110],
+          [20, 3.2, 112],
+        ],
+      },
+    ])
+    expect(merged[0]!.workout).toBe('Fat Burn 30')
+    expect(merged[0]!.series).toEqual([
+      [10, 3, 110],
+      [20, 3.2, 112],
+    ])
+  })
+
+  it('drops malformed series points instead of poisoning the chart with them', () => {
+    const merged = mergeSessions([
+      {
+        date: '2026-07-13T08:00:00.000Z',
+        distance: 900,
+        duration: 600,
+        kcal: 40,
+        avgHr: null,
+        // @ts-expect-error -- deliberately malformed, simulating a corrupt import
+        series: [[10, 3, 110], ['not', 'a', 'point'], [20]],
+      },
+    ])
+    expect(merged[0]!.series).toEqual([[10, 3, 110]])
+  })
 })

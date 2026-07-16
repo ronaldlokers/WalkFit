@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { currentStreak, dailyTotals, weekStart } from './statistics'
 import type { Session, Goals } from './statistics'
+import { SPEED_MAX } from './treadmill'
 import type { WeightEntry } from './weight'
 import { mmss } from './format'
 import { t, locale, localeTag } from './i18n'
@@ -346,6 +347,37 @@ function cellDay(dateKey: string) {
 function cellTitle(cell: MonthCell) {
   return `${cell.date}: ${cell.kcal} kcal`
 }
+
+// --- walk-detail speed/HR sparkline (#149) — the shape of the walk, not exact values ---
+function walkSeriesChart(w: Session) {
+  const series = w.series
+  if (!series || series.length < 2) return null
+  const W = 320,
+    H = 72
+  const t0 = series[0]![0]
+  const tSpan = Math.max(1, series[series.length - 1]![0] - t0)
+  const speedLine = series
+    .map(
+      ([t, speed]) =>
+        `${(((t - t0) / tSpan) * W).toFixed(1)},${(H - (speed / SPEED_MAX) * H).toFixed(1)}`,
+    )
+    .join(' ')
+  const hrs = series.map((p) => p[2]).filter((v): v is number => v !== null)
+  let hrLine: string | null = null
+  if (hrs.length >= 2) {
+    const lo = Math.min(...hrs) - 3
+    const hi = Math.max(...hrs) + 3
+    const span = Math.max(1, hi - lo)
+    hrLine = series
+      .filter((p) => p[2] !== null)
+      .map(
+        ([t, , bpm]) =>
+          `${(((t - t0) / tSpan) * W).toFixed(1)},${(H - ((bpm! - lo) / span) * H).toFixed(1)}`,
+      )
+      .join(' ')
+  }
+  return { speedLine, hrLine }
+}
 // Mon-Sun weekday header, independent of any real date (2026-07-06 is a known Monday)
 const monthDowLabels = computed(() => {
   void locale.value
@@ -619,6 +651,20 @@ const monthDowLabels = computed(() => {
                   <span class="k">{{ t('stats.bpmRange') }}</span>
                 </div>
               </div>
+              <!-- speed/HR shape of the walk (#149) — absent on pre-#149 logs -->
+              <svg
+                v-if="walkSeriesChart(w)"
+                class="walk-series-chart"
+                viewBox="0 0 320 72"
+                preserveAspectRatio="none"
+              >
+                <polyline class="walk-series-speed" :points="walkSeriesChart(w)!.speedLine" />
+                <polyline
+                  v-if="walkSeriesChart(w)!.hrLine"
+                  class="walk-series-hr"
+                  :points="walkSeriesChart(w)!.hrLine!"
+                />
+              </svg>
               <button class="btn ghost sm walk-delete" @click="emit('delete-session', w.date)">
                 {{ t('stats.deleteWalk') }}
               </button>
@@ -1016,6 +1062,31 @@ const monthDowLabels = computed(() => {
 }
 .walk-tiles {
   margin-bottom: 10px;
+}
+/* speed/HR shape of the walk (#149) — same frosted-panel language as the weight chart */
+.walk-series-chart {
+  display: block;
+  width: 100%;
+  height: 72px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  margin-bottom: 10px;
+}
+.walk-series-speed {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+.walk-series-hr {
+  fill: none;
+  stroke: #ff4757;
+  stroke-width: 1.5;
+  stroke-opacity: 0.75;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
 }
 .walk-delete {
   color: #e0284a;

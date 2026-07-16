@@ -146,7 +146,13 @@ async function mountToMain() {
   return w
 }
 
-function logged(): { distance: number; duration: number; steps?: number; workout?: string }[] {
+function logged(): {
+  distance: number
+  duration: number
+  steps?: number
+  workout?: string
+  series?: [number, number, number | null][]
+}[] {
   return JSON.parse(localStorage.getItem('walkfit.history') || '[]')
 }
 
@@ -561,6 +567,33 @@ describe('live daily-goal ring + cue (#145)', () => {
     // staying over the goal must not re-announce it
     await walk(w, 100, 60, 1)
     expect(spoken.length).toBe(announcedOnce)
+  })
+})
+
+describe('in-session speed/HR series (#149)', () => {
+  it('samples every ~10s and stores it on the finished session', async () => {
+    fakeHr.connected = true
+    fakeHr.bpm = 110
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    for (let i = 0; i < 5; i++) await walk(w, 20, 10) // 5 x 10s ticks = 50s
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+
+    const series = logged().at(-1)!.series!
+    expect(series).toBeDefined()
+    expect(series.length).toBe(5)
+    expect(series[0]).toEqual([10, 3, 110]) // [elapsed s, speed km/h, bpm]
+    expect(series.at(-1)![0]).toBe(50)
+  })
+
+  it('is absent on a walk too short to reach the 10s sample interval', async () => {
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    await walk(w, 100, 5)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(logged().at(-1)!.series).toBeUndefined()
   })
 })
 

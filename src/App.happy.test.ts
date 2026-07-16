@@ -179,6 +179,9 @@ describe('App happy path', () => {
     const hero = w.find('.hero-band').text()
     expect(hero).toContain('1.5') // km this week
     expect(hero).toContain('72') // kcal this week
+    // week-over-week deltas (#143): prev week (Jul 6-12) had the Sunday walk only
+    expect(w.findAll('.hero-delta').map((d) => d.text())).toContain('+0.6 km')
+    expect(w.findAll('.hero-delta').map((d) => d.text())).toContain('+32 kcal')
     // Activity: three day charts with a full Mon-Sun axis
     expect(w.findAll('.activity-grid .card').length).toBe(3)
     expect(w.findAll('.activity-grid .card')[0]!.findAll('.bar-slot').length).toBe(7)

@@ -115,7 +115,7 @@ test.describe('workout menu', () => {
 })
 
 test.describe('statistics', () => {
-  test('hero band, tabs, weigh-in, week navigation', async ({ page }) => {
+  test('hero band, single-page sections, weigh-in, week navigation', async ({ page }) => {
     await seed(page, {
       'walkfit.history': currentWeekHistory(),
       'walkfit.goals': JSON.stringify({ kcal: 400, steps: 6000, minutes: 30 }),
@@ -127,17 +127,14 @@ test.describe('statistics', () => {
     // hero band shows the week's numbers
     await expect(page.locator('.hero-band')).toContainText('kcal')
     await expect(page.locator('.hero-band')).toContainText('day streak')
-    // Activity tab default: three charts, full Mon-Sun axis
+    // Activity: three charts, full Mon-Sun axis — no tab click, single page (#178)
     await expect(page.locator('.activity-grid .card')).toHaveCount(3)
     await expect(page.locator('.activity-grid .card').first().locator('.bar-slot')).toHaveCount(7)
-    // HR tab: today's session has a range
-    await page.getByRole('button', { name: 'Heart rate' }).click()
+    // Heart rate: today's session has a range
     await expect(page.locator('.hr-span').first()).toBeVisible()
-    // Walks tab: today's walk listed
-    await page.getByRole('button', { name: 'Walks' }).click()
+    // Walks: today's walk listed
     await expect(page.locator('.walk-row').first()).toContainText('1.50 km')
-    // Weight tab: manual weigh-in persists
-    await page.getByRole('button', { name: 'Weight', exact: true }).click()
+    // Weight: manual weigh-in persists
     await page.locator('.weigh-row input').fill('82.4')
     await page.getByRole('button', { name: 'Log weigh-in' }).click()
     await expect(page.locator('.weight-section')).toContainText('82.4')

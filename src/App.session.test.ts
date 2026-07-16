@@ -146,7 +146,7 @@ async function mountToMain() {
   return w
 }
 
-function logged(): { distance: number; duration: number; steps?: number }[] {
+function logged(): { distance: number; duration: number; steps?: number; workout?: string }[] {
   return JSON.parse(localStorage.getItem('walkfit.history') || '[]')
 }
 
@@ -363,6 +363,51 @@ describe('workouts & goals (#68)', () => {
     await clickButton(w, 'Stop')
     await w.vm.$nextTick()
     expect(logged().map((s) => s.distance)).toEqual([1000])
+  })
+
+  it('stores the plan name on the session, but not for a free walk (#142)', async () => {
+    const w = await mountToMain()
+    await clickButton(w, '☰')
+    await clickButton(w, 'Workout')
+    const card = w.findAll('.tcard')[0]!
+    const planName = card.find('.tname').text()
+    await card.trigger('click')
+    await clickButton(w, 'Start workout')
+    await walk(w, 100, 60)
+    await clickButton(w, 'End')
+    await w.vm.$nextTick()
+    expect(logged().at(-1)!.workout).toBe(planName)
+
+    // a plain free walk stores no workout name
+    await clickButton(w, 'Start')
+    await walk(w, 100, 60)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(logged().at(-1)!.workout).toBeUndefined()
+  })
+
+  it('offers to repeat the last-finished plan from the picker (#142)', async () => {
+    const w = await mountToMain()
+    await clickButton(w, '☰')
+    await clickButton(w, 'Workout')
+    expect(w.find('.repeat-chip').exists()).toBe(false) // nothing finished yet
+
+    const card = w.findAll('.tcard')[0]!
+    const planName = card.find('.tname').text()
+    await card.trigger('click')
+    await clickButton(w, 'Start workout')
+    await walk(w, 100, 60)
+    await clickButton(w, 'End')
+    await w.vm.$nextTick()
+
+    await clickButton(w, '☰')
+    await clickButton(w, 'Workout')
+    const chip = w.find('.repeat-chip')
+    expect(chip.exists()).toBe(true)
+    expect(chip.text()).toContain(planName)
+    // clicking it previews the same plan, ready to start again
+    await chip.trigger('click')
+    expect(w.find('.wp-head h2').text()).toBe(planName)
   })
 
   it('building a custom workout persists it and it can be started', async () => {

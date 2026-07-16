@@ -100,6 +100,7 @@ const en = {
   'picker.kcal': 'kcal',
   'picker.delete': 'Delete',
   'picker.start': 'Start workout',
+  'picker.repeat': 'Repeat last: {name}',
 
   // HR zones + steer targets
   'zone.warmup': 'Warm up',
@@ -317,6 +318,7 @@ const nl: Record<MessageKey, string> = {
   'picker.kcal': 'kcal',
   'picker.delete': 'Verwijderen',
   'picker.start': 'Workout starten',
+  'picker.repeat': 'Herhaal laatste: {name}',
 
   'zone.warmup': 'Warming-up',
   'zone.fatburn': 'Vetverbranding',

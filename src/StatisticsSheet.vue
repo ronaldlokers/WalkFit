@@ -535,7 +535,10 @@ function logWeighIn() {
           <li v-for="w in weekWalks" :key="w.date">
             <button class="walk-row" @click="toggleWalk(w.date)">
               <span class="walk-when">
-                <span class="walk-day">{{ walkDay(w.date) }}</span>
+                <span class="walk-day"
+                  >{{ walkDay(w.date)
+                  }}<span v-if="w.workout" class="walk-workout"> · {{ w.workout }}</span></span
+                >
                 <span class="walk-time">{{ walkTime(w.date) }}</span>
               </span>
               <span class="walk-stats">
@@ -906,6 +909,11 @@ function logWeighIn() {
 .walk-day {
   font-weight: 700;
   font-size: 13.5px;
+}
+/* workout name on the row (#142) — same size, lighter weight so the date stays primary */
+.walk-workout {
+  font-weight: 500;
+  color: #5a789a;
 }
 .walk-time {
   font-size: 11px;

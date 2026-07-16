@@ -147,6 +147,35 @@ function hhmm(sec: number) {
   return `${Math.floor(sec / 3600)}:${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}`
 }
 
+// --- week-over-week deltas (#143): the same shape one week earlier, purely computed
+// from sessions already in memory — no new data, no new storage ---
+const prevWeekDays = computed(() => {
+  const prevSunday = new Date(anchor.value)
+  prevSunday.setDate(prevSunday.getDate() - 1) // day before this week's Monday
+  return dailyTotals(props.sessions, 7, prevSunday)
+})
+const prevWeekDistance = computed(() => prevWeekDays.value.reduce((a, d) => a + d.distance, 0))
+const prevWeekKcal = computed(() => prevWeekDays.value.reduce((a, d) => a + d.kcal, 0))
+const prevWeekDuration = computed(() => prevWeekDays.value.reduce((a, d) => a + d.duration, 0))
+// null when there's nothing to compare against yet, so the hero can hide the chip
+// instead of showing a misleading "+100%"
+function delta(cur: number, prev: number): number | null {
+  return prev > 0 ? cur - prev : null
+}
+function fmtDelta(d: number | null, fmt: (n: number) => string): string | null {
+  if (d === null || Math.abs(d) < 1e-9) return null
+  return (d > 0 ? '+' : '') + fmt(d)
+}
+const distanceDelta = computed(() =>
+  fmtDelta(delta(weekDistance.value, prevWeekDistance.value), (m) => (m / 1000).toFixed(1) + ' km'),
+)
+const kcalDelta = computed(() =>
+  fmtDelta(delta(weekKcal.value, prevWeekKcal.value), (k) => Math.round(k) + ' kcal'),
+)
+const durationDelta = computed(() =>
+  fmtDelta(delta(weekDuration.value, prevWeekDuration.value), (s) => Math.round(s / 60) + ' min'),
+)
+
 function dayLabel(dateKey: string) {
   return new Date(dateKey + 'T00:00:00').toLocaleDateString(localeTag(), { weekday: 'short' })
 }
@@ -291,14 +320,23 @@ function logWeighIn() {
       <div class="hero-stat">
         <span class="hero-v">{{ (weekDistance / 1000).toFixed(1) }}<small> km</small></span>
         <span class="hero-k">{{ t('stats.kmWeek') }}</span>
+        <span v-if="distanceDelta" class="hero-delta" :title="t('stats.vsLastWeek')">{{
+          distanceDelta
+        }}</span>
       </div>
       <div class="hero-stat">
         <span class="hero-v">{{ Math.round(weekKcal) }}<small> kcal</small></span>
         <span class="hero-k">{{ t('stats.kcalWeek') }}</span>
+        <span v-if="kcalDelta" class="hero-delta" :title="t('stats.vsLastWeek')">{{
+          kcalDelta
+        }}</span>
       </div>
       <div class="hero-stat">
         <span class="hero-v">{{ hhmm(weekDuration) }}<small> h</small></span>
         <span class="hero-k">{{ t('stats.activeWeek') }}</span>
+        <span v-if="durationDelta" class="hero-delta" :title="t('stats.vsLastWeek')">{{
+          durationDelta
+        }}</span>
       </div>
       <div class="hero-stat">
         <span class="hero-v">{{ streak }}<small> 🔥</small></span>
@@ -664,6 +702,15 @@ function logWeighIn() {
 .hero-k {
   font-size: 12px;
   color: #5a789a;
+}
+/* week-over-week delta (#143) — neutral styling on purpose: more isn't always
+   "better" (rest weeks are fine), so no green-up/red-down judgement */
+.hero-delta {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-top: 1px;
 }
 .hero-ring {
   position: relative;

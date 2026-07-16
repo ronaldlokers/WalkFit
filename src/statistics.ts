@@ -12,6 +12,7 @@ export interface Session {
   avgHr: number | null // bpm, null when no HR sensor was connected
   hrMin?: number // bpm low over the session; absent when no HR sensor / pre-#43 logs
   hrMax?: number // bpm high over the session; absent when no HR sensor / pre-#43 logs
+  workout?: string // active plan/HR-target name (#142); absent on free walks + pre-#142 logs
 }
 
 export interface WeekTotals {

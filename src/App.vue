@@ -459,6 +459,7 @@ watch(goals, () => saveGoals({ ...goals }))
 
 let sessionStart: Date | null = null
 let sessionName = 'Free walk'
+let sessionWorkoutName: string | undefined
 let hrSum = 0
 let hrCount = 0
 let hrLo = 0 // session bpm low/high for the daily HR range chart (#43)
@@ -544,6 +545,12 @@ function beginSession() {
   sessionName =
     active.value?.name ||
     (hrTarget.value ? t('session.hrWorkout', { name: hrTarget.value.name }) : t('session.freeWalk'))
+  // Session.workout (#142): only set for an actual plan/HR target, not free walks —
+  // sessionName above is always non-empty (used for the Strava title regardless), but
+  // "Free walk" isn't a nameable thing worth persisting on every plain session.
+  sessionWorkoutName =
+    active.value?.name ??
+    (hrTarget.value ? t('session.hrWorkout', { name: hrTarget.value.name }) : undefined)
   hrSum = 0
   hrCount = 0
   hrLo = 0
@@ -579,6 +586,7 @@ function finalizeSession() {
       steps: Math.round(tot.steps),
       avgHr: hrCount ? Math.round(hrSum / hrCount) : null,
       ...(hrCount ? { hrMin: hrLo, hrMax: hrHi } : {}),
+      ...(sessionWorkoutName ? { workout: sessionWorkoutName } : {}),
     }
     sessions.value = addSession(session)
     if (strava.state.connected) {
@@ -800,6 +808,14 @@ function saveCustom(w: Workout) {
 function deleteCustom(id: string) {
   customWorkouts.value = deleteCustomWorkout(id)
 }
+// "Repeat last workout" (#142): the most recently finished plan, looked up by the
+// name stored on its session — best-effort, so a renamed/deleted custom workout just
+// makes the chip disappear rather than repeating something else.
+const lastWorkout = computed<Workout | null>(() => {
+  const last = [...sessions.value].reverse().find((s) => s.workout)
+  if (!last) return null
+  return [...workouts, ...customWorkouts.value].find((w) => w.name === last.workout) ?? null
+})
 const activeTl = computed(() => (active.value ? timeline(active.value) : null))
 const curSegIndex = computed(() => {
   if (!activeTl.value) return -1
@@ -1420,6 +1436,7 @@ const pace = computed(() => {
           :adjust-interval="HR_ADJUST_INTERVAL"
           :hr-connected="hr.state.connected"
           :custom-workouts="customWorkouts"
+          :last-workout="lastWorkout"
           :start-tab="workoutTab"
           @save-custom="saveCustom"
           @delete-custom="deleteCustom"
@@ -1580,6 +1597,7 @@ const pace = computed(() => {
             :adjust-interval="HR_ADJUST_INTERVAL"
             :hr-connected="hr.state.connected"
             :custom-workouts="customWorkouts"
+            :last-workout="lastWorkout"
             :closable="false"
             @save-custom="saveCustom"
             @delete-custom="deleteCustom"

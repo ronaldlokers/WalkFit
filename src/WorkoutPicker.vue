@@ -21,6 +21,7 @@ const props = withDefaults(
     adjustInterval: number
     startTab?: 'plans' | 'hr' // 'plans' (weight loss) | 'hr' (heart rate)
     closable?: boolean
+    lastWorkout?: Workout | null // most recently completed plan, for "Repeat" (#142)
   }>(),
   {
     connected: false,
@@ -29,6 +30,7 @@ const props = withDefaults(
     startTab: 'plans',
     closable: true,
     customWorkouts: () => [],
+    lastWorkout: null,
   },
 )
 const emit = defineEmits<{
@@ -153,6 +155,12 @@ function segDur(min: number) {
     </div>
 
     <div v-else-if="!preview && tab === 'plans'" class="tlist">
+      <!-- Repeat last workout (#142): reuses the same preview→Start flow as any card,
+           just pre-picks the last plan you actually finished -->
+      <button v-if="lastWorkout" class="repeat-chip" @click="preview = lastWorkout">
+        <span class="repeat-icon">↻</span>
+        {{ t('picker.repeat', { name: lastWorkout.name }) }}
+      </button>
       <button v-for="w in workouts" :key="w.id" class="tcard" @click="preview = w">
         <div class="tcard-main">
           <span class="tname">{{ w.name }}</span>
@@ -332,6 +340,27 @@ function segDur(min: number) {
   border-radius: 14px;
   padding: 12px;
   cursor: pointer;
+}
+/* Repeat last workout (#142) — accent-tinted so it reads as a shortcut, not just
+   another card in the list */
+.repeat-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: rgba(10, 132, 255, 0.1);
+  border: 1px solid rgba(10, 132, 255, 0.3);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13.5px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+.repeat-icon {
+  font-size: 16px;
 }
 .tcard-main {
   flex: 1;

@@ -82,5 +82,9 @@ input {
   flex: 0;
 }
 .btn.forget {
+  /* distinct from the neutral ghost Disconnect button next to it — forgetting a
+     device drops its remembered id for good, Disconnect doesn't (#190) */
+  background: rgba(224, 40, 74, 0.1);
   color: #e0284a;
+  border-color: rgba(224, 40, 74, 0.25);
 }

@@ -587,6 +587,36 @@ watch(
     }
   },
 )
+// In-session speed/HR series (#149): a point every ~10s of session-relative elapsed
+// time (sessionTotals(), not the raw belt clock, so pause/resume never produces a
+// phantom jump) — the walk-detail sparkline. Capped and downsampled at finalize;
+// keeping the raw array unbounded here just means longer walks downsample more.
+let seriesPoints: [number, number, number | null][] = []
+let lastSeriesElapsed = 0
+watch(
+  () => state.elapsed,
+  () => {
+    if (!state.running) return
+    const tot = sessionTotals()
+    if (tot.elapsed - lastSeriesElapsed < 10) return
+    lastSeriesElapsed = tot.elapsed
+    seriesPoints.push([
+      Math.round(tot.elapsed),
+      state.speed,
+      hr.state.bpm > 0 ? hr.state.bpm : null,
+    ])
+  },
+)
+const SERIES_MAX_POINTS = 180
+function downsampleSeries(
+  points: [number, number, number | null][],
+): [number, number, number | null][] {
+  if (points.length <= SERIES_MAX_POINTS) return points
+  const stride = points.length / SERIES_MAX_POINTS
+  const out: [number, number, number | null][] = []
+  for (let i = 0; i < SERIES_MAX_POINTS; i++) out.push(points[Math.floor(i * stride)]!)
+  return out
+}
 function beginSession() {
   pausedWalk.value = false // a genuinely new session is never paused (#128)
   sessionStart = new Date()
@@ -611,6 +641,8 @@ function beginSession() {
   lastSnapshotDistance = -Infinity
   goalAnnounced = 0
   lastAnnounced = 0
+  seriesPoints = []
+  lastSeriesElapsed = 0
 }
 function rebaseWatermarks() {
   baseDistance = state.distance
@@ -636,6 +668,7 @@ function finalizeSession() {
       avgHr: hrCount ? Math.round(hrSum / hrCount) : null,
       ...(hrCount ? { hrMin: hrLo, hrMax: hrHi } : {}),
       ...(sessionWorkoutName ? { workout: sessionWorkoutName } : {}),
+      ...(seriesPoints.length ? { series: downsampleSeries(seriesPoints) } : {}),
     }
     sessions.value = addSession(session)
     if (strava.state.connected) {

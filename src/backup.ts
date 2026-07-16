@@ -1,7 +1,7 @@
 // Backup & restore (#69): everything WalkFit knows lives in this browser's
 // localStorage — a cleared profile or device switch would lose months of history.
 // Export dumps the walkfit.* keys as a JSON file; import merges it back.
-import { mergeSessions } from './statistics'
+import { loadStatistics, mergeSessions, type Session } from './statistics'
 import { mergeWeighIns } from './weight'
 
 const PREFIX = 'walkfit.'
@@ -24,6 +24,45 @@ export function exportData(includeTokens = false): string {
     null,
     2,
   )
+}
+
+// CSV export of the session log (#147) — read-only, spreadsheet-friendly; JSON export
+// above remains the one full backup/restore format. One row per walk, newest first to
+// match the walk log's own order; fields quoted only when they contain a comma/quote/
+// newline (dates and numbers never do, so most rows stay unquoted).
+const CSV_COLUMNS = [
+  'date',
+  'distanceKm',
+  'durationMin',
+  'kcal',
+  'steps',
+  'avgHr',
+  'hrMin',
+  'hrMax',
+] as const
+function csvCell(v: string | number | null | undefined): string {
+  if (v === null || v === undefined) return ''
+  const s = String(v)
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+function sessionRow(s: Session): string {
+  return [
+    s.date,
+    (s.distance / 1000).toFixed(2),
+    (s.duration / 60).toFixed(1),
+    Math.round(s.kcal),
+    s.steps ?? '',
+    s.avgHr ?? '',
+    s.hrMin ?? '',
+    s.hrMax ?? '',
+  ]
+    .map(csvCell)
+    .join(',')
+}
+export function exportCsv(sessions: Session[] = loadStatistics()): string {
+  const header = CSV_COLUMNS.join(',')
+  const rows = [...sessions].reverse().map(sessionRow)
+  return [header, ...rows].join('\r\n') + '\r\n'
 }
 
 // Applies a backup: sessions and weigh-ins MERGE through their idempotent helpers

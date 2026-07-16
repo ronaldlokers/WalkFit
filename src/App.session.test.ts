@@ -527,6 +527,43 @@ describe('per-km/N-min voice announcements (#144)', () => {
   })
 })
 
+describe('live daily-goal ring + cue (#145)', () => {
+  const spoken: string[] = []
+  beforeEach(() => {
+    spoken.length = 0
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        text: string
+        lang = ''
+        rate = 1
+        constructor(text: string) {
+          this.text = text
+        }
+      },
+    )
+    vi.stubGlobal('speechSynthesis', {
+      cancel: vi.fn(),
+      speak: (u: { text: string }) => spoken.push(u.text),
+    })
+  })
+
+  it('ring reflects live progress and speaks once when a goal is reached mid-walk', async () => {
+    const w = await mountToMain()
+    expect(w.find('.goal-ring-val').text()).toBe('0%')
+
+    await clickButton(w, 'Start')
+    await walk(w, 100, 60, 8000) // default steps goal is 8000 — hit in one tick
+    await w.vm.$nextTick()
+    expect(spoken.some((s) => s.includes('Steps'))).toBe(true)
+    const announcedOnce = spoken.length
+
+    // staying over the goal must not re-announce it
+    await walk(w, 100, 60, 1)
+    expect(spoken.length).toBe(announcedOnce)
+  })
+})
+
 describe('avgHr sampling (#132)', () => {
   it('averages over time, not over value changes', async () => {
     fakeHr.connected = true

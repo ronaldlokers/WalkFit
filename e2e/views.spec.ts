@@ -191,7 +191,10 @@ test.describe('offline start (#150)', () => {
     await expect
       .poll(async () =>
         page.evaluate(async () => {
-          const rs = await navigator.serviceWorker.getRegistrations()
+          const nav = navigator as Navigator & {
+            serviceWorker: { getRegistrations(): Promise<{ active: unknown }[]> }
+          }
+          const rs = await nav.serviceWorker.getRegistrations()
           return rs.some((r) => r.active)
         }),
       )

@@ -495,6 +495,7 @@ describe('per-km/N-min voice announcements (#144)', () => {
   async function setAnnounce(w: VueWrapper, value: string) {
     await clickButton(w, '☰')
     await clickButton(w, 'Settings')
+    await clickButton(w, 'Advanced') // announce interval lives on the Advanced tab (#178)
     const select = w
       .findAll('select')
       .find((s) => s.findAll('option').some((o) => o.attributes('value') === '1km'))!

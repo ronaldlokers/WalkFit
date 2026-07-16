@@ -94,6 +94,33 @@ const goalMinutes = defineModel<number>('goalMinutes', { required: true })
 function fmtSynced(ms: number | null) {
   return ms ? new Date(ms).toLocaleString() : t('settings.never')
 }
+
+// Grouped sections (#178): the sheet was one 850px flat scroll with no way to jump
+// to just "the goals" — split into named panels navigated from a tab row instead.
+// Adapted from the issue's sidebar mockup to a horizontal tab row so the same
+// component works at the sheet's mobile bottom-sheet width, not just the desktop
+// dialog size — the same pattern WorkoutPicker's tabs and the old Statistics tabs
+// already used elsewhere in this app.
+type SettingsSection = 'devices' | 'goals' | 'display' | 'integrations' | 'data' | 'advanced'
+const SETTINGS_SECTIONS: SettingsSection[] = [
+  'devices',
+  'goals',
+  'display',
+  'integrations',
+  'data',
+  'advanced',
+]
+// t()'s MessageKey is a strict literal union — a template-string key like
+// `settings.section.${sec}` doesn't satisfy it, hence this lookup instead
+const SECTION_LABEL: Record<SettingsSection, () => string> = {
+  devices: () => t('settings.section.devices'),
+  goals: () => t('settings.section.goals'),
+  display: () => t('settings.section.display'),
+  integrations: () => t('settings.section.integrations'),
+  data: () => t('settings.section.data'),
+  advanced: () => t('settings.section.advanced'),
+}
+const section = ref<SettingsSection>('devices')
 </script>
 
 <template>
@@ -102,278 +129,304 @@ function fmtSynced(ms: number | null) {
       <h2>{{ t('settings.title') }}</h2>
       <button class="x" @click="emit('close')">✕</button>
     </div>
+
+    <div class="settings-tabs">
+      <button
+        v-for="sec in SETTINGS_SECTIONS"
+        :key="sec"
+        class="settings-tab"
+        :class="{ on: section === sec }"
+        @click="section = sec"
+      >
+        {{ SECTION_LABEL[sec]() }}
+      </button>
+    </div>
+
     <div class="settings">
-      <h3>{{ t('settings.treadmill') }}</h3>
-      <div class="set-row">
-        <span>{{
-          tm.state.connected
-            ? tm.state.deviceName
-            : tm.state.remembered
-              ? t('settings.remembered')
-              : t('settings.notConnected')
-        }}</span>
-        <div class="set-actions">
-          <button
-            v-if="!tm.state.connected"
-            class="btn ghost sm"
-            :disabled="tm.state.connecting"
-            @click="tm.connect"
-          >
-            {{ tm.state.connecting ? t('settings.connecting') : t('settings.connect') }}
-          </button>
-          <button v-else class="btn ghost sm" @click="tm.disconnect">
-            {{ t('settings.disconnect') }}
-          </button>
-          <button v-if="tm.state.remembered" class="btn ghost sm forget" @click="tm.forget">
-            {{ t('settings.forget') }}
-          </button>
-        </div>
-      </div>
-
-      <h3>{{ t('settings.heartRate') }}</h3>
-      <div class="set-row">
-        <span>{{
-          hr.state.connected
-            ? hr.state.deviceName
-            : hr.state.remembered
-              ? t('settings.remembered')
-              : t('settings.notConnected')
-        }}</span>
-        <div class="set-actions">
-          <button
-            v-if="!hr.state.connected"
-            class="btn ghost sm"
-            :disabled="hr.state.connecting"
-            @click="hr.connect"
-          >
-            {{ hr.state.connecting ? t('settings.connecting') : t('settings.connect') }}
-          </button>
-          <button v-else class="btn ghost sm" @click="hr.disconnect">
-            {{ t('settings.disconnect') }}
-          </button>
-          <button v-if="hr.state.remembered" class="btn ghost sm forget" @click="hr.forget">
-            {{ t('settings.forget') }}
-          </button>
-        </div>
-      </div>
-      <div class="set-row">
-        <span>{{ t('settings.maxHr') }}</span>
-        <input v-model.number="maxHr" type="number" min="120" max="220" />
-      </div>
-      <p class="set-note">
-        {{
-          t('settings.fatburnNote', { lo: Math.round(maxHr * 0.6), hi: Math.round(maxHr * 0.7) })
-        }}
-      </p>
-      <div class="set-row">
-        <span>{{ t('settings.weight') }}</span>
-        <span class="set-inline">
-          <input
-            v-model.number="weightKg"
-            type="number"
-            min="30"
-            max="250"
-            @change="emit('weight-changed')"
-          />
-          <span class="set-unit">kg</span>
-        </span>
-      </div>
-      <p class="set-note">{{ t('settings.weightNote') }}</p>
-      <div class="set-row">
-        <span>{{ t('settings.goalWeight') }}</span>
-        <span class="set-inline">
-          <input v-model.number="goalWeight" type="number" min="0" max="250" placeholder="—" />
-          <span class="set-unit">kg</span>
-        </span>
-      </div>
-      <p class="set-note">{{ t('settings.goalWeightNote') }}</p>
-
-      <h3>{{ t('settings.dailyGoals') }}</h3>
-      <div class="set-row">
-        <span>{{ t('settings.calories') }}</span>
-        <span class="set-inline">
-          <input v-model.number="goalKcal" type="number" min="50" max="5000" step="50" />
-          <span class="set-unit">kcal</span>
-        </span>
-      </div>
-      <div class="set-row">
-        <span>{{ t('settings.steps') }}</span>
-        <input v-model.number="goalSteps" type="number" min="500" max="50000" step="500" />
-      </div>
-      <div class="set-row">
-        <span>{{ t('settings.activityTime') }}</span>
-        <span class="set-inline">
-          <input v-model.number="goalMinutes" type="number" min="5" max="300" step="5" />
-          <span class="set-unit">min</span>
-        </span>
-      </div>
-      <p class="set-note">{{ t('settings.goalsNote') }}</p>
-
-      <h3>{{ t('settings.display') }}</h3>
-      <div class="set-row">
-        <span>{{ t('settings.trackView') }}</span>
-        <div class="set-actions">
-          <button
-            :class="viewMode === 'track' ? 'btn primary sm' : 'btn ghost sm'"
-            @click="viewMode = 'track'"
-          >
-            2D
-          </button>
-          <button
-            :class="viewMode === 'scenic' ? 'btn primary sm' : 'btn ghost sm'"
-            :disabled="!scenicSupported"
-            :title="scenicSupported ? undefined : t('settings.needsWebgl')"
-            @click="viewMode = 'scenic'"
-          >
-            3D
-          </button>
-        </div>
-      </div>
-      <div class="set-row">
-        <span>{{ t('settings.language') }}</span>
-        <select v-model="locale" class="set-select">
-          <option v-for="l in LOCALES" :key="l.id" :value="l.id">{{ l.label }}</option>
-        </select>
-      </div>
-      <div class="set-row">
-        <span>{{ t('settings.timeOfDay') }}</span>
-        <select v-model="scenicTime" class="set-select">
-          <option value="auto">{{ t('settings.todAuto') }}</option>
-          <option value="dawn">{{ t('settings.todDawn') }}</option>
-          <option value="day">{{ t('settings.todDay') }}</option>
-          <option value="sunset">{{ t('settings.todSunset') }}</option>
-          <option value="night">{{ t('settings.todNight') }}</option>
-        </select>
-      </div>
-
-      <template v-if="strava.state.supported">
-        <h3>Strava</h3>
+      <template v-if="section === 'devices'">
+        <h3>{{ t('settings.treadmill') }}</h3>
         <div class="set-row">
           <span>{{
-            strava.state.connected
-              ? strava.state.athleteName || t('settings.connected')
-              : t('settings.notConnected')
+            tm.state.connected
+              ? tm.state.deviceName
+              : tm.state.remembered
+                ? t('settings.remembered')
+                : t('settings.notConnected')
           }}</span>
           <div class="set-actions">
             <button
-              v-if="!strava.state.connected"
+              v-if="!tm.state.connected"
               class="btn ghost sm"
-              :disabled="strava.state.connecting"
-              @click="strava.connect"
+              :disabled="tm.state.connecting"
+              @click="tm.connect"
             >
-              {{ strava.state.connecting ? t('settings.connecting') : t('settings.connect') }}
+              {{ tm.state.connecting ? t('settings.connecting') : t('settings.connect') }}
             </button>
-            <button v-else class="btn ghost sm" @click="strava.disconnect">
+            <button v-else class="btn ghost sm" @click="tm.disconnect">
               {{ t('settings.disconnect') }}
+            </button>
+            <button v-if="tm.state.remembered" class="btn ghost sm forget" @click="tm.forget">
+              {{ t('settings.forget') }}
             </button>
           </div>
         </div>
-        <p v-if="strava.state.error" class="set-note warn-note">{{ strava.state.error }}</p>
-        <div v-if="strava.state.connected" class="set-row">
-          <span>{{ t('settings.autoUpload') }}</span>
-          <input v-model="stravaAutoUpload" type="checkbox" class="set-check" />
+
+        <h3>{{ t('settings.heartRate') }}</h3>
+        <div class="set-row">
+          <span>{{
+            hr.state.connected
+              ? hr.state.deviceName
+              : hr.state.remembered
+                ? t('settings.remembered')
+                : t('settings.notConnected')
+          }}</span>
+          <div class="set-actions">
+            <button
+              v-if="!hr.state.connected"
+              class="btn ghost sm"
+              :disabled="hr.state.connecting"
+              @click="hr.connect"
+            >
+              {{ hr.state.connecting ? t('settings.connecting') : t('settings.connect') }}
+            </button>
+            <button v-else class="btn ghost sm" @click="hr.disconnect">
+              {{ t('settings.disconnect') }}
+            </button>
+            <button v-if="hr.state.remembered" class="btn ghost sm forget" @click="hr.forget">
+              {{ t('settings.forget') }}
+            </button>
+          </div>
+        </div>
+        <div class="set-row">
+          <span>{{ t('settings.maxHr') }}</span>
+          <input v-model.number="maxHr" type="number" min="120" max="220" />
         </div>
         <p class="set-note">
-          {{ stravaAutoUpload ? t('settings.autoUploadOn') : t('settings.autoUploadOff') }}
+          {{
+            t('settings.fatburnNote', { lo: Math.round(maxHr * 0.6), hi: Math.round(maxHr * 0.7) })
+          }}
         </p>
       </template>
 
-      <template v-for="p in providers" :key="p.id">
-        <template v-if="p.state.supported">
-          <h3>{{ p.name }}</h3>
+      <template v-else-if="section === 'goals'">
+        <div class="set-row">
+          <span>{{ t('settings.weight') }}</span>
+          <span class="set-inline">
+            <input
+              v-model.number="weightKg"
+              type="number"
+              min="30"
+              max="250"
+              @change="emit('weight-changed')"
+            />
+            <span class="set-unit">kg</span>
+          </span>
+        </div>
+        <p class="set-note">{{ t('settings.weightNote') }}</p>
+        <div class="set-row">
+          <span>{{ t('settings.goalWeight') }}</span>
+          <span class="set-inline">
+            <input v-model.number="goalWeight" type="number" min="0" max="250" placeholder="—" />
+            <span class="set-unit">kg</span>
+          </span>
+        </div>
+        <p class="set-note">{{ t('settings.goalWeightNote') }}</p>
+
+        <h3>{{ t('settings.dailyGoals') }}</h3>
+        <div class="set-row">
+          <span>{{ t('settings.calories') }}</span>
+          <span class="set-inline">
+            <input v-model.number="goalKcal" type="number" min="50" max="5000" step="50" />
+            <span class="set-unit">kcal</span>
+          </span>
+        </div>
+        <div class="set-row">
+          <span>{{ t('settings.steps') }}</span>
+          <input v-model.number="goalSteps" type="number" min="500" max="50000" step="500" />
+        </div>
+        <div class="set-row">
+          <span>{{ t('settings.activityTime') }}</span>
+          <span class="set-inline">
+            <input v-model.number="goalMinutes" type="number" min="5" max="300" step="5" />
+            <span class="set-unit">min</span>
+          </span>
+        </div>
+        <p class="set-note">{{ t('settings.goalsNote') }}</p>
+      </template>
+
+      <template v-else-if="section === 'display'">
+        <div class="set-row">
+          <span>{{ t('settings.trackView') }}</span>
+          <div class="set-actions">
+            <button
+              :class="viewMode === 'track' ? 'btn primary sm' : 'btn ghost sm'"
+              @click="viewMode = 'track'"
+            >
+              2D
+            </button>
+            <button
+              :class="viewMode === 'scenic' ? 'btn primary sm' : 'btn ghost sm'"
+              :disabled="!scenicSupported"
+              :title="scenicSupported ? undefined : t('settings.needsWebgl')"
+              @click="viewMode = 'scenic'"
+            >
+              3D
+            </button>
+          </div>
+        </div>
+        <div class="set-row">
+          <span>{{ t('settings.language') }}</span>
+          <select v-model="locale" class="set-select">
+            <option v-for="l in LOCALES" :key="l.id" :value="l.id">{{ l.label }}</option>
+          </select>
+        </div>
+        <div class="set-row">
+          <span>{{ t('settings.timeOfDay') }}</span>
+          <select v-model="scenicTime" class="set-select">
+            <option value="auto">{{ t('settings.todAuto') }}</option>
+            <option value="dawn">{{ t('settings.todDawn') }}</option>
+            <option value="day">{{ t('settings.todDay') }}</option>
+            <option value="sunset">{{ t('settings.todSunset') }}</option>
+            <option value="night">{{ t('settings.todNight') }}</option>
+          </select>
+        </div>
+      </template>
+
+      <template v-else-if="section === 'integrations'">
+        <template v-if="strava.state.supported">
+          <h3>Strava</h3>
           <div class="set-row">
             <span>{{
-              p.state.connected
-                ? p.state.accountLabel || t('settings.connected')
+              strava.state.connected
+                ? strava.state.athleteName || t('settings.connected')
                 : t('settings.notConnected')
             }}</span>
             <div class="set-actions">
               <button
-                v-if="!p.state.connected"
+                v-if="!strava.state.connected"
                 class="btn ghost sm"
-                :disabled="p.state.connecting"
-                @click="p.connect"
+                :disabled="strava.state.connecting"
+                @click="strava.connect"
               >
-                {{ p.state.connecting ? t('settings.connecting') : t('settings.connect') }}
+                {{ strava.state.connecting ? t('settings.connecting') : t('settings.connect') }}
               </button>
-              <template v-else>
-                <button
-                  class="btn ghost sm"
-                  :disabled="p.state.syncing"
-                  @click="emit('sync-provider', p)"
-                >
-                  {{ p.state.syncing ? t('settings.syncing') : t('settings.syncNow') }}
-                </button>
-                <button class="btn ghost sm" @click="p.disconnect">
-                  {{ t('settings.disconnect') }}
-                </button>
-              </template>
+              <button v-else class="btn ghost sm" @click="strava.disconnect">
+                {{ t('settings.disconnect') }}
+              </button>
             </div>
           </div>
-          <p v-if="p.state.error" class="set-note warn-note">{{ p.state.error }}</p>
+          <p v-if="strava.state.error" class="set-note warn-note">{{ strava.state.error }}</p>
+          <div v-if="strava.state.connected" class="set-row">
+            <span>{{ t('settings.autoUpload') }}</span>
+            <input v-model="stravaAutoUpload" type="checkbox" class="set-check" />
+          </div>
           <p class="set-note">
-            {{ t('settings.weighInsSync')
-            }}{{
-              p.state.connected
-                ? t('settings.lastSynced', { when: fmtSynced(p.state.lastSync) })
-                : ''
-            }}.
+            {{ stravaAutoUpload ? t('settings.autoUploadOn') : t('settings.autoUploadOff') }}
           </p>
         </template>
+
+        <template v-for="p in providers" :key="p.id">
+          <template v-if="p.state.supported">
+            <h3>{{ p.name }}</h3>
+            <div class="set-row">
+              <span>{{
+                p.state.connected
+                  ? p.state.accountLabel || t('settings.connected')
+                  : t('settings.notConnected')
+              }}</span>
+              <div class="set-actions">
+                <button
+                  v-if="!p.state.connected"
+                  class="btn ghost sm"
+                  :disabled="p.state.connecting"
+                  @click="p.connect"
+                >
+                  {{ p.state.connecting ? t('settings.connecting') : t('settings.connect') }}
+                </button>
+                <template v-else>
+                  <button
+                    class="btn ghost sm"
+                    :disabled="p.state.syncing"
+                    @click="emit('sync-provider', p)"
+                  >
+                    {{ p.state.syncing ? t('settings.syncing') : t('settings.syncNow') }}
+                  </button>
+                  <button class="btn ghost sm" @click="p.disconnect">
+                    {{ t('settings.disconnect') }}
+                  </button>
+                </template>
+              </div>
+            </div>
+            <p v-if="p.state.error" class="set-note warn-note">{{ p.state.error }}</p>
+            <p class="set-note">
+              {{ t('settings.weighInsSync')
+              }}{{
+                p.state.connected
+                  ? t('settings.lastSynced', { when: fmtSynced(p.state.lastSync) })
+                  : ''
+              }}.
+            </p>
+          </template>
+        </template>
+        <p v-if="!strava.state.supported && !providers.some((p) => p.state.supported)" class="hint">
+          {{ t('settings.noIntegrations') }}
+        </p>
       </template>
 
-      <h3>{{ t('settings.data') }}</h3>
-      <div class="set-row">
-        <span>{{ t('settings.backup') }}</span>
-        <div class="set-actions">
-          <button class="btn ghost sm" @click="doExport">{{ t('settings.export') }}</button>
-          <button class="btn ghost sm" @click="fileInput?.click()">
-            {{ t('settings.import') }}
-          </button>
-          <input
-            ref="fileInput"
-            type="file"
-            class="file-hidden"
-            accept="application/json"
-            @change="doImport"
-          />
+      <template v-else-if="section === 'data'">
+        <div class="set-row">
+          <span>{{ t('settings.backup') }}</span>
+          <div class="set-actions">
+            <button class="btn ghost sm" @click="doExport">{{ t('settings.export') }}</button>
+            <button class="btn ghost sm" @click="fileInput?.click()">
+              {{ t('settings.import') }}
+            </button>
+            <input
+              ref="fileInput"
+              type="file"
+              class="file-hidden"
+              accept="application/json"
+              @change="doImport"
+            />
+          </div>
         </div>
-      </div>
-      <div class="set-row">
-        <span>{{ t('settings.csvExport') }}</span>
-        <button class="btn ghost sm" @click="doExportCsv">{{ t('settings.export') }}</button>
-      </div>
-      <label class="set-note tokens-opt">
-        <input v-model="includeTokens" type="checkbox" />
-        {{ t('settings.includeTokens') }}
-      </label>
-      <p class="set-note">
-        {{ dataMsg || t('settings.importNote') }}
-      </p>
+        <div class="set-row">
+          <span>{{ t('settings.csvExport') }}</span>
+          <button class="btn ghost sm" @click="doExportCsv">{{ t('settings.export') }}</button>
+        </div>
+        <label class="set-note tokens-opt">
+          <input v-model="includeTokens" type="checkbox" />
+          {{ t('settings.includeTokens') }}
+        </label>
+        <p class="set-note">
+          {{ dataMsg || t('settings.importNote') }}
+        </p>
+      </template>
 
-      <h3>{{ t('settings.sound') }}</h3>
-      <label class="set-row toggle">
-        <span>{{ t('settings.audioCues') }}</span>
-        <input v-model="audioOn" type="checkbox" />
-      </label>
-      <p class="set-note">{{ t('settings.soundNote') }}</p>
-      <div class="set-row">
-        <span>{{ t('settings.announce') }}</span>
-        <select v-model="announceEvery" class="set-select">
-          <option value="off">{{ t('settings.announceOff') }}</option>
-          <option value="1km">1 km</option>
-          <option value="2km">2 km</option>
-          <option value="5min">5 min</option>
-          <option value="10min">10 min</option>
-        </select>
-      </div>
-      <p class="set-note">{{ t('settings.announceNote') }}</p>
+      <template v-else-if="section === 'advanced'">
+        <h3>{{ t('settings.sound') }}</h3>
+        <label class="set-row toggle">
+          <span>{{ t('settings.audioCues') }}</span>
+          <input v-model="audioOn" type="checkbox" />
+        </label>
+        <p class="set-note">{{ t('settings.soundNote') }}</p>
+        <div class="set-row">
+          <span>{{ t('settings.announce') }}</span>
+          <select v-model="announceEvery" class="set-select">
+            <option value="off">{{ t('settings.announceOff') }}</option>
+            <option value="1km">1 km</option>
+            <option value="2km">2 km</option>
+            <option value="5min">5 min</option>
+            <option value="10min">10 min</option>
+          </select>
+        </div>
+        <p class="set-note">{{ t('settings.announceNote') }}</p>
 
-      <h3>{{ t('settings.advanced') }}</h3>
-      <label class="set-row toggle">
-        <span>{{ t('settings.debug') }}</span>
-        <input v-model="debugOn" type="checkbox" />
-      </label>
+        <label class="set-row toggle">
+          <span>{{ t('settings.debug') }}</span>
+          <input v-model="debugOn" type="checkbox" />
+        </label>
+      </template>
     </div>
   </div>
 </template>
@@ -445,6 +498,32 @@ function fmtSynced(ms: number | null) {
 }
 .warn-note {
   color: #ff7f50;
+}
+/* section tabs (#178) — same chip pattern as WorkoutPicker's tabs / the old
+   Statistics tabs, chosen over the mockup's sidebar so this one component still
+   works at the sheet's mobile bottom-sheet width */
+.settings-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 4px 0 14px;
+}
+.settings-tab {
+  flex: 1 1 auto;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  color: #5a789a;
+  border-radius: 10px;
+  padding: 9px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.settings-tab.on {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 700;
 }
 .settings {
   display: flex;

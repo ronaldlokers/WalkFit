@@ -171,6 +171,7 @@ test.describe('settings', () => {
     await maxHr.fill('185')
     await maxHr.dispatchEvent('change')
     await expect.poll(() => page.evaluate(() => localStorage.getItem('walkfit.maxhr'))).toBe('185')
+    await page.getByRole('button', { name: 'Goals' }).click() // daily goals live on their own tab (#178)
     const goalKcal = page.locator('input[min="50"][max="5000"]')
     await goalKcal.fill('600')
     await goalKcal.dispatchEvent('change')

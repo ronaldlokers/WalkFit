@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { currentStreak, dailyTotals, weekStart } from './statistics'
+import { currentStreak, longestStreak, weeklyTotals, dailyTotals, weekStart } from './statistics'
 import type { Session, Goals } from './statistics'
 import { SPEED_MAX } from './treadmill'
 import type { WeightEntry } from './weight'
@@ -383,6 +383,55 @@ const monthDowLabels = computed(() => {
   void locale.value
   return Array.from({ length: 7 }, (_, i) => dayLabel(`2026-07-${String(6 + i).padStart(2, '0')}`))
 })
+
+// --- personal records + milestone badges (#141) ---
+// All-time best 400 m lap used to live here too, keyed off walkfit.bestLap — dropped
+// along with the scenic-view ghost that consumed it (#175); this section only shows
+// records the session log itself still backs.
+const records = computed(() => {
+  const s = props.sessions
+  let longestWalkM = 0
+  let longestWalkDate: string | null = null
+  let lifetimeM = 0
+  const kcalByDay = new Map<string, { kcal: number; date: string }>()
+  for (const sess of s) {
+    if (sess.distance > longestWalkM) {
+      longestWalkM = sess.distance
+      longestWalkDate = sess.date
+    }
+    lifetimeM += sess.distance
+    const key = new Date(sess.date).toDateString()
+    const day = kcalByDay.get(key)
+    if (day) day.kcal += sess.kcal
+    else kcalByDay.set(key, { kcal: sess.kcal, date: sess.date })
+  }
+  let bestDay = { kcal: 0, date: null as string | null }
+  for (const day of kcalByDay.values()) if (day.kcal > bestDay.kcal) bestDay = day
+  const weeks = weeklyTotals(s)
+  const bestWeekM = weeks.length ? Math.max(...weeks.map((w) => w.distance)) : 0
+  return {
+    longestWalkM,
+    longestWalkDate,
+    bestDayKcal: Math.round(bestDay.kcal),
+    bestDayDate: bestDay.date,
+    bestWeekKm: bestWeekM / 1000,
+    lifetimeKm: lifetimeM / 1000,
+    lifetimeSessions: s.length,
+    longestStreakEver: longestStreak(s),
+  }
+})
+const DISTANCE_BADGES = [100, 500, 1000, 2500]
+const SESSION_BADGES = [10, 50, 100, 365]
+const distanceBadges = computed(() =>
+  DISTANCE_BADGES.map((km) => ({ km, unlocked: records.value.lifetimeKm >= km })),
+)
+const sessionBadges = computed(() =>
+  SESSION_BADGES.map((n) => ({ n, unlocked: records.value.lifetimeSessions >= n })),
+)
+function shortDate(iso: string | null) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' })
+}
 </script>
 
 <template>
@@ -696,6 +745,62 @@ const monthDowLabels = computed(() => {
             :class="cell ? `lv${cell.level}` : 'blank'"
             :title="cell ? cellTitle(cell) : undefined"
             >{{ cell ? cellDay(cell.date) : '' }}</span
+          >
+        </div>
+      </div>
+
+      <!-- Personal records + milestone badges (#141) -->
+      <div v-if="sessions.length" class="card">
+        <h3>
+          <span>{{ t('stats.records') }}</span>
+        </h3>
+        <div class="detail-tiles record-tiles">
+          <div>
+            <span class="v"
+              >{{ (records.longestWalkM / 1000).toFixed(2) }}<span class="unit">km</span></span
+            >
+            <span class="k">{{ t('stats.recLongestWalk') }}</span>
+            <span class="record-date">{{ shortDate(records.longestWalkDate) }}</span>
+          </div>
+          <div>
+            <span class="v">{{ records.bestDayKcal }}<span class="unit">kcal</span></span>
+            <span class="k">{{ t('stats.recBestDay') }}</span>
+            <span class="record-date">{{ shortDate(records.bestDayDate) }}</span>
+          </div>
+          <div>
+            <span class="v">{{ records.bestWeekKm.toFixed(1) }}<span class="unit">km</span></span>
+            <span class="k">{{ t('stats.recBestWeek') }}</span>
+          </div>
+          <div>
+            <span class="v">{{ Math.round(records.lifetimeKm) }}<span class="unit">km</span></span>
+            <span class="k">{{ t('stats.recLifetimeKm') }}</span>
+          </div>
+          <div>
+            <span class="v">{{ records.lifetimeSessions }}</span>
+            <span class="k">{{ t('stats.recLifetimeWalks') }}</span>
+          </div>
+          <div>
+            <span class="v">{{ records.longestStreakEver }}<span class="unit">🔥</span></span>
+            <span class="k">{{ t('stats.recLongestStreak') }}</span>
+          </div>
+        </div>
+        <h3 class="badges-heading">{{ t('stats.milestones') }}</h3>
+        <div class="badge-row">
+          <span
+            v-for="b in distanceBadges"
+            :key="'km' + b.km"
+            class="badge"
+            :class="{ locked: !b.unlocked }"
+            :title="`${b.km} km`"
+            >🏅<small>{{ b.km }}km</small></span
+          >
+          <span
+            v-for="b in sessionBadges"
+            :key="'n' + b.n"
+            class="badge"
+            :class="{ locked: !b.unlocked }"
+            :title="`${b.n} walks`"
+            >🥾<small>{{ b.n }}</small></span
           >
         </div>
       </div>
@@ -1260,5 +1365,50 @@ const monthDowLabels = computed(() => {
 .month-cell.lv4 {
   background: var(--accent);
   color: #fff;
+}
+
+/* --- personal records + milestone badges (#141) --- */
+.record-tiles {
+  grid-template-columns: repeat(3, 1fr);
+}
+.record-date {
+  display: block;
+  font-size: 9.5px;
+  color: #7b8da1;
+  margin-top: 2px;
+}
+.badges-heading {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: #5a789a;
+  margin: 16px 0 10px;
+}
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 20px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+}
+.badge small {
+  font-size: 10px;
+  font-weight: 700;
+  color: #17324d;
+}
+/* not yet earned — greyed and desaturated, not hidden, so the next goal is visible */
+.badge.locked {
+  filter: grayscale(1);
+  opacity: 0.4;
 }
 </style>

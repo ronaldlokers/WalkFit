@@ -259,3 +259,24 @@ export function currentStreak(sessions: Session[], now = new Date()): number {
   }
   return streak
 }
+
+// Longest-ever consecutive-day run, regardless of whether it's still active (#141) —
+// currentStreak() only reports the streak ending today/yesterday. Days are reduced to
+// a local-midnight day-index so "consecutive" is a plain integer difference of 1,
+// immune to DST's occasional 23/25-hour days.
+export function longestStreak(sessions: Session[]): number {
+  if (!sessions.length) return 0
+  const dayIndex = (iso: string) => {
+    const d = new Date(iso)
+    d.setHours(0, 0, 0, 0)
+    return Math.round(d.getTime() / 86400000)
+  }
+  const days = [...new Set(sessions.map((s) => dayIndex(s.date)))].sort((a, b) => a - b)
+  let best = 1,
+    run = 1
+  for (let i = 1; i < days.length; i++) {
+    run = days[i] === days[i - 1]! + 1 ? run + 1 : 1
+    best = Math.max(best, run)
+  }
+  return best
+}

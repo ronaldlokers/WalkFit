@@ -597,6 +597,57 @@ describe('in-session speed/HR series (#149)', () => {
   })
 })
 
+describe('new-PB celebration (#141)', () => {
+  const spoken: string[] = []
+  beforeEach(() => {
+    spoken.length = 0
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        text: string
+        lang = ''
+        rate = 1
+        constructor(text: string) {
+          this.text = text
+        }
+      },
+    )
+    vi.stubGlobal('speechSynthesis', {
+      cancel: vi.fn(),
+      speak: (u: { text: string }) => spoken.push(u.text),
+    })
+  })
+
+  it('stays silent on the first-ever walk, then celebrates a longer one', async () => {
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    await walk(w, 1000, 600)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(spoken).toHaveLength(0) // nothing to beat yet
+
+    await clickButton(w, 'Start')
+    await walk(w, 1500, 900) // longer than the first walk
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(spoken.some((s) => s.includes('record'))).toBe(true)
+  })
+
+  it('does not celebrate a walk shorter than the existing record', async () => {
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    await walk(w, 2000, 1200)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+
+    await clickButton(w, 'Start')
+    await walk(w, 500, 300)
+    await clickButton(w, 'Stop')
+    await w.vm.$nextTick()
+    expect(spoken.some((s) => s.includes('record'))).toBe(false)
+  })
+})
+
 describe('avgHr sampling (#132)', () => {
   it('averages over time, not over value changes', async () => {
     fakeHr.connected = true

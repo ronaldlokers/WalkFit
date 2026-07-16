@@ -79,6 +79,9 @@ const emit = defineEmits<{
 const maxHr = defineModel<number>('maxHr', { required: true })
 const weightKg = defineModel<number>('weightKg', { required: true })
 const audioOn = defineModel<boolean>('audioOn', { required: true })
+const announceEvery = defineModel<'off' | '1km' | '2km' | '5min' | '10min'>('announceEvery', {
+  required: true,
+})
 const debugOn = defineModel<boolean>('debugOn', { required: true })
 const stravaAutoUpload = defineModel<boolean>('stravaAutoUpload', { required: true })
 const goalWeight = defineModel<number>('goalWeight', { required: true })
@@ -354,6 +357,17 @@ function fmtSynced(ms: number | null) {
         <input v-model="audioOn" type="checkbox" />
       </label>
       <p class="set-note">{{ t('settings.soundNote') }}</p>
+      <div class="set-row">
+        <span>{{ t('settings.announce') }}</span>
+        <select v-model="announceEvery" class="set-select">
+          <option value="off">{{ t('settings.announceOff') }}</option>
+          <option value="1km">1 km</option>
+          <option value="2km">2 km</option>
+          <option value="5min">5 min</option>
+          <option value="10min">10 min</option>
+        </select>
+      </div>
+      <p class="set-note">{{ t('settings.announceNote') }}</p>
 
       <h3>{{ t('settings.advanced') }}</h3>
       <label class="set-row toggle">

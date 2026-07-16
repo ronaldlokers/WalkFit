@@ -201,6 +201,10 @@ const en = {
   'settings.advanced': 'Advanced',
   'settings.importNote': 'Sessions and weigh-ins merge on import; settings overwrite.',
   'settings.soundNote': 'Countdown beeps + spoken speed at segment changes, lap chime.',
+  'settings.announce': 'Announce every',
+  'settings.announceOff': 'Off',
+  'settings.announceNote':
+    'Speaks distance, time and pace during free walks — off by default, handy when the screen isn’t watched.',
   'settings.never': 'never',
 
   // strava
@@ -220,6 +224,7 @@ const en = {
   'speech.speedUp': 'speeding up to {v} in 5 seconds',
   'speech.slowDown': 'slowing down to {v} in 5 seconds',
   'speech.complete': '{name} complete',
+  'speech.announce': '{dist} kilometers, {time}, pace {pace} per kilometer',
   'session.freeWalk': 'Free walk',
   'session.hrWorkout': '{name} HR workout',
   'warn.noWebBtTm': 'Web Bluetooth not available — use Chrome or Edge.',
@@ -418,6 +423,10 @@ const nl: Record<MessageKey, string> = {
   'settings.importNote':
     'Sessies en wegingen worden samengevoegd bij import; instellingen worden overschreven.',
   'settings.soundNote': 'Aftelpiepjes + gesproken snelheid bij segmentwissels, rondebel.',
+  'settings.announce': 'Omroepen elke',
+  'settings.announceOff': 'Uit',
+  'settings.announceNote':
+    'Spreekt afstand, tijd en tempo uit tijdens vrije wandelingen — standaard uit, handig als je niet naar het scherm kijkt.',
   'settings.never': 'nooit',
 
   'strava.uploadTitle': 'Uploaden naar Strava?',
@@ -435,6 +444,7 @@ const nl: Record<MessageKey, string> = {
   'speech.speedUp': 'over 5 seconden versnellen naar {v}',
   'speech.slowDown': 'over 5 seconden vertragen naar {v}',
   'speech.complete': '{name} voltooid',
+  'speech.announce': '{dist} kilometer, {time}, tempo {pace} per kilometer',
   'session.freeWalk': 'Vrije wandeling',
   'session.hrWorkout': 'HR-workout {name}',
   'warn.noWebBtTm': 'Web Bluetooth niet beschikbaar — gebruik Chrome of Edge.',

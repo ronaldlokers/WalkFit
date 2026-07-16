@@ -381,8 +381,23 @@ function fmtSynced(ms: number | null) {
   gap: 10px;
   position: sticky;
   top: 0;
-  background: transparent;
-  padding: 10px 0;
+  z-index: 2;
+  /* was transparent — scrolled content bled through the sticky title (#178). A sticky
+     header inside a constantly-scrolling sheet needs to be near-opaque, not just
+     frosted like a stationary card — content passes directly behind it continuously,
+     not just at rest, so 0.55-0.7 alpha (fine for .stats-topbar, .sstat) still let
+     text show through here. */
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(16px);
+  margin: 0 -16px;
+  padding: 10px 16px;
+  border-radius: 20px 20px 0 0;
+}
+@media (min-width: 900px) {
+  .sheet-head {
+    margin: 0 -24px;
+    padding: 10px 24px;
+  }
 }
 .sheet-head h2 {
   font-size: 18px;

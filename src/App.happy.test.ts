@@ -122,7 +122,7 @@ describe('App happy path', () => {
     await clickButton(w, 'Free walk')
     await clickButton(w, '☰')
     await clickButton(w, 'Statistics')
-    await clickButton(w, 'Weight') // tab (#115 mock №3)
+    // weight always visible on the single-page dashboard, no tab click (#178)
     expect(w.find('.weight-section').exists()).toBe(true)
     expect(w.text()).toContain('No weigh-ins yet')
 
@@ -141,7 +141,7 @@ describe('App happy path', () => {
     vi.useRealTimers()
   })
 
-  it('statistics dashboard: hero band, tabs, Mon-Sun week navigation (#115)', async () => {
+  it('statistics dashboard: hero band, single-page sections, Mon-Sun week navigation (#115, #178)', async () => {
     // 2026-07-13 is a Monday; seed one walk that Monday and one the Sunday before
     // (previous calendar week) — the week view must separate them.
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T20:00:00') })
@@ -179,17 +179,15 @@ describe('App happy path', () => {
     const hero = w.find('.hero-band').text()
     expect(hero).toContain('1.5') // km this week
     expect(hero).toContain('72') // kcal this week
-    // Activity tab is the default: three day charts with a full Mon-Sun axis
+    // Activity: three day charts with a full Mon-Sun axis
     expect(w.findAll('.activity-grid .card').length).toBe(3)
     expect(w.findAll('.activity-grid .card')[0]!.findAll('.bar-slot').length).toBe(7)
     expect(w.findAll('.card-total').map((t) => t.text())).toContain('1800 steps')
 
-    // HR tab shows Monday's span only
-    await clickButton(w, 'Heart rate')
+    // Heart rate: Monday's span only — same page, no tab click needed (#178)
     expect(w.findAll('.hr-span').length).toBe(1)
 
-    // Walks tab lists only this week's walk
-    await clickButton(w, 'Walks')
+    // Walks: lists only this week's walk
     expect(w.findAll('.walk-row').length).toBe(1)
     expect(w.find('.walk-row').text()).toContain('1.50 km')
 
@@ -232,7 +230,6 @@ describe('App happy path', () => {
       .findAll('.menu-item')
       .find((b) => b.text().includes('Statistics'))!
       .trigger('click')
-    await clickButton(w, 'Walks')
     expect(w.findAll('.walk-row')).toHaveLength(1)
     expect(w.find('.walk-row').text()).toContain('800 m')
     vi.useRealTimers()
@@ -300,7 +297,6 @@ describe('App happy path', () => {
     await clickButton(w, 'Free walk')
     await clickButton(w, '☰')
     await clickButton(w, 'Statistics')
-    await clickButton(w, 'Weight')
     expect(w.find('.weight-goal-line').exists()).toBe(true)
     expect(w.find('.weight-section').text()).toContain('3.2')
     expect(w.find('.weight-section').text()).toContain('to goal')
@@ -329,7 +325,6 @@ describe('App happy path', () => {
     await clickButton(w, 'Free walk')
     await clickButton(w, '☰')
     await clickButton(w, 'Statistics')
-    await clickButton(w, 'Walks')
 
     const rows = w.findAll('.walk-row')
     expect(rows).toHaveLength(2)

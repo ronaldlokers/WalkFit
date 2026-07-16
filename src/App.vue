@@ -1023,7 +1023,9 @@ const fmtDist = computed(() =>
     : Math.round(state.distance) + ' m',
 )
 const pace = computed(() => {
-  if (state.speed <= 0) return '—'
+  // below the belt's own floor speed, a reading is a startup/ramp transient, not a
+  // real pace (#178) — 3600/speed blows up toward it, e.g. "200:00" at ~0.3 km/h
+  if (state.speed < SPEED_MIN) return '—'
   const s = 3600 / state.speed
   return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
 })
@@ -1369,7 +1371,10 @@ const pace = computed(() => {
         </div>
       </template>
       <template v-else>
-        <div class="imm-meta">
+        <!-- imm-meta's default nowrap+ellipsis is right for a long custom plan name, wrong
+             here — a truncated bpm range reads as a typo (#178), so this status text wraps
+             instead of clipping -->
+        <div class="imm-meta imm-meta-wrap">
           <span class="imm-name">
             HR · {{ hrTargetName }} · {{ hrTargetRange(hrTarget!, maxHr).lo }}–{{
               hrTargetRange(hrTarget!, maxHr).hi
@@ -2291,8 +2296,23 @@ input[type='range']::-webkit-slider-thumb {
   gap: 10px;
   position: sticky;
   top: 0;
-  background: transparent;
-  padding: 10px 0;
+  z-index: 2;
+  /* was transparent — scrolled content bled through the sticky title (#178). A sticky
+     header inside a constantly-scrolling sheet needs to be near-opaque, not just
+     frosted like a stationary card — content passes directly behind it continuously,
+     not just at rest, so 0.55-0.7 alpha (fine for .stats-topbar, .sstat) still let
+     text show through here. */
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(16px);
+  margin: 0 -16px;
+  padding: 10px 16px;
+  border-radius: 20px 20px 0 0;
+}
+@media (min-width: 900px) {
+  .sheet-head {
+    margin: 0 -24px;
+    padding: 10px 24px;
+  }
 }
 .sheet-head h2 {
   font-size: 18px;
@@ -2664,6 +2684,17 @@ input[type='range']::-webkit-slider-thumb {
   align-items: center;
   gap: 10px;
   font-size: 12.5px;
+}
+/* HR ribbon status (#178): wrap onto its own line instead of ellipsis-clipping the
+   bpm range — a truncated number reads as a typo, unlike a long plan name */
+.imm-meta-wrap {
+  flex-wrap: wrap;
+}
+.imm-meta-wrap .imm-name {
+  flex-basis: 100%;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 .imm-name {
   color: #17324d;

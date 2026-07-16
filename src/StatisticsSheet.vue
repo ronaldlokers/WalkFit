@@ -140,8 +140,7 @@ const hrLane = computed(() => {
   }
 })
 
-// --- hero band + tabs (#115 mock №3) ---
-const tab = ref<'activity' | 'hr' | 'weight' | 'walks'>('activity')
+// --- hero band (#115 mock №3) ---
 const weekKcal = computed(() => days.value.reduce((a, d) => a + d.kcal, 0))
 const weekDuration = computed(() => days.value.reduce((a, d) => a + d.duration, 0))
 function hhmm(sec: number) {
@@ -324,93 +323,91 @@ function logWeighIn() {
       </div>
     </div>
 
-    <!-- tabs -->
-    <div class="stats-tabs">
-      <button class="chip" :class="{ on: tab === 'activity' }" @click="tab = 'activity'">
-        {{ t('stats.tabActivity') }}
-      </button>
-      <button class="chip" :class="{ on: tab === 'hr' }" @click="tab = 'hr'">
-        {{ t('stats.tabHr') }}
-      </button>
-      <button class="chip" :class="{ on: tab === 'weight' }" @click="tab = 'weight'">
-        {{ t('stats.tabWeight') }}
-      </button>
-      <button class="chip" :class="{ on: tab === 'walks' }" @click="tab = 'walks'">
-        {{ t('stats.tabWalks') }}
-      </button>
-    </div>
-
-    <div v-if="!sessions.length && tab !== 'weight'" class="hist-empty">
-      <span class="hist-empty-icon">🏃</span>
-      <p class="hint">{{ t('stats.empty') }}</p>
-    </div>
-
-    <!-- Activity: kcal / steps / minutes per day, Mon-Sun -->
-    <div v-else-if="tab === 'activity'" class="panel activity-grid">
-      <div v-for="m in barLanes" :key="m.id" class="card">
-        <h3>
-          <span :style="{ color: m.color }">{{ t('stats.perDay', { metric: m.label }) }}</span>
-          <span class="card-total">{{ m.total }} {{ m.unit }}</span>
-        </h3>
-        <div class="bars">
-          <div
-            v-for="(v, i) in m.values"
-            :key="i"
-            class="bar-slot"
-            :title="`${days[i]!.date}: ${v} ${m.unit}`"
-          >
-            <div
-              class="bar"
-              :class="{ today: days[i]!.date === todayKey }"
-              :style="
-                v === 0
-                  ? { height: '2px', background: '#252b37' }
-                  : { height: (v / m.max) * 100 + '%', background: m.color }
-              "
-            ></div>
-          </div>
-        </div>
-        <div class="bar-labels">
-          <span v-for="d in days" :key="d.date" :class="{ 'label-today': d.date === todayKey }">{{
-            dayLabel(d.date)
-          }}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Heart rate: min-max span + avg per day -->
-    <div v-else-if="tab === 'hr'" class="panel">
-      <div class="card">
-        <h3>
-          <span style="color: #ff4757">{{ t('stats.hrPerDay') }}</span>
-          <span class="card-total">{{
-            hrLane ? t('stats.hrRange', { lo: hrLane.lo, hi: hrLane.hi }) : ''
-          }}</span>
-        </h3>
-        <template v-if="hrLane">
-          <div class="bars hr-bars">
-            <div v-for="(b, i) in hrLane.bars" :key="i" class="bar-slot" :title="b ? b.title : ''">
-              <template v-if="b">
+    <!-- Single scrolling page (#178): no tabs — Activity, Heart rate, Weight and Walks
+         all render together instead of behind 4 clicks each hiding ~400px of dead space -->
+    <div class="panel single-page">
+      <template v-if="sessions.length">
+        <!-- Activity: kcal / steps / minutes per day, Mon-Sun -->
+        <div class="activity-grid">
+          <div v-for="m in barLanes" :key="m.id" class="card">
+            <h3>
+              <span :style="{ color: m.color }">{{ t('stats.perDay', { metric: m.label }) }}</span>
+              <span class="card-total">{{ m.total }} {{ m.unit }}</span>
+            </h3>
+            <div class="bars">
+              <div
+                v-for="(v, i) in m.values"
+                :key="i"
+                class="bar-slot"
+                :title="`${days[i]!.date}: ${v} ${m.unit}`"
+              >
                 <div
-                  class="hr-span"
-                  :style="{ bottom: b.bottom + '%', height: b.height + '%' }"
+                  class="bar"
+                  :class="{ today: days[i]!.date === todayKey }"
+                  :style="
+                    v === 0
+                      ? { height: '2px', background: '#252b37' }
+                      : { height: (v / m.max) * 100 + '%', background: m.color }
+                  "
                 ></div>
-                <div v-if="b.avg !== null" class="hr-avg" :style="{ bottom: b.avg + '%' }" />
-              </template>
+              </div>
+            </div>
+            <div class="bar-labels">
+              <span
+                v-for="d in days"
+                :key="d.date"
+                :class="{ 'label-today': d.date === todayKey }"
+                >{{ dayLabel(d.date) }}</span
+              >
             </div>
           </div>
-          <div class="bar-labels">
-            <span v-for="d in days" :key="d.date" :class="{ 'label-today': d.date === todayKey }">{{
-              dayLabel(d.date)
-            }}</span>
-          </div>
-        </template>
-        <p v-else class="hint">{{ t('stats.noHr') }}</p>
-      </div>
-    </div>
+        </div>
 
-    <!-- Weight: full-log trend + weigh-in (reachable even with zero walks) -->
-    <div v-else-if="tab === 'weight'" class="panel">
+        <!-- Heart rate: min-max span + avg dot per day, on a gridded baseline so it
+             reads as a chart instead of floating rectangles (#178) -->
+        <div class="card hr-card">
+          <h3>
+            <span style="color: #ff4757">{{ t('stats.hrPerDay') }}</span>
+            <span class="card-total">{{
+              hrLane ? t('stats.hrRange', { lo: hrLane.lo, hi: hrLane.hi }) : ''
+            }}</span>
+          </h3>
+          <template v-if="hrLane">
+            <div class="bars hr-bars">
+              <div class="hr-grid"><span></span><span></span><span></span></div>
+              <div
+                v-for="(b, i) in hrLane.bars"
+                :key="i"
+                class="bar-slot"
+                :title="b ? b.title : ''"
+              >
+                <template v-if="b">
+                  <div
+                    class="hr-span"
+                    :style="{ bottom: b.bottom + '%', height: b.height + '%' }"
+                  ></div>
+                  <div v-if="b.avg !== null" class="hr-avg" :style="{ bottom: b.avg + '%' }" />
+                </template>
+              </div>
+            </div>
+            <div class="bar-labels">
+              <span
+                v-for="d in days"
+                :key="d.date"
+                :class="{ 'label-today': d.date === todayKey }"
+                >{{ dayLabel(d.date) }}</span
+              >
+            </div>
+          </template>
+          <p v-else class="hint">{{ t('stats.noHr') }}</p>
+        </div>
+      </template>
+      <div v-else class="hist-empty">
+        <span class="hist-empty-icon">🏃</span>
+        <p class="hint">{{ t('stats.empty') }}</p>
+      </div>
+
+      <!-- Weight: full-log trend + weigh-in, reachable even with zero walks -->
       <div class="card weight-section">
         <div v-if="latestWeight" class="detail-tiles hist-tiles">
           <div>
@@ -489,11 +486,9 @@ function logWeighIn() {
           </button>
         </div>
       </div>
-    </div>
 
-    <!-- Walks: the shown week's log, expandable detail + delete (#67) -->
-    <div v-else class="panel">
-      <div class="card">
+      <!-- Walks: the shown week's log, expandable detail + delete (#67) -->
+      <div v-if="sessions.length" class="card">
         <h3>
           <span>{{ t('stats.walkLog') }}</span
           ><span class="card-total">{{ t('stats.walksTotal', { n: sessions.length }) }}</span>
@@ -641,11 +636,13 @@ function logWeighIn() {
 /* --- hero band --- */
 .hero-band {
   display: flex;
-  gap: 40px;
+  gap: 32px;
   justify-content: center;
   align-items: center;
   flex-wrap: wrap;
-  padding: 26px 22px;
+  /* was 26px/side — a whole tab's worth of chrome above the fold mattered more when
+     everything below was 1 tab-click away; now the page starts sooner (#178) */
+  padding: 16px 22px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.7);
   background: transparent;
 }
@@ -654,7 +651,7 @@ function logWeighIn() {
 }
 .hero-v {
   display: block;
-  font-size: 36px;
+  font-size: 28px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
@@ -671,8 +668,8 @@ function logWeighIn() {
 .hero-ring {
   position: relative;
   display: block;
-  width: 58px;
-  height: 58px;
+  width: 46px;
+  height: 46px;
   margin: 0 auto;
 }
 .hero-ring svg {
@@ -699,18 +696,17 @@ function logWeighIn() {
   font-size: 13px;
   font-weight: 800;
 }
-/* --- tabs + panels --- */
-.stats-tabs {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-  padding: 16px 22px 4px;
-  flex-wrap: wrap;
-}
+/* --- single scrolling page (#178): Activity, Heart rate, Weight, Walks all visible,
+   stacked with consistent gaps instead of behind 4 tab clicks --- */
 .panel {
   max-width: 1080px;
   margin: 0 auto;
   padding: 14px 22px;
+}
+.single-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 .activity-grid {
   display: grid;
@@ -779,6 +775,21 @@ function logWeighIn() {
 .hr-bars {
   align-items: stretch;
   height: 130px;
+  position: relative;
+}
+/* faint baseline gridlines (#178) — the bare floating spans read as decoration
+   without them, not a chart */
+.hr-grid {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.hr-grid span {
+  border-top: 1px dashed rgba(23, 50, 77, 0.1);
+  height: 0;
 }
 .hr-span {
   position: absolute;
@@ -788,13 +799,17 @@ function logWeighIn() {
   border: 1px solid #ff4757;
   border-radius: 4px;
 }
+/* a dot reads as "here's the average" more clearly than a hairline bisecting the
+   whole span (#178) */
 .hr-avg {
   position: absolute;
-  left: 22%;
-  width: 56%;
-  height: 2px;
-  border-radius: 1px;
-  background: #17324d;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #17324d;
 }
 .bar-labels {
   display: flex;

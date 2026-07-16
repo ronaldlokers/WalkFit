@@ -670,7 +670,14 @@ function finalizeSession() {
       ...(sessionWorkoutName ? { workout: sessionWorkoutName } : {}),
       ...(seriesPoints.length ? { series: downsampleSeries(seriesPoints) } : {}),
     }
+    // New-PB celebration (#141): only once there's a previous walk to beat — the
+    // very first-ever session isn't a "record" in any meaningful sense.
+    const prevBestDistance = sessions.value.reduce((a, s) => Math.max(a, s.distance), 0)
     sessions.value = addSession(session)
+    if (prevBestDistance > 0 && distance > prevBestDistance) {
+      beep(1568, 200)
+      speak(t('speech.newRecord'))
+    }
     if (strava.state.connected) {
       if (stravaAutoUpload.value) {
         // fire-and-forget (#70): success shows a toast; failure falls back to the prompt

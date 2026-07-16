@@ -254,6 +254,36 @@ describe('App happy path', () => {
     vi.useRealTimers()
   })
 
+  it('personal records + milestone badges (#141)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T20:00:00') })
+    localStorage.setItem(
+      'walkfit.history',
+      JSON.stringify([
+        { date: '2026-07-01T08:00:00', distance: 1000, duration: 600, kcal: 60, avgHr: null },
+        { date: '2026-07-02T08:00:00', distance: 2500, duration: 1500, kcal: 150, avgHr: null }, // longest
+        { date: '2026-07-03T08:00:00', distance: 500, duration: 300, kcal: 30, avgHr: null },
+      ]),
+    )
+    const w = mount(App)
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Free walk')
+    await clickButton(w, '☰')
+    await clickButton(w, 'Statistics')
+
+    const records = w.find('.record-tiles').text()
+    expect(records).toContain('2.50') // longest walk, km
+    expect(records).toContain('4') // lifetime km, 4.0 rounded
+    expect(records).toContain('3') // lifetime walks
+    expect(records).toContain('3') // longest streak (Jul 1-3, consecutive)
+
+    // 4 km lifetime clears no distance badge yet, but 3 walks doesn't clear the
+    // 10-walk badge either — everything should read as locked
+    const badges = w.findAll('.badge')
+    expect(badges.every((b) => b.classes().includes('locked'))).toBe(true)
+    vi.useRealTimers()
+  })
+
   it('week boundary is the local next Monday, not anchor+168h (#135)', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T10:00:00') })
     localStorage.setItem('walkfit.setupDone', '1')

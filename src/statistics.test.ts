@@ -6,6 +6,7 @@ import {
   mergeSessions,
   weeklyTotals,
   currentStreak,
+  longestStreak,
   dailyTotals,
   weekStart,
   loadGoals,
@@ -79,6 +80,34 @@ describe('currentStreak', () => {
 
   it('returns 0 for empty statistics', () => {
     expect(currentStreak([])).toBe(0)
+  })
+})
+
+describe('longestStreak (#141)', () => {
+  it('finds the longest run even if it is not the one still active', () => {
+    const sessions = [
+      { date: '2026-01-01T08:00:00.000Z', distance: 1, duration: 1, kcal: 1, avgHr: null },
+      { date: '2026-01-02T08:00:00.000Z', distance: 1, duration: 1, kcal: 1, avgHr: null },
+      { date: '2026-01-03T08:00:00.000Z', distance: 1, duration: 1, kcal: 1, avgHr: null },
+      { date: '2026-01-04T08:00:00.000Z', distance: 1, duration: 1, kcal: 1, avgHr: null },
+      // gap
+      { date: '2026-01-10T08:00:00.000Z', distance: 1, duration: 1, kcal: 1, avgHr: null },
+      { date: '2026-01-11T08:00:00.000Z', distance: 1, duration: 1, kcal: 1, avgHr: null },
+    ]
+    expect(longestStreak(sessions)).toBe(4) // the Jan 1-4 run, not the still-open 2-day one
+  })
+
+  it('two sessions the same day count once toward the run', () => {
+    const sessions = [
+      { date: '2026-01-01T08:00:00.000Z', distance: 1, duration: 1, kcal: 1, avgHr: null },
+      { date: '2026-01-01T18:00:00.000Z', distance: 1, duration: 1, kcal: 1, avgHr: null },
+      { date: '2026-01-02T08:00:00.000Z', distance: 1, duration: 1, kcal: 1, avgHr: null },
+    ]
+    expect(longestStreak(sessions)).toBe(2)
+  })
+
+  it('returns 0 for empty statistics', () => {
+    expect(longestStreak([])).toBe(0)
   })
 })
 

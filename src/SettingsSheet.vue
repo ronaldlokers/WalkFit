@@ -28,7 +28,7 @@ defineProps<{
   providers: HealthProvider[]
   scenicSupported: boolean
 }>()
-import { exportData, importData } from './backup'
+import { exportData, exportCsv, importData } from './backup'
 import { ref } from 'vue'
 import { t, locale, LOCALES } from './i18n'
 
@@ -44,6 +44,16 @@ function doExport() {
   a.click()
   URL.revokeObjectURL(a.href)
   dataMsg.value = 'Backup downloaded.'
+}
+// CSV export (#147): read-only spreadsheet dump of the session log, separate from
+// the JSON backup above — this one isn't meant to round-trip through Import.
+function doExportCsv() {
+  const blob = new Blob([exportCsv()], { type: 'text/csv' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `walkfit-sessions-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(a.href)
 }
 async function doImport(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
@@ -320,11 +330,15 @@ function fmtSynced(ms: number | null) {
           <input
             ref="fileInput"
             type="file"
-            accept="application/json,.json"
             class="file-hidden"
+            accept="application/json"
             @change="doImport"
           />
         </div>
+      </div>
+      <div class="set-row">
+        <span>{{ t('settings.csvExport') }}</span>
+        <button class="btn ghost sm" @click="doExportCsv">{{ t('settings.export') }}</button>
       </div>
       <label class="set-note tokens-opt">
         <input v-model="includeTokens" type="checkbox" />

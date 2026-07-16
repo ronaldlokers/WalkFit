@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { exportData, importData } from './backup'
+import { exportData, exportCsv, importData } from './backup'
 import { loadStatistics } from './statistics'
 import { loadWeightLog } from './weight'
 
@@ -28,6 +28,24 @@ describe('exportData (#69)', () => {
   it('includes tokens only when asked', () => {
     localStorage.setItem('walkfit.strava', '{"accessToken":"secret"}')
     expect(JSON.parse(exportData(true)).data['walkfit.strava']).toContain('secret')
+  })
+})
+
+describe('exportCsv (#147)', () => {
+  it('newest first, one row per walk, numbers converted to km/minutes', () => {
+    const csv = exportCsv([
+      { ...session('2026-07-13T08:00:00.000Z', 1000), steps: 1200, hrMin: 90, hrMax: 130 },
+      { ...session('2026-07-14T08:00:00.000Z', 2500), duration: 1800 },
+    ])
+    const lines = csv.trim().split('\r\n')
+    expect(lines[0]).toBe('date,distanceKm,durationMin,kcal,steps,avgHr,hrMin,hrMax')
+    expect(lines[1]).toBe('2026-07-14T08:00:00.000Z,2.50,30.0,50,,,,') // newest first
+    expect(lines[2]).toBe('2026-07-13T08:00:00.000Z,1.00,10.0,50,1200,,90,130')
+  })
+
+  it('defaults to the persisted session log when called with no argument', () => {
+    localStorage.setItem('walkfit.history', JSON.stringify([session('2026-07-13T08:00:00.000Z')]))
+    expect(exportCsv().split('\r\n')).toHaveLength(3) // header + 1 row + trailing blank
   })
 })
 

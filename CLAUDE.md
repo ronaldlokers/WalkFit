@@ -137,7 +137,12 @@ Keep pinned Playwright version and image tag in sync.
 - `src/main.ts`, `src/style.css` — bootstrap + global styles/theme vars (`--accent`), plus
   the base `.btn` family — kept unscoped/global (not in `App.vue`'s `<style scoped>`)
   specifically so `WorkoutPicker.vue`'s buttons pick it up too; scoped styles don't cross
-  component boundaries.
+  component boundaries. `main.ts` also registers the offline service worker (#150,
+  `vite-plugin-pwa` configured in `vite.config.ts` with `manifest: false` — the
+  hand-authored `public/manifest.webmanifest` stays the one source of truth for icons/
+  install metadata; the plugin only owns precaching + the SW itself) — production-only
+  (`import.meta.env.PROD`), precaches every built asset including the lazy
+  Scenic3D/three.js chunk, so the 3D view works offline too, not just a 2D fallback.
 
 Treadmill and HR two independent GATT devices; each needs own user-gesture connect
 first time. Both composables expose `autoConnect()` (called on mount) which silently

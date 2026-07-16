@@ -182,3 +182,39 @@ test.describe('settings', () => {
       .toBe(600)
   })
 })
+
+test.describe('offline start (#150)', () => {
+  test('the installed PWA boots without a network, 3D view included', async ({ page, context }) => {
+    // this suite's webServer already runs the production build (see
+    // playwright.config.ts), so the real service worker is what's under test here
+    await page.goto('/')
+    await expect
+      .poll(async () =>
+        page.evaluate(async () => {
+          const nav = navigator as Navigator & {
+            serviceWorker: { getRegistrations(): Promise<{ active: unknown }[]> }
+          }
+          const rs = await nav.serviceWorker.getRegistrations()
+          return rs.some((r) => r.active)
+        }),
+      )
+      .toBe(true)
+
+    await context.setOffline(true)
+    await page.reload()
+    await expect(page.locator('#app')).not.toBeEmpty()
+    await expect(page.getByRole('heading', { name: 'Connect your treadmill' })).toBeVisible()
+
+    // the lazy three.js chunk is precached too, not just a 2D fallback — same
+    // WebGL-uncertain assertion as the online scenic test above: either the 3D
+    // view actually mounts, or it falls back to a working 2D track, never a blank
+    // screen or an offline fetch failure
+    await page.getByRole('button', { name: 'Skip', exact: true }).click()
+    await page.getByRole('button', { name: 'Skip', exact: true }).click()
+    await page.getByRole('button', { name: 'Free walk' }).click()
+    // force: true — the "Web Bluetooth is disabled" warning banner (expected in this
+    // headless container, unrelated to offline caching) overlaps the view-flip pill
+    await page.locator('.view-flip button', { hasText: '3D' }).click({ force: true })
+    await expect(page.locator('.scene3d-wrap, svg.track')).toBeVisible()
+  })
+})

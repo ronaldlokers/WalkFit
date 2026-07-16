@@ -12,7 +12,14 @@ import {
   deleteCustomWorkout,
 } from './workouts'
 import type { Workout, HrTarget } from './workouts'
-import { loadStatistics, addSession, removeSession, loadGoals, saveGoals } from './statistics'
+import {
+  loadStatistics,
+  addSession,
+  removeSession,
+  loadGoals,
+  saveGoals,
+  dailyTotals,
+} from './statistics'
 import type { Session } from './statistics'
 import { mmss } from './format'
 import { t, localeTag } from './i18n'
@@ -686,6 +693,61 @@ watch(
 )
 
 const pausedWalk = ref(false)
+
+// Live daily-goal progress in the immersive HUD (#145): today's already-logged
+// sessions (statistics) + this walk's own running total, which isn't in `sessions`
+// yet — finalizeSession() only appends there when the walk ends. A paused walk still
+// counts its banked-so-far total; only a genuinely closed/idle session contributes 0.
+const todayLiveTotals = computed(() => {
+  const logged = dailyTotals(sessions.value, 1, new Date())[0]!
+  const live = state.running || pausedWalk.value ? sessionTotals() : null
+  return {
+    kcal: logged.kcal + (live?.kcal ?? 0),
+    steps: logged.steps + (live?.steps ?? 0),
+    minutes: (logged.duration + (live?.elapsed ?? 0)) / 60,
+  }
+})
+const todayGoalPct = computed(() => {
+  const frac = (v: number, goal: number) => (Number(goal) > 0 ? Math.min(v / Number(goal), 1) : 0)
+  const t = todayLiveTotals.value
+  const pcts = [
+    frac(t.kcal, goals.kcal),
+    frac(t.steps, goals.steps),
+    frac(t.minutes, goals.minutes),
+  ]
+  return Math.round((pcts.reduce((a, b) => a + b, 0) / 3) * 100)
+})
+// Announce each goal once, the moment it ticks over mid-walk — not on every tick after.
+const goalsAnnouncedToday = reactive({ kcal: false, steps: false, minutes: false })
+watch(
+  () => new Date().toDateString(),
+  () => {
+    goalsAnnouncedToday.kcal = false
+    goalsAnnouncedToday.steps = false
+    goalsAnnouncedToday.minutes = false
+  },
+)
+watch(todayLiveTotals, (totals) => {
+  if (!state.running) return
+  const hits: [keyof typeof goalsAnnouncedToday, boolean][] = [
+    ['kcal', totals.kcal >= goals.kcal],
+    ['steps', totals.steps >= goals.steps],
+    ['minutes', totals.minutes >= goals.minutes],
+  ]
+  const goalLabelKey = {
+    kcal: 'settings.calories',
+    steps: 'settings.steps',
+    minutes: 'settings.activityTime',
+  } as const
+  for (const [key, reached] of hits) {
+    if (reached && Number(goals[key]) > 0 && !goalsAnnouncedToday[key]) {
+      goalsAnnouncedToday[key] = true
+      beep(1320, 300)
+      speak(t('speech.dailyGoalReached', { goal: t(goalLabelKey[key]) }))
+    }
+  }
+})
+
 watch(
   () => state.running,
   (running, was) => {
@@ -1141,6 +1203,29 @@ const pace = computed(() => {
           </svg>
           <span class="hr-badge-content">
             <span class="sv">♥ {{ hr.state.bpm || '–' }}</span>
+          </span>
+        </button>
+        <!-- live daily-goal ring (#145): today's logged sessions + this walk's own
+             running total — turns goals into in-session motivation, not just a
+             post-walk statistics number -->
+        <button
+          class="sstat goal-ring-pill"
+          :title="t('stats.goalsToday')"
+          @click="menuOpenStatistics"
+        >
+          <span class="goal-ring">
+            <svg viewBox="0 0 32 32">
+              <circle class="goal-ring-track" cx="16" cy="16" r="13" />
+              <circle
+                class="goal-ring-fill"
+                cx="16"
+                cy="16"
+                r="13"
+                :stroke-dasharray="`${(todayGoalPct / 100) * 81.7} 81.7`"
+                transform="rotate(-90 16 16)"
+              />
+            </svg>
+            <span class="goal-ring-val">{{ todayGoalPct }}%</span>
           </span>
         </button>
       </div>
@@ -2032,6 +2117,44 @@ code {
   cursor: pointer;
 }
 /* lives inside the stat strip — same frosted card as .sstat, stretched to its height */
+/* live daily-goal ring (#145) — reuses .sstat's frosted pill, adds a compact donut */
+.goal-ring-pill {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.goal-ring {
+  position: relative;
+  display: block;
+  width: 26px;
+  height: 26px;
+}
+.goal-ring svg {
+  width: 100%;
+  height: 100%;
+}
+.goal-ring-track,
+.goal-ring-fill {
+  fill: none;
+  stroke-width: 3.5;
+}
+.goal-ring-track {
+  stroke: rgba(23, 50, 77, 0.12);
+}
+.goal-ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.3s;
+}
+.goal-ring-val {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 8px;
+  font-weight: 800;
+  color: #17324d;
+}
 .hr-badge {
   position: relative;
   overflow: hidden;

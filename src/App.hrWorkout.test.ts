@@ -348,3 +348,53 @@ describe('HR workout', () => {
     expect(w.find('.hr-workout-pane').exists()).toBe(false)
   })
 })
+
+describe('weight-loss workout — Skip segment (#110)', () => {
+  async function startFirstPlan(w: VueWrapper) {
+    await toMain(w)
+    await w
+      .findAll('button')
+      .find((b) => b.text() === '☰')!
+      .trigger('click')
+    await w
+      .findAll('button')
+      .find((b) => b.text().includes('Workout'))!
+      .trigger('click')
+    await w.find('.tcard').trigger('click')
+    await w
+      .findAll('button')
+      .find((b) => b.text().includes('Start workout'))!
+      .trigger('click')
+  }
+
+  it('jumps to the next segment without fabricating distance', async () => {
+    const App = (await import('./App.vue')).default
+    const w = (mounted = mount(App))
+    await startFirstPlan(w)
+    expect(w.find('.imm-workout').text()).toContain('seg 1/')
+    const distBefore = fakeTm.distance
+    await w
+      .findAll('button')
+      .find((b) => b.text() === 'Skip')!
+      .trigger('click')
+    expect(w.find('.imm-workout').text()).toContain('seg 2/')
+    expect(fakeTm.distance).toBe(distBefore) // speed-integrated elsewhere, untouched by the jump
+  })
+
+  it('on the last segment ends the workout, same as End', async () => {
+    const App = (await import('./App.vue')).default
+    const w = (mounted = mount(App))
+    await startFirstPlan(w)
+    // segment count from the DOM structure, not the ribbon text — "seg 1/4" and the
+    // trailing "31:45 left" run together with no separator once .text() concatenates
+    const segCount = w.findAll('.imm-seg').length
+    for (let i = 0; i < segCount; i++) {
+      await w
+        .findAll('button')
+        .find((b) => b.text() === 'Skip')!
+        .trigger('click')
+    }
+    expect(w.find('.imm-workout').exists()).toBe(false)
+    expect(fakeTm.running).toBe(false) // finishWorkout() stops the belt
+  })
+})

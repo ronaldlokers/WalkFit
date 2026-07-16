@@ -465,6 +465,68 @@ describe('workouts & goals (#68)', () => {
   })
 })
 
+describe('per-km/N-min voice announcements (#144)', () => {
+  const spoken: string[] = []
+  beforeEach(() => {
+    spoken.length = 0
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        text: string
+        lang = ''
+        rate = 1
+        constructor(text: string) {
+          this.text = text
+        }
+      },
+    )
+    vi.stubGlobal('speechSynthesis', {
+      cancel: vi.fn(),
+      speak: (u: { text: string }) => spoken.push(u.text),
+    })
+  })
+
+  async function setAnnounce(w: VueWrapper, value: string) {
+    await clickButton(w, '☰')
+    await clickButton(w, 'Settings')
+    const select = w
+      .findAll('select')
+      .find((s) => s.findAll('option').some((o) => o.attributes('value') === '1km'))!
+    await select.setValue(value)
+    await w.findAll('.x').at(-1)!.trigger('click') // close Settings
+  }
+
+  it('speaks at each distance threshold during a free walk, off by default', async () => {
+    const w = await mountToMain()
+    await clickButton(w, 'Start')
+    await walk(w, 1000, 300)
+    expect(spoken).toHaveLength(0) // off by default — no announcement yet
+    await clickButton(w, 'Stop')
+
+    await setAnnounce(w, '1km')
+    await clickButton(w, 'Start')
+    await walk(w, 999, 300)
+    expect(spoken).toHaveLength(0) // just under the 1 km threshold
+    await walk(w, 2, 5)
+    expect(spoken).toHaveLength(1)
+    await walk(w, 999, 300)
+    expect(spoken).toHaveLength(2)
+  })
+
+  it('does not announce during a weight-loss plan', async () => {
+    const w = await mountToMain()
+    await setAnnounce(w, '1km')
+    await clickButton(w, '☰')
+    await clickButton(w, 'Workout')
+    await w.find('.tcard').trigger('click')
+    await clickButton(w, 'Start workout')
+    await walk(w, 1200, 600)
+    // the plan speaks its own segment-speed cues (unrelated) — just the per-km
+    // announcement (its distinctive "pace" phrase) must stay silent
+    expect(spoken.some((s) => s.includes('pace'))).toBe(false)
+  })
+})
+
 describe('avgHr sampling (#132)', () => {
   it('averages over time, not over value changes', async () => {
     fakeHr.connected = true

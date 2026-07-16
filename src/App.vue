@@ -277,6 +277,47 @@ watch(goalProgress, (p) => {
   }
 })
 
+// --- per-km / per-N-minutes voice announcements during free walks (#144) ---
+// Opt-in, off by default. High value for walking-desk use where the screen isn't
+// watched — pairs with the goal cues above, same speak() pipeline, gated to free
+// walks only (a plan/HR workout already announces its own segment changes).
+const ANNOUNCE_OPTIONS = ['off', '1km', '2km', '5min', '10min'] as const
+type AnnounceOption = (typeof ANNOUNCE_OPTIONS)[number]
+const storedAnnounce = localStorage.getItem('walkfit.announce')
+const announceEvery = ref<AnnounceOption>(
+  ANNOUNCE_OPTIONS.includes(storedAnnounce as AnnounceOption)
+    ? (storedAnnounce as AnnounceOption)
+    : 'off',
+)
+watch(announceEvery, (v) => {
+  localStorage.setItem('walkfit.announce', v)
+  lastAnnounced = 0
+})
+let lastAnnounced = 0 // last threshold multiple already spoken this session
+watch(
+  () => [state.distance, state.elapsed] as const,
+  () => {
+    if (announceEvery.value === 'off' || active.value || hrTarget.value || !state.running) return
+    const tot = sessionTotals()
+    const isDistance = announceEvery.value.endsWith('km')
+    const step = isDistance
+      ? Number(announceEvery.value.replace('km', '')) * 1000
+      : Number(announceEvery.value.replace('min', '')) * 60
+    const value = isDistance ? tot.distance : tot.elapsed
+    const mult = Math.floor(value / step)
+    if (mult > 0 && mult > lastAnnounced) {
+      lastAnnounced = mult
+      speak(
+        t('speech.announce', {
+          dist: (tot.distance / 1000).toFixed(2),
+          time: mmss(tot.elapsed),
+          pace: pace.value,
+        }),
+      )
+    }
+  },
+)
+
 // --- view mode: athletics track loop, or the first-person 3D scenic walk (#51) ---
 // Scenic3D pulls in three.js, so it's an async component: the chunk only downloads the
 // first time the scenic view is opened — the main bundle stays three-free.
@@ -562,6 +603,7 @@ function beginSession() {
   carrySteps = 0
   lastSnapshotDistance = -Infinity
   goalAnnounced = 0
+  lastAnnounced = 0
 }
 function rebaseWatermarks() {
   baseDistance = state.distance
@@ -1618,6 +1660,7 @@ const pace = computed(() => {
         v-model:max-hr="maxHr"
         v-model:weight-kg="weightKg"
         v-model:audio-on="audioOn"
+        v-model:announce-every="announceEvery"
         v-model:debug-on="debugOn"
         v-model:view-mode="viewMode"
         v-model:goal-kcal="goals.kcal"

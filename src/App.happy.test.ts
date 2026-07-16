@@ -51,6 +51,7 @@ describe('App happy path', () => {
     await clickButton(w, 'Free walk')
     await clickButton(w, '☰')
     await clickButton(w, 'Settings')
+    await clickButton(w, 'Goals') // weight lives on the Goals tab (#178)
     const input = w
       .findAll('input[type="number"]')
       .find((i) => i.attributes('max') === '250' && i.attributes('min') === '30')!

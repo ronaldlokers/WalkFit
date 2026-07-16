@@ -164,6 +164,13 @@ const en = {
 
   // settings
   'settings.title': 'Settings',
+  'settings.section.devices': 'Devices',
+  'settings.section.goals': 'Goals',
+  'settings.section.display': 'Display',
+  'settings.section.integrations': 'Integrations',
+  'settings.section.data': 'Data',
+  'settings.section.advanced': 'Advanced',
+  'settings.noIntegrations': 'No integrations available in this build.',
   'settings.treadmill': 'Treadmill',
   'settings.heartRate': 'Heart rate',
   'settings.remembered': 'Remembered',
@@ -398,6 +405,13 @@ const nl: Record<MessageKey, string> = {
   'stats.logWeighIn': 'Weging loggen',
 
   'settings.title': 'Instellingen',
+  'settings.section.devices': 'Apparaten',
+  'settings.section.goals': 'Doelen',
+  'settings.section.display': 'Weergave',
+  'settings.section.integrations': 'Integraties',
+  'settings.section.data': 'Gegevens',
+  'settings.section.advanced': 'Geavanceerd',
+  'settings.noIntegrations': 'Geen integraties beschikbaar in deze build.',
   'settings.treadmill': 'Loopband',
   'settings.heartRate': 'Hartslag',
   'settings.remembered': 'Onthouden',

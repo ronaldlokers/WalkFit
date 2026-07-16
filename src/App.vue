@@ -924,6 +924,15 @@ function endWorkout() {
   active.value = null
   stopWalk()
 }
+// Skip segment (#110): jump elapsed to the current segment's end. Distance/kcal are
+// speed-integrated in treadmill.ts, not derived from elapsed, so the jump fabricates
+// no distance — it just forgoes logging the skipped seconds, like a pause would. The
+// existing elapsed watcher (above) reacts on its own: pushes the next segment's speed,
+// or calls finishWorkout() when this was the last segment (its `.end === tl.total`).
+function skipSegment() {
+  if (!activeTl.value || !curSeg.value) return
+  state.elapsed = curSeg.value.end
+}
 function finishWorkout() {
   const w = active.value
   active.value = null
@@ -1355,6 +1364,7 @@ const pace = computed(() => {
               <span class="imm-nn-v">{{ nextSeg ? nextSeg.speed.toFixed(1) : '✓' }}</span>
             </div>
           </div>
+          <button class="btn ghost sm" @click="skipSegment">{{ t('workout.skip') }}</button>
           <button class="btn halt sm" @click="endWorkout">{{ t('workout.end') }}</button>
         </div>
       </template>

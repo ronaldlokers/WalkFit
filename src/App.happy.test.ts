@@ -397,6 +397,9 @@ describe('immersive layout (#103)', () => {
     expect(ribbon.find('.imm-ring-val').text()).toMatch(/^\d{2}:\d{2}$/)
     expect(ribbon.find('.imm-now .imm-nn-v').text()).toMatch(/^\d\.\d$/)
     expect(ribbon.find('.imm-next .imm-nn-v').text()).toMatch(/^\d\.\d$/) // seg 1 of several
+    // Skip (#110) is exercised end-to-end in App.hrWorkout.test.ts, where the fake
+    // treadmill fixture has running: true — required for finishWorkout() to fire
+    expect(ribbon.findAll('button').some((b) => b.text() === 'Skip')).toBe(true)
     await clickButton(w, 'End')
     expect(w.find('.imm-workout').exists()).toBe(false)
   })

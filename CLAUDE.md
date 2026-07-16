@@ -220,6 +220,14 @@ Inside the picker, two tabs:
 The two workout modes are mutually exclusive (`active` for weight-loss, `hrTarget` for
 HR) — starting one clears the other.
 
+**Skip segment (#110)** — the immersive ribbon's Skip button (weight-loss plans only)
+jumps `state.elapsed` straight to the current segment's `.end`. Distance/kcal are
+speed-integrated in `treadmill.ts` from live belt speed, not derived from elapsed, so
+the jump fabricates no distance — the skipped seconds are just never walked, like a
+pause. The existing `[state.elapsed, state.running, active]` watcher reacts on its own:
+pushes the next segment's speed, or — since the last segment's `.end === timeline.total`
+— calls `finishWorkout()` when Skip lands there, ending the workout exactly like End.
+
 **Header overflow menu** — Workout / Statistics / Disconnect (only while connected) /
 Settings live behind a single ☰ button (`moreMenuOpen`) instead of separate header
 buttons, to keep the header from crowding on narrow screens. The Connect button (when

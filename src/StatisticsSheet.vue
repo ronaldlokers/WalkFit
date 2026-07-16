@@ -294,6 +294,63 @@ function logWeighIn() {
   emit('weigh-in', kg)
   weighInInput.value = null
 }
+
+// --- month heatmap (#148): "how consistent was I?" answered better than week-hopping.
+// A GitHub-style intensity calendar, one section on the single-page dashboard (#178
+// removed the tab switcher — this was originally scoped as a 5th tab, adapted to fit
+// the current no-tabs layout instead). Color = kcal vs the daily goal.
+function startOfMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1)
+}
+const monthAnchor = ref(startOfMonth(now.value))
+function shiftMonth(delta: number) {
+  const d = new Date(monthAnchor.value)
+  d.setMonth(d.getMonth() + delta)
+  monthAnchor.value = startOfMonth(d)
+}
+function monthToday() {
+  monthAnchor.value = startOfMonth(now.value)
+}
+const isCurrentMonth = computed(
+  () =>
+    monthAnchor.value.getFullYear() === now.value.getFullYear() &&
+    monthAnchor.value.getMonth() === now.value.getMonth(),
+)
+const monthLabel = computed(() => {
+  void locale.value // re-render on language switch
+  return monthAnchor.value.toLocaleDateString(localeTag(), { month: 'long', year: 'numeric' })
+})
+interface MonthCell {
+  date: string
+  level: number // 0 none .. 4 goal met/exceeded, GitHub-style 5-step scale
+  kcal: number
+}
+// Mon-start grid, leading blanks before day 1 so the 1st lands under its real weekday.
+const monthGrid = computed(() => {
+  const first = monthAnchor.value
+  const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate()
+  const lastDay = new Date(first.getFullYear(), first.getMonth(), daysInMonth, 12)
+  const totals = dailyTotals(props.sessions, daysInMonth, lastDay)
+  const leadingBlanks = (first.getDay() + 6) % 7 // Sun=0 -> 6, Mon=1 -> 0, ...
+  const cells: (MonthCell | null)[] = Array(leadingBlanks).fill(null)
+  for (const d of totals) {
+    const frac = props.goals.kcal > 0 ? d.kcal / props.goals.kcal : 0
+    const level = d.kcal === 0 ? 0 : frac >= 1 ? 4 : frac >= 0.66 ? 3 : frac >= 0.33 ? 2 : 1
+    cells.push({ date: d.date, level, kcal: Math.round(d.kcal) })
+  }
+  return cells
+})
+function cellDay(dateKey: string) {
+  return Number(dateKey.slice(-2))
+}
+function cellTitle(cell: MonthCell) {
+  return `${cell.date}: ${cell.kcal} kcal`
+}
+// Mon-Sun weekday header, independent of any real date (2026-07-06 is a known Monday)
+const monthDowLabels = computed(() => {
+  void locale.value
+  return Array.from({ length: 7 }, (_, i) => dayLabel(`2026-07-${String(6 + i).padStart(2, '0')}`))
+})
 </script>
 
 <template>
@@ -569,6 +626,32 @@ function logWeighIn() {
           </li>
         </ul>
         <p v-else class="hint">{{ t('stats.noWalks') }}</p>
+      </div>
+
+      <!-- Month heatmap (#148): GitHub-style intensity calendar, color = kcal vs goal -->
+      <div v-if="sessions.length" class="card">
+        <h3>
+          <span>{{ t('stats.monthHeatmap') }}</span>
+        </h3>
+        <div class="month-nav">
+          <button class="x wk-btn" :title="t('stats.prevMonth')" @click="shiftMonth(-1)">‹</button>
+          <span class="month-label">{{ monthLabel }}</span>
+          <button class="x wk-btn" :title="t('stats.nextMonth')" @click="shiftMonth(1)">›</button>
+          <button v-if="!isCurrentMonth" class="chip today-chip" @click="monthToday">
+            {{ t('stats.thisMonth') }}
+          </button>
+        </div>
+        <div class="month-grid">
+          <span v-for="d in monthDowLabels" :key="d" class="month-dow">{{ d }}</span>
+          <span
+            v-for="(cell, i) in monthGrid"
+            :key="i"
+            class="month-cell"
+            :class="cell ? `lv${cell.level}` : 'blank'"
+            :title="cell ? cellTitle(cell) : undefined"
+            >{{ cell ? cellDay(cell.date) : '' }}</span
+          >
+        </div>
       </div>
     </div>
   </div>
@@ -1047,5 +1130,64 @@ function logWeighIn() {
 .set-unit {
   color: #5a789a;
   font-size: 13px;
+}
+
+/* --- month heatmap (#148) --- */
+.month-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.month-label {
+  font-size: 13.5px;
+  font-weight: 700;
+  min-width: 130px;
+}
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.month-dow {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #7b8da1;
+  padding-bottom: 2px;
+}
+.month-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #5a789a;
+  font-variant-numeric: tabular-nums;
+}
+.month-cell.blank {
+  visibility: hidden;
+}
+/* GitHub-style 5-step intensity scale, in the app's own blue instead of green */
+.month-cell.lv0 {
+  background: rgba(23, 50, 77, 0.06);
+}
+.month-cell.lv1 {
+  background: rgba(10, 132, 255, 0.22);
+  color: #17324d;
+}
+.month-cell.lv2 {
+  background: rgba(10, 132, 255, 0.42);
+  color: #fff;
+}
+.month-cell.lv3 {
+  background: rgba(10, 132, 255, 0.68);
+  color: #fff;
+}
+.month-cell.lv4 {
+  background: var(--accent);
+  color: #fff;
 }
 </style>

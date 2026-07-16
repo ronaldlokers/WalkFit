@@ -215,6 +215,45 @@ describe('App happy path', () => {
     vi.useRealTimers()
   })
 
+  it('month heatmap: Mon-start grid, goal-intensity color, month navigation (#148)', async () => {
+    // 2026-07-01 is a Wednesday — the grid must have 2 leading blanks (Mon, Tue)
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T20:00:00') })
+    localStorage.setItem('walkfit.goals', JSON.stringify({ kcal: 400, steps: 6000, minutes: 30 }))
+    localStorage.setItem(
+      'walkfit.history',
+      JSON.stringify([
+        { date: '2026-07-01T08:00:00', distance: 900, duration: 900, kcal: 400, avgHr: null }, // goal met
+        { date: '2026-07-13T08:00:00', distance: 900, duration: 900, kcal: 100, avgHr: null }, // partial
+      ]),
+    )
+    const w = mount(App)
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Skip')
+    await clickButton(w, 'Free walk')
+    await clickButton(w, '☰')
+    await clickButton(w, 'Statistics')
+
+    expect(w.find('.month-label').text()).toContain('July')
+    const cells = w.findAll('.month-cell')
+    expect(cells.filter((c) => c.classes().includes('blank'))).toHaveLength(2) // Mon, Tue before the 1st
+    const day1 = cells.find((c) => c.text() === '1')!
+    expect(day1.classes()).toContain('lv4') // 400/400 kcal = goal met
+    const day13 = cells.find((c) => c.text() === '13')!
+    expect(day13.classes()).toContain('lv1') // 100/400 = 25%, lowest non-zero band
+    const day2 = cells.find((c) => c.text() === '2')!
+    expect(day2.classes()).toContain('lv0') // no walk that day
+
+    // month navigation
+    await w
+      .findAll('button')
+      .find((b) => b.attributes('title') === 'Previous month')!
+      .trigger('click')
+    expect(w.find('.month-label').text()).toContain('June')
+    await clickButton(w, 'This month')
+    expect(w.find('.month-label').text()).toContain('July')
+    vi.useRealTimers()
+  })
+
   it('week boundary is the local next Monday, not anchor+168h (#135)', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T10:00:00') })
     localStorage.setItem('walkfit.setupDone', '1')

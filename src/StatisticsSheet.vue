@@ -135,6 +135,7 @@ const hrLane = computed(() => {
             bottom: ((x.hrMin - lo) / span) * 100,
             height: Math.max(((x.hrMax! - x.hrMin) / span) * 100, 4),
             avg: x.hrAvg === null ? null : ((x.hrAvg - lo) / span) * 100,
+            max: x.hrMax,
             title: `${x.date}: ${x.hrMin}–${x.hrMax} bpm · avg ${x.hrAvg}`,
           },
     ),
@@ -423,10 +424,18 @@ const records = computed(() => {
 const DISTANCE_BADGES = [100, 500, 1000, 2500]
 const SESSION_BADGES = [10, 50, 100, 365]
 const distanceBadges = computed(() =>
-  DISTANCE_BADGES.map((km) => ({ km, unlocked: records.value.lifetimeKm >= km })),
+  DISTANCE_BADGES.map((km) => ({
+    km,
+    unlocked: records.value.lifetimeKm >= km,
+    pct: Math.min((records.value.lifetimeKm / km) * 100, 100),
+  })),
 )
 const sessionBadges = computed(() =>
-  SESSION_BADGES.map((n) => ({ n, unlocked: records.value.lifetimeSessions >= n })),
+  SESSION_BADGES.map((n) => ({
+    n,
+    unlocked: records.value.lifetimeSessions >= n,
+    pct: Math.min((records.value.lifetimeSessions / n) * 100, 100),
+  })),
 )
 function shortDate(iso: string | null) {
   if (!iso) return ''
@@ -549,31 +558,47 @@ function shortDate(iso: string | null) {
             }}</span>
           </h3>
           <template v-if="hrLane">
-            <div class="bars hr-bars">
-              <div class="hr-grid"><span></span><span></span><span></span></div>
-              <div
-                v-for="(b, i) in hrLane.bars"
-                :key="i"
-                class="bar-slot"
-                :title="b ? b.title : ''"
-              >
-                <template v-if="b">
+            <div class="hr-chart-row">
+              <div class="hr-axis">
+                <span>{{ hrLane.hi }}</span>
+                <span>{{ Math.round((hrLane.hi + hrLane.lo) / 2) }}</span>
+                <span>{{ hrLane.lo }}</span>
+              </div>
+              <div class="hr-chart-col">
+                <div class="bars hr-bars">
+                  <div class="hr-grid"><span></span><span></span><span></span></div>
                   <div
-                    class="hr-span"
-                    :style="{ bottom: b.bottom + '%', height: b.height + '%' }"
-                  ></div>
-                  <div v-if="b.avg !== null" class="hr-avg" :style="{ bottom: b.avg + '%' }" />
-                </template>
+                    v-for="(b, i) in hrLane.bars"
+                    :key="i"
+                    class="bar-slot"
+                    :title="b ? b.title : ''"
+                  >
+                    <template v-if="b">
+                      <div
+                        class="hr-span"
+                        :style="{ bottom: b.bottom + '%', height: b.height + '%' }"
+                      ></div>
+                      <div v-if="b.avg !== null" class="hr-avg" :style="{ bottom: b.avg + '%' }" />
+                    </template>
+                  </div>
+                </div>
+                <div class="hr-peak-labels">
+                  <span v-for="(b, i) in hrLane.bars" :key="i">{{ b ? b.max : '' }}</span>
+                </div>
+                <div class="bar-labels">
+                  <span
+                    v-for="d in days"
+                    :key="d.date"
+                    :class="{ 'label-today': d.date === todayKey }"
+                    >{{ dayLabel(d.date) }}</span
+                  >
+                </div>
               </div>
             </div>
-            <div class="bar-labels">
-              <span
-                v-for="d in days"
-                :key="d.date"
-                :class="{ 'label-today': d.date === todayKey }"
-                >{{ dayLabel(d.date) }}</span
-              >
-            </div>
+            <p class="hr-legend">
+              <span class="hr-legend-span"></span> {{ t('stats.hrLegendRange') }} ·
+              <span class="hr-legend-dot"></span> {{ t('stats.hrLegendAvg') }}
+            </p>
           </template>
           <p v-else class="hint">{{ t('stats.noHr') }}</p>
         </div>
@@ -747,6 +772,16 @@ function shortDate(iso: string | null) {
             >{{ cell ? cellDay(cell.date) : '' }}</span
           >
         </div>
+        <p class="month-legend">
+          <span>{{ t('stats.less') }}</span>
+          <span class="month-legend-sw lv0"></span>
+          <span class="month-legend-sw lv1"></span>
+          <span class="month-legend-sw lv2"></span>
+          <span class="month-legend-sw lv3"></span>
+          <span class="month-legend-sw lv4"></span>
+          <span>{{ t('stats.more') }}</span>
+          <span class="month-legend-note">{{ t('stats.monthLegendNote') }}</span>
+        </p>
       </div>
 
       <!-- Personal records + milestone badges (#141) -->
@@ -791,17 +826,23 @@ function shortDate(iso: string | null) {
             :key="'km' + b.km"
             class="badge"
             :class="{ locked: !b.unlocked }"
-            :title="`${b.km} km`"
-            >🏅<small>{{ b.km }}km</small></span
-          >
+            :title="b.unlocked ? `${b.km} km` : `${records.lifetimeKm.toFixed(0)} / ${b.km} km`"
+            >🏅<small>{{ b.km }}km</small>
+            <span v-if="!b.unlocked" class="badge-track"
+              ><span class="badge-fill" :style="{ width: b.pct + '%' }"></span
+            ></span>
+          </span>
           <span
             v-for="b in sessionBadges"
             :key="'n' + b.n"
             class="badge"
             :class="{ locked: !b.unlocked }"
-            :title="`${b.n} walks`"
-            >🥾<small>{{ b.n }}</small></span
-          >
+            :title="b.unlocked ? `${b.n} walks` : `${records.lifetimeSessions} / ${b.n} walks`"
+            >🥾<small>{{ b.n }}</small>
+            <span v-if="!b.unlocked" class="badge-track"
+              ><span class="badge-fill" :style="{ width: b.pct + '%' }"></span
+            ></span>
+          </span>
         </div>
       </div>
     </div>
@@ -825,6 +866,7 @@ function shortDate(iso: string | null) {
 .stats-topbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 14px;
   padding: 14px 22px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.9);
@@ -856,9 +898,15 @@ function shortDate(iso: string | null) {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* own full-width row once the topbar wraps (narrow screens) — prev/next stay flush
+     at the edges instead of trailing off past the viewport (#190) */
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
 }
 .wk-btn {
   border-radius: 50%;
+  flex: none;
 }
 .week-label {
   position: relative;
@@ -872,6 +920,9 @@ function shortDate(iso: string | null) {
   cursor: pointer;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 /* invisible native date input stretched over the label — tap the label, get the picker */
 .week-date {
@@ -1055,6 +1106,64 @@ function shortDate(iso: string | null) {
 }
 .bar.today {
   opacity: 1;
+}
+.hr-chart-row {
+  display: flex;
+  gap: 8px;
+}
+.hr-axis {
+  flex: none;
+  width: 28px;
+  height: 130px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: right;
+  font-size: 10px;
+  color: #9fb3c8;
+  font-variant-numeric: tabular-nums;
+  transform: translateY(-4px);
+}
+.hr-chart-col {
+  flex: 1;
+  min-width: 0;
+}
+.hr-peak-labels {
+  display: flex;
+  gap: 5px;
+  margin-top: 4px;
+}
+.hr-peak-labels span {
+  flex: 1;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #ff4757;
+}
+.hr-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: #5a789a;
+}
+.hr-legend-span {
+  display: inline-block;
+  width: 14px;
+  height: 8px;
+  border-radius: 3px;
+  background: rgba(255, 71, 87, 0.4);
+  border: 1px solid #ff4757;
+}
+.hr-legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #17324d;
+  margin-left: 6px;
 }
 .hr-bars {
   align-items: stretch;
@@ -1366,6 +1475,38 @@ function shortDate(iso: string | null) {
   background: var(--accent);
   color: #fff;
 }
+.month-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: #7b8da1;
+}
+.month-legend-sw {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+}
+.month-legend-sw.lv0 {
+  background: rgba(23, 50, 77, 0.06);
+}
+.month-legend-sw.lv1 {
+  background: rgba(10, 132, 255, 0.22);
+}
+.month-legend-sw.lv2 {
+  background: rgba(10, 132, 255, 0.42);
+}
+.month-legend-sw.lv3 {
+  background: rgba(10, 132, 255, 0.68);
+}
+.month-legend-sw.lv4 {
+  background: var(--accent);
+}
+.month-legend-note {
+  margin-left: 8px;
+  color: #9fb3c8;
+}
 
 /* --- personal records + milestone badges (#141) --- */
 .record-tiles {
@@ -1410,5 +1551,22 @@ function shortDate(iso: string | null) {
 .badge.locked {
   filter: grayscale(1);
   opacity: 0.4;
+}
+/* progress toward the next milestone (#190) — locked badges only; an unlocked one
+   already communicates "done" via its full-color icon */
+.badge-track {
+  display: block;
+  width: 34px;
+  height: 4px;
+  border-radius: 3px;
+  background: rgba(10, 132, 255, 0.15);
+  margin-top: 2px;
+  overflow: hidden;
+}
+.badge-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
 }
 </style>

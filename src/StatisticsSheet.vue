@@ -441,6 +441,25 @@ function shortDate(iso: string | null) {
   if (!iso) return ''
   return new Date(iso).toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' })
 }
+
+// Section jump-nav (#190): the page grew long enough (hero, 3 daily charts, HR,
+// weight, walk log, month heatmap, records/milestones) that reaching the bottom
+// meant scrolling past everything above it. Sticky rail on desktop, collapsible
+// dropdown on mobile — same list either way, driven by scrollIntoView.
+const NAV_SECTIONS: { id: string; label: () => string }[] = [
+  { id: 'sec-week', label: () => t('stats.navWeek') },
+  { id: 'sec-daily', label: () => t('stats.navDaily') },
+  { id: 'sec-hr', label: () => t('stats.navHr') },
+  { id: 'sec-weight', label: () => t('stats.navWeight') },
+  { id: 'sec-walklog', label: () => t('stats.walkLog') },
+  { id: 'sec-consistency', label: () => t('stats.monthHeatmap') },
+  { id: 'sec-records', label: () => t('stats.records') },
+]
+const navOpen = ref(false)
+function jumpTo(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  navOpen.value = false
+}
 </script>
 
 <template>
@@ -463,7 +482,7 @@ function shortDate(iso: string | null) {
     </div>
 
     <!-- hero band: the shown week's headline numbers + today's goals ring -->
-    <div class="hero-band">
+    <div id="sec-week" class="hero-band">
       <div class="hero-stat">
         <span class="hero-v">{{ (weekDistance / 1000).toFixed(1) }}<small> km</small></span>
         <span class="hero-k">{{ t('stats.kmWeek') }}</span>
@@ -508,341 +527,371 @@ function shortDate(iso: string | null) {
       </div>
     </div>
 
-    <!-- Single scrolling page (#178): no tabs — Activity, Heart rate, Weight and Walks
-         all render together instead of behind 4 clicks each hiding ~400px of dead space -->
-    <div class="panel single-page">
-      <template v-if="sessions.length">
-        <!-- Activity: kcal / steps / minutes per day, Mon-Sun -->
-        <div class="activity-grid">
-          <div v-for="m in barLanes" :key="m.id" class="card">
-            <h3>
-              <span :style="{ color: m.color }">{{ t('stats.perDay', { metric: m.label }) }}</span>
-              <span class="card-total">{{ m.total }} {{ m.unit }}</span>
-            </h3>
-            <div class="bars">
-              <div
-                v-for="(v, i) in m.values"
-                :key="i"
-                class="bar-slot"
-                :title="`${days[i]!.date}: ${v} ${m.unit}`"
-              >
-                <div
-                  class="bar"
-                  :class="{ today: days[i]!.date === todayKey }"
-                  :style="
-                    v === 0
-                      ? { height: '2px', background: '#252b37' }
-                      : { height: (v / m.max) * 100 + '%', background: m.color }
-                  "
-                ></div>
-              </div>
-            </div>
-            <div class="bar-labels">
-              <span
-                v-for="d in days"
-                :key="d.date"
-                :class="{ 'label-today': d.date === todayKey }"
-                >{{ dayLabel(d.date) }}</span
-              >
-            </div>
-          </div>
-        </div>
-
-        <!-- Heart rate: min-max span + avg dot per day, on a gridded baseline so it
-             reads as a chart instead of floating rectangles (#178) -->
-        <div class="card hr-card">
-          <h3>
-            <span style="color: #ff4757">{{ t('stats.hrPerDay') }}</span>
-            <span class="card-total">{{
-              hrLane ? t('stats.hrRange', { lo: hrLane.lo, hi: hrLane.hi }) : ''
-            }}</span>
-          </h3>
-          <template v-if="hrLane">
-            <div class="hr-chart-row">
-              <div class="hr-axis">
-                <span>{{ hrLane.hi }}</span>
-                <span>{{ Math.round((hrLane.hi + hrLane.lo) / 2) }}</span>
-                <span>{{ hrLane.lo }}</span>
-              </div>
-              <div class="hr-chart-col">
-                <div class="bars hr-bars">
-                  <div class="hr-grid"><span></span><span></span><span></span></div>
-                  <div
-                    v-for="(b, i) in hrLane.bars"
-                    :key="i"
-                    class="bar-slot"
-                    :title="b ? b.title : ''"
-                  >
-                    <template v-if="b">
-                      <div
-                        class="hr-span"
-                        :style="{ bottom: b.bottom + '%', height: b.height + '%' }"
-                      ></div>
-                      <div v-if="b.avg !== null" class="hr-avg" :style="{ bottom: b.avg + '%' }" />
-                    </template>
-                  </div>
-                </div>
-                <div class="hr-peak-labels">
-                  <span v-for="(b, i) in hrLane.bars" :key="i">{{ b ? b.max : '' }}</span>
-                </div>
-                <div class="bar-labels">
-                  <span
-                    v-for="d in days"
-                    :key="d.date"
-                    :class="{ 'label-today': d.date === todayKey }"
-                    >{{ dayLabel(d.date) }}</span
-                  >
-                </div>
-              </div>
-            </div>
-            <p class="hr-legend">
-              <span class="hr-legend-span"></span> {{ t('stats.hrLegendRange') }} ·
-              <span class="hr-legend-dot"></span> {{ t('stats.hrLegendAvg') }}
-            </p>
-          </template>
-          <p v-else class="hint">{{ t('stats.noHr') }}</p>
-        </div>
-      </template>
-      <div v-else class="hist-empty">
-        <span class="hist-empty-icon">🏃</span>
-        <p class="hint">{{ t('stats.empty') }}</p>
-      </div>
-
-      <!-- Weight: full-log trend + weigh-in, reachable even with zero walks -->
-      <div class="card weight-section">
-        <div v-if="latestWeight" class="detail-tiles hist-tiles">
-          <div>
-            <span class="v">{{ latestWeight.kg.toFixed(1) }}<span class="unit">kg</span></span>
-            <span class="k">{{ t('stats.latest') }}</span>
-          </div>
-          <div>
-            <span class="v"
-              >{{
-                weightDelta === null ? '—' : (weightDelta > 0 ? '+' : '') + weightDelta.toFixed(1)
-              }}<span v-if="weightDelta !== null" class="unit">kg</span></span
-            >
-            <span class="k">{{ t('stats.vs30') }}</span>
-          </div>
-          <div v-if="toGoal !== null">
-            <span class="v"
-              >{{ (toGoal > 0 ? '' : '+') + Math.abs(toGoal).toFixed(1)
-              }}<span class="unit">kg</span></span
-            >
-            <span class="k">{{ toGoal > 0 ? t('stats.toGoal') : t('stats.pastGoal') }}</span>
-          </div>
-        </div>
-        <div v-if="latestFat || latestMuscle" class="detail-tiles hist-tiles comp-tiles">
-          <div v-if="latestFat">
-            <span class="v">{{ latestFat.fatPct!.toFixed(1) }}<span class="unit">%</span></span>
-            <span class="k">{{ t('stats.bodyFat') }}</span>
-          </div>
-          <div v-if="latestMuscle">
-            <span class="v"
-              >{{ latestMuscle.muscleKg!.toFixed(1) }}<span class="unit">kg</span></span
-            >
-            <span class="k">{{ t('stats.muscle') }}</span>
-          </div>
-        </div>
-        <template v-if="weightSpark">
-          <svg class="weight-chart" viewBox="0 0 320 80" preserveAspectRatio="none">
-            <path class="weight-area" :d="weightSpark.area" />
-            <line
-              v-if="weightSpark.goalY !== null"
-              class="weight-goal-line"
-              x1="0"
-              :y1="weightSpark.goalY"
-              x2="320"
-              :y2="weightSpark.goalY"
-            />
-            <polyline class="weight-line" :points="weightSpark.line" />
-          </svg>
-          <div class="weight-range">
-            {{ weightSpark.min.toFixed(1) }}–{{ weightSpark.max.toFixed(1) }} kg
-          </div>
-        </template>
-        <template v-if="fatSpark">
-          <svg class="weight-chart fat-chart" viewBox="0 0 320 56" preserveAspectRatio="none">
-            <polyline class="fat-line" :points="fatSpark.line" />
-          </svg>
-          <div class="weight-range">
-            {{ t('stats.fatRange', { lo: fatSpark.min.toFixed(1), hi: fatSpark.max.toFixed(1) }) }}
-          </div>
-        </template>
-        <p v-if="!weightLog.length" class="hint">{{ t('stats.noWeighIns') }}</p>
-        <div class="set-row weigh-row">
-          <span class="set-inline">
-            <input
-              v-model.number="weighInInput"
-              type="number"
-              step="0.1"
-              min="30"
-              max="250"
-              :placeholder="String(weightKg)"
-              @keyup.enter="logWeighIn"
-            />
-            <span class="set-unit">kg</span>
-          </span>
-          <button class="btn go sm" :disabled="!weighInInput" @click="logWeighIn">
-            {{ t('stats.logWeighIn') }}
-          </button>
-        </div>
-      </div>
-
-      <!-- Walks: the shown week's log, expandable detail + delete (#67) -->
-      <div v-if="sessions.length" class="card">
-        <h3>
-          <span>{{ t('stats.walkLog') }}</span
-          ><span class="card-total">{{ t('stats.walksTotal', { n: sessions.length }) }}</span>
-        </h3>
-        <ul v-if="weekWalks.length" class="walklist">
-          <li v-for="w in weekWalks" :key="w.date">
-            <button class="walk-row" @click="toggleWalk(w.date)">
-              <span class="walk-when">
-                <span class="walk-day"
-                  >{{ walkDay(w.date)
-                  }}<span v-if="w.workout" class="walk-workout"> · {{ w.workout }}</span></span
-                >
-                <span class="walk-time">{{ walkTime(w.date) }}</span>
-              </span>
-              <span class="walk-stats">
-                <span class="walk-stat">{{ fmtKm(w.distance) }}</span>
-                <span class="walk-stat">{{ mmss(w.duration) }}</span>
-                <span class="walk-stat">~{{ Math.round(w.kcal) }} kcal</span>
-              </span>
-            </button>
-            <div v-if="expandedWalk === w.date" class="walk-detail">
-              <div class="detail-tiles hist-tiles walk-tiles">
-                <div>
-                  <span class="v">{{ w.steps ?? '—' }}</span>
-                  <span class="k">{{ t('stats.stepsTile') }}</span>
-                </div>
-                <div>
-                  <span class="v">{{ w.avgHr ?? '—' }}</span>
-                  <span class="k">{{ t('stats.avgBpm') }}</span>
-                </div>
-                <div>
-                  <span class="v">{{ w.hrMin != null ? `${w.hrMin}–${w.hrMax}` : '—' }}</span>
-                  <span class="k">{{ t('stats.bpmRange') }}</span>
-                </div>
-              </div>
-              <!-- speed/HR shape of the walk (#149) — absent on pre-#149 logs -->
-              <svg
-                v-if="walkSeriesChart(w)"
-                class="walk-series-chart"
-                viewBox="0 0 320 72"
-                preserveAspectRatio="none"
-              >
-                <polyline class="walk-series-speed" :points="walkSeriesChart(w)!.speedLine" />
-                <polyline
-                  v-if="walkSeriesChart(w)!.hrLine"
-                  class="walk-series-hr"
-                  :points="walkSeriesChart(w)!.hrLine!"
-                />
-              </svg>
-              <button class="btn ghost sm walk-delete" @click="emit('delete-session', w.date)">
-                {{ t('stats.deleteWalk') }}
-              </button>
-            </div>
+    <div class="stats-body">
+      <!-- Section jump-nav (#190): sticky rail on desktop, collapsible dropdown on
+           mobile — only worth showing once there's more than the hero to scroll past -->
+      <nav v-if="sessions.length" class="stats-nav">
+        <button class="stats-nav-toggle" @click="navOpen = !navOpen">
+          {{ t('stats.jumpTo') }}
+        </button>
+        <ul class="stats-nav-list" :class="{ open: navOpen }">
+          <li v-for="s in NAV_SECTIONS" :key="s.id">
+            <button @click="jumpTo(s.id)">{{ s.label() }}</button>
           </li>
         </ul>
-        <p v-else class="hint">{{ t('stats.noWalks') }}</p>
-      </div>
+      </nav>
 
-      <!-- Month heatmap (#148): GitHub-style intensity calendar, color = kcal vs goal -->
-      <div v-if="sessions.length" class="card">
-        <h3>
-          <span>{{ t('stats.monthHeatmap') }}</span>
-        </h3>
-        <div class="month-nav">
-          <button class="x wk-btn" :title="t('stats.prevMonth')" @click="shiftMonth(-1)">‹</button>
-          <span class="month-label">{{ monthLabel }}</span>
-          <button class="x wk-btn" :title="t('stats.nextMonth')" @click="shiftMonth(1)">›</button>
-          <button v-if="!isCurrentMonth" class="chip today-chip" @click="monthToday">
-            {{ t('stats.thisMonth') }}
-          </button>
-        </div>
-        <div class="month-grid">
-          <span v-for="d in monthDowLabels" :key="d" class="month-dow">{{ d }}</span>
-          <span
-            v-for="(cell, i) in monthGrid"
-            :key="i"
-            class="month-cell"
-            :class="cell ? `lv${cell.level}` : 'blank'"
-            :title="cell ? cellTitle(cell) : undefined"
-            >{{ cell ? cellDay(cell.date) : '' }}</span
-          >
-        </div>
-        <p class="month-legend">
-          <span>{{ t('stats.less') }}</span>
-          <span class="month-legend-sw lv0"></span>
-          <span class="month-legend-sw lv1"></span>
-          <span class="month-legend-sw lv2"></span>
-          <span class="month-legend-sw lv3"></span>
-          <span class="month-legend-sw lv4"></span>
-          <span>{{ t('stats.more') }}</span>
-          <span class="month-legend-note">{{ t('stats.monthLegendNote') }}</span>
-        </p>
-      </div>
+      <!-- Single scrolling page (#178): no tabs — Activity, Heart rate, Weight and Walks
+           all render together instead of behind 4 clicks each hiding ~400px of dead space -->
+      <div class="panel single-page">
+        <template v-if="sessions.length">
+          <!-- Activity: kcal / steps / minutes per day, Mon-Sun -->
+          <div id="sec-daily" class="activity-grid">
+            <div v-for="m in barLanes" :key="m.id" class="card">
+              <h3>
+                <span :style="{ color: m.color }">{{
+                  t('stats.perDay', { metric: m.label })
+                }}</span>
+                <span class="card-total">{{ m.total }} {{ m.unit }}</span>
+              </h3>
+              <div class="bars">
+                <div
+                  v-for="(v, i) in m.values"
+                  :key="i"
+                  class="bar-slot"
+                  :title="`${days[i]!.date}: ${v} ${m.unit}`"
+                >
+                  <div
+                    class="bar"
+                    :class="{ today: days[i]!.date === todayKey }"
+                    :style="
+                      v === 0
+                        ? { height: '2px', background: '#252b37' }
+                        : { height: (v / m.max) * 100 + '%', background: m.color }
+                    "
+                  ></div>
+                </div>
+              </div>
+              <div class="bar-labels">
+                <span
+                  v-for="d in days"
+                  :key="d.date"
+                  :class="{ 'label-today': d.date === todayKey }"
+                  >{{ dayLabel(d.date) }}</span
+                >
+              </div>
+            </div>
+          </div>
 
-      <!-- Personal records + milestone badges (#141) -->
-      <div v-if="sessions.length" class="card">
-        <h3>
-          <span>{{ t('stats.records') }}</span>
-        </h3>
-        <div class="detail-tiles record-tiles">
-          <div>
-            <span class="v"
-              >{{ (records.longestWalkM / 1000).toFixed(2) }}<span class="unit">km</span></span
+          <!-- Heart rate: min-max span + avg dot per day, on a gridded baseline so it
+             reads as a chart instead of floating rectangles (#178) -->
+          <div id="sec-hr" class="card hr-card">
+            <h3>
+              <span style="color: #ff4757">{{ t('stats.hrPerDay') }}</span>
+              <span class="card-total">{{
+                hrLane ? t('stats.hrRange', { lo: hrLane.lo, hi: hrLane.hi }) : ''
+              }}</span>
+            </h3>
+            <template v-if="hrLane">
+              <div class="hr-chart-row">
+                <div class="hr-axis">
+                  <span>{{ hrLane.hi }}</span>
+                  <span>{{ Math.round((hrLane.hi + hrLane.lo) / 2) }}</span>
+                  <span>{{ hrLane.lo }}</span>
+                </div>
+                <div class="hr-chart-col">
+                  <div class="bars hr-bars">
+                    <div class="hr-grid"><span></span><span></span><span></span></div>
+                    <div
+                      v-for="(b, i) in hrLane.bars"
+                      :key="i"
+                      class="bar-slot"
+                      :title="b ? b.title : ''"
+                    >
+                      <template v-if="b">
+                        <div
+                          class="hr-span"
+                          :style="{ bottom: b.bottom + '%', height: b.height + '%' }"
+                        ></div>
+                        <div
+                          v-if="b.avg !== null"
+                          class="hr-avg"
+                          :style="{ bottom: b.avg + '%' }"
+                        />
+                      </template>
+                    </div>
+                  </div>
+                  <div class="hr-peak-labels">
+                    <span v-for="(b, i) in hrLane.bars" :key="i">{{ b ? b.max : '' }}</span>
+                  </div>
+                  <div class="bar-labels">
+                    <span
+                      v-for="d in days"
+                      :key="d.date"
+                      :class="{ 'label-today': d.date === todayKey }"
+                      >{{ dayLabel(d.date) }}</span
+                    >
+                  </div>
+                </div>
+              </div>
+              <p class="hr-legend">
+                <span class="hr-legend-span"></span> {{ t('stats.hrLegendRange') }} ·
+                <span class="hr-legend-dot"></span> {{ t('stats.hrLegendAvg') }}
+              </p>
+            </template>
+            <p v-else class="hint">{{ t('stats.noHr') }}</p>
+          </div>
+        </template>
+        <div v-else class="hist-empty">
+          <span class="hist-empty-icon">🏃</span>
+          <p class="hint">{{ t('stats.empty') }}</p>
+        </div>
+
+        <!-- Weight: full-log trend + weigh-in, reachable even with zero walks -->
+        <div id="sec-weight" class="card weight-section">
+          <div v-if="latestWeight" class="detail-tiles hist-tiles">
+            <div>
+              <span class="v">{{ latestWeight.kg.toFixed(1) }}<span class="unit">kg</span></span>
+              <span class="k">{{ t('stats.latest') }}</span>
+            </div>
+            <div>
+              <span class="v"
+                >{{
+                  weightDelta === null
+                    ? '—'
+                    : (weightDelta > 0 ? '+' : '') + weightDelta.toFixed(1)
+                }}<span v-if="weightDelta !== null" class="unit">kg</span></span
+              >
+              <span class="k">{{ t('stats.vs30') }}</span>
+            </div>
+            <div v-if="toGoal !== null">
+              <span class="v"
+                >{{ (toGoal > 0 ? '' : '+') + Math.abs(toGoal).toFixed(1)
+                }}<span class="unit">kg</span></span
+              >
+              <span class="k">{{ toGoal > 0 ? t('stats.toGoal') : t('stats.pastGoal') }}</span>
+            </div>
+          </div>
+          <div v-if="latestFat || latestMuscle" class="detail-tiles hist-tiles comp-tiles">
+            <div v-if="latestFat">
+              <span class="v">{{ latestFat.fatPct!.toFixed(1) }}<span class="unit">%</span></span>
+              <span class="k">{{ t('stats.bodyFat') }}</span>
+            </div>
+            <div v-if="latestMuscle">
+              <span class="v"
+                >{{ latestMuscle.muscleKg!.toFixed(1) }}<span class="unit">kg</span></span
+              >
+              <span class="k">{{ t('stats.muscle') }}</span>
+            </div>
+          </div>
+          <template v-if="weightSpark">
+            <svg class="weight-chart" viewBox="0 0 320 80" preserveAspectRatio="none">
+              <path class="weight-area" :d="weightSpark.area" />
+              <line
+                v-if="weightSpark.goalY !== null"
+                class="weight-goal-line"
+                x1="0"
+                :y1="weightSpark.goalY"
+                x2="320"
+                :y2="weightSpark.goalY"
+              />
+              <polyline class="weight-line" :points="weightSpark.line" />
+            </svg>
+            <div class="weight-range">
+              {{ weightSpark.min.toFixed(1) }}–{{ weightSpark.max.toFixed(1) }} kg
+            </div>
+          </template>
+          <template v-if="fatSpark">
+            <svg class="weight-chart fat-chart" viewBox="0 0 320 56" preserveAspectRatio="none">
+              <polyline class="fat-line" :points="fatSpark.line" />
+            </svg>
+            <div class="weight-range">
+              {{
+                t('stats.fatRange', { lo: fatSpark.min.toFixed(1), hi: fatSpark.max.toFixed(1) })
+              }}
+            </div>
+          </template>
+          <p v-if="!weightLog.length" class="hint">{{ t('stats.noWeighIns') }}</p>
+          <div class="set-row weigh-row">
+            <span class="set-inline">
+              <input
+                v-model.number="weighInInput"
+                type="number"
+                step="0.1"
+                min="30"
+                max="250"
+                :placeholder="String(weightKg)"
+                @keyup.enter="logWeighIn"
+              />
+              <span class="set-unit">kg</span>
+            </span>
+            <button class="btn go sm" :disabled="!weighInInput" @click="logWeighIn">
+              {{ t('stats.logWeighIn') }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Walks: the shown week's log, expandable detail + delete (#67) -->
+        <div v-if="sessions.length" id="sec-walklog" class="card">
+          <h3>
+            <span>{{ t('stats.walkLog') }}</span
+            ><span class="card-total">{{ t('stats.walksTotal', { n: sessions.length }) }}</span>
+          </h3>
+          <ul v-if="weekWalks.length" class="walklist">
+            <li v-for="w in weekWalks" :key="w.date">
+              <button class="walk-row" @click="toggleWalk(w.date)">
+                <span class="walk-chevron" :class="{ open: expandedWalk === w.date }">▸</span>
+                <span class="walk-when">
+                  <span class="walk-day"
+                    >{{ walkDay(w.date)
+                    }}<span v-if="w.workout" class="walk-workout"> · {{ w.workout }}</span></span
+                  >
+                  <span class="walk-time">{{ walkTime(w.date) }}</span>
+                </span>
+                <span class="walk-stats">
+                  <span class="walk-stat">{{ fmtKm(w.distance) }}</span>
+                  <span class="walk-stat">{{ mmss(w.duration) }}</span>
+                  <span class="walk-stat">~{{ Math.round(w.kcal) }} kcal</span>
+                </span>
+              </button>
+              <div v-if="expandedWalk === w.date" class="walk-detail">
+                <div class="detail-tiles hist-tiles walk-tiles">
+                  <div>
+                    <span class="v">{{ w.steps ?? '—' }}</span>
+                    <span class="k">{{ t('stats.stepsTile') }}</span>
+                  </div>
+                  <div>
+                    <span class="v">{{ w.avgHr ?? '—' }}</span>
+                    <span class="k">{{ t('stats.avgBpm') }}</span>
+                  </div>
+                  <div>
+                    <span class="v">{{ w.hrMin != null ? `${w.hrMin}–${w.hrMax}` : '—' }}</span>
+                    <span class="k">{{ t('stats.bpmRange') }}</span>
+                  </div>
+                </div>
+                <!-- speed/HR shape of the walk (#149) — absent on pre-#149 logs -->
+                <svg
+                  v-if="walkSeriesChart(w)"
+                  class="walk-series-chart"
+                  viewBox="0 0 320 72"
+                  preserveAspectRatio="none"
+                >
+                  <polyline class="walk-series-speed" :points="walkSeriesChart(w)!.speedLine" />
+                  <polyline
+                    v-if="walkSeriesChart(w)!.hrLine"
+                    class="walk-series-hr"
+                    :points="walkSeriesChart(w)!.hrLine!"
+                  />
+                </svg>
+                <button class="btn ghost sm walk-delete" @click="emit('delete-session', w.date)">
+                  {{ t('stats.deleteWalk') }}
+                </button>
+              </div>
+            </li>
+          </ul>
+          <p v-else class="hint">{{ t('stats.noWalks') }}</p>
+        </div>
+
+        <!-- Month heatmap (#148): GitHub-style intensity calendar, color = kcal vs goal -->
+        <div v-if="sessions.length" id="sec-consistency" class="card">
+          <h3>
+            <span>{{ t('stats.monthHeatmap') }}</span>
+          </h3>
+          <div class="month-nav">
+            <button class="x wk-btn" :title="t('stats.prevMonth')" @click="shiftMonth(-1)">
+              ‹
+            </button>
+            <span class="month-label">{{ monthLabel }}</span>
+            <button class="x wk-btn" :title="t('stats.nextMonth')" @click="shiftMonth(1)">›</button>
+            <button v-if="!isCurrentMonth" class="chip today-chip" @click="monthToday">
+              {{ t('stats.thisMonth') }}
+            </button>
+          </div>
+          <div class="month-grid">
+            <span v-for="d in monthDowLabels" :key="d" class="month-dow">{{ d }}</span>
+            <span
+              v-for="(cell, i) in monthGrid"
+              :key="i"
+              class="month-cell"
+              :class="cell ? `lv${cell.level}` : 'blank'"
+              :title="cell ? cellTitle(cell) : undefined"
+              >{{ cell ? cellDay(cell.date) : '' }}</span
             >
-            <span class="k">{{ t('stats.recLongestWalk') }}</span>
-            <span class="record-date">{{ shortDate(records.longestWalkDate) }}</span>
           </div>
-          <div>
-            <span class="v">{{ records.bestDayKcal }}<span class="unit">kcal</span></span>
-            <span class="k">{{ t('stats.recBestDay') }}</span>
-            <span class="record-date">{{ shortDate(records.bestDayDate) }}</span>
-          </div>
-          <div>
-            <span class="v">{{ records.bestWeekKm.toFixed(1) }}<span class="unit">km</span></span>
-            <span class="k">{{ t('stats.recBestWeek') }}</span>
-          </div>
-          <div>
-            <span class="v">{{ Math.round(records.lifetimeKm) }}<span class="unit">km</span></span>
-            <span class="k">{{ t('stats.recLifetimeKm') }}</span>
-          </div>
-          <div>
-            <span class="v">{{ records.lifetimeSessions }}</span>
-            <span class="k">{{ t('stats.recLifetimeWalks') }}</span>
-          </div>
-          <div>
-            <span class="v">{{ records.longestStreakEver }}<span class="unit">🔥</span></span>
-            <span class="k">{{ t('stats.recLongestStreak') }}</span>
-          </div>
+          <p class="month-legend">
+            <span>{{ t('stats.less') }}</span>
+            <span class="month-legend-sw lv0"></span>
+            <span class="month-legend-sw lv1"></span>
+            <span class="month-legend-sw lv2"></span>
+            <span class="month-legend-sw lv3"></span>
+            <span class="month-legend-sw lv4"></span>
+            <span>{{ t('stats.more') }}</span>
+            <span class="month-legend-note">{{ t('stats.monthLegendNote') }}</span>
+          </p>
         </div>
-        <h3 class="badges-heading">{{ t('stats.milestones') }}</h3>
-        <div class="badge-row">
-          <span
-            v-for="b in distanceBadges"
-            :key="'km' + b.km"
-            class="badge"
-            :class="{ locked: !b.unlocked }"
-            :title="b.unlocked ? `${b.km} km` : `${records.lifetimeKm.toFixed(0)} / ${b.km} km`"
-            >🏅<small>{{ b.km }}km</small>
-            <span v-if="!b.unlocked" class="badge-track"
-              ><span class="badge-fill" :style="{ width: b.pct + '%' }"></span
-            ></span>
-          </span>
-          <span
-            v-for="b in sessionBadges"
-            :key="'n' + b.n"
-            class="badge"
-            :class="{ locked: !b.unlocked }"
-            :title="b.unlocked ? `${b.n} walks` : `${records.lifetimeSessions} / ${b.n} walks`"
-            >🥾<small>{{ b.n }}</small>
-            <span v-if="!b.unlocked" class="badge-track"
-              ><span class="badge-fill" :style="{ width: b.pct + '%' }"></span
-            ></span>
-          </span>
+
+        <!-- Personal records + milestone badges (#141) -->
+        <div v-if="sessions.length" id="sec-records" class="card">
+          <h3>
+            <span>{{ t('stats.records') }}</span>
+          </h3>
+          <div class="detail-tiles record-tiles">
+            <div>
+              <span class="v"
+                >{{ (records.longestWalkM / 1000).toFixed(2) }}<span class="unit">km</span></span
+              >
+              <span class="k">{{ t('stats.recLongestWalk') }}</span>
+              <span class="record-date">{{ shortDate(records.longestWalkDate) }}</span>
+            </div>
+            <div>
+              <span class="v">{{ records.bestDayKcal }}<span class="unit">kcal</span></span>
+              <span class="k">{{ t('stats.recBestDay') }}</span>
+              <span class="record-date">{{ shortDate(records.bestDayDate) }}</span>
+            </div>
+            <div>
+              <span class="v">{{ records.bestWeekKm.toFixed(1) }}<span class="unit">km</span></span>
+              <span class="k">{{ t('stats.recBestWeek') }}</span>
+            </div>
+            <div>
+              <span class="v"
+                >{{ Math.round(records.lifetimeKm) }}<span class="unit">km</span></span
+              >
+              <span class="k">{{ t('stats.recLifetimeKm') }}</span>
+            </div>
+            <div>
+              <span class="v">{{ records.lifetimeSessions }}</span>
+              <span class="k">{{ t('stats.recLifetimeWalks') }}</span>
+            </div>
+            <div>
+              <span class="v">{{ records.longestStreakEver }}<span class="unit">🔥</span></span>
+              <span class="k">{{ t('stats.recLongestStreak') }}</span>
+            </div>
+          </div>
+          <h3 class="badges-heading">{{ t('stats.milestones') }}</h3>
+          <div class="badge-row">
+            <span
+              v-for="b in distanceBadges"
+              :key="'km' + b.km"
+              class="badge"
+              :class="{ locked: !b.unlocked }"
+              :title="b.unlocked ? `${b.km} km` : `${records.lifetimeKm.toFixed(0)} / ${b.km} km`"
+              >🏅<small>{{ b.km }}km</small>
+              <span v-if="!b.unlocked" class="badge-track"
+                ><span class="badge-fill" :style="{ width: b.pct + '%' }"></span
+              ></span>
+            </span>
+            <span
+              v-for="b in sessionBadges"
+              :key="'n' + b.n"
+              class="badge"
+              :class="{ locked: !b.unlocked }"
+              :title="b.unlocked ? `${b.n} walks` : `${records.lifetimeSessions} / ${b.n} walks`"
+              >🥾<small>{{ b.n }}</small>
+              <span v-if="!b.unlocked" class="badge-track"
+                ><span class="badge-fill" :style="{ width: b.pct + '%' }"></span
+              ></span>
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -1033,9 +1082,84 @@ function shortDate(iso: string | null) {
 }
 /* --- single scrolling page (#178): Activity, Heart rate, Weight, Walks all visible,
    stacked with consistent gaps instead of behind 4 tab clicks --- */
+/* --- section jump-nav (#190): stacked above the page on narrow screens (a
+   collapsible dropdown), a sticky rail beside it once there's room --- */
+.stats-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.stats-nav-toggle {
+  margin: 14px 22px 0;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  color: #17324d;
+  font: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.stats-nav-list {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 6px 22px 0;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  padding: 6px;
+}
+.stats-nav-list.open {
+  display: flex;
+}
+.stats-nav-list button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: #17324d;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.stats-nav-list button:hover {
+  background: rgba(10, 132, 255, 0.1);
+  color: var(--accent);
+}
+@media (min-width: 900px) {
+  .stats-body {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 24px;
+    max-width: 1300px;
+    margin: 0 auto;
+  }
+  .stats-nav {
+    flex: 0 0 170px;
+    position: sticky;
+    top: 20px;
+  }
+  .stats-nav-toggle {
+    display: none;
+  }
+  .stats-nav-list {
+    display: flex;
+    margin: 22px 0 0 22px;
+  }
+  .panel {
+    flex: 1;
+    min-width: 0;
+  }
+}
 .panel {
   max-width: 1080px;
-  margin: 0 auto;
   padding: 14px 22px;
 }
 .single-page {
@@ -1229,7 +1353,6 @@ function shortDate(iso: string | null) {
 .walk-row {
   width: 100%;
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 10px;
   padding: 11px 14px;
@@ -1244,7 +1367,20 @@ function shortDate(iso: string | null) {
 .walk-row:hover {
   border-color: var(--accent);
 }
+/* signals the row expands to a detail view (#190) — nothing else on the row hinted
+   at that before */
+.walk-chevron {
+  flex: none;
+  color: #9fb3c8;
+  font-size: 11px;
+  transition: transform 0.15s;
+}
+.walk-chevron.open {
+  transform: rotate(90deg);
+}
 .walk-when {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;

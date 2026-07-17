@@ -236,7 +236,10 @@ export function seedDemoData() {
     if (inGap || isRestDay) continue
     const dow = offset % 7
     const morning = dow % 2 === 0
-    const km = Math.max(1.0, Math.round((2.0 + seedWobble(offset, 1.0) + (dow >= 5 ? 0.6 : 0)) * 10) / 10)
+    const km = Math.max(
+      1.0,
+      Math.round((2.0 + seedWobble(offset, 1.0) + (dow >= 5 ? 0.6 : 0)) * 10) / 10,
+    )
     const minutes = Math.max(12, Math.round(km * 14 + seedWobble(offset + 1, 2)))
     const hrBase = 100 + Math.round(seedWobble(offset + 2, 6))
     const taggedIdx = offset % 6

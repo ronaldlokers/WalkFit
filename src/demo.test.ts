@@ -53,9 +53,12 @@ describe('demo mode (#169)', () => {
 
   it('seedDemoData populates every surface once and never clobbers real data', () => {
     seedDemoData()
-    expect(JSON.parse(localStorage.getItem('walkfit.history')!).length).toBeGreaterThan(10)
+    const history = JSON.parse(localStorage.getItem('walkfit.history')!)
+    expect(history.length).toBeGreaterThan(50) // #196: 90-day window, not just a handful of days
+    expect(history.some((s: { series?: unknown[] }) => s.series && s.series.length > 1)).toBe(true)
+    expect(history.some((s: { workout?: string }) => s.workout)).toBe(true)
     expect(JSON.parse(localStorage.getItem('walkfit.weight.log')!)[0].fatPct).toBeDefined()
-    expect(JSON.parse(localStorage.getItem('walkfit.workouts.custom')!)).toHaveLength(1)
+    expect(JSON.parse(localStorage.getItem('walkfit.workouts.custom')!)).toHaveLength(2)
     // existing history blocks the seed
     localStorage.setItem('walkfit.history', '[{"real":1}]')
     localStorage.removeItem('walkfit.weight.log')

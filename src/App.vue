@@ -2950,10 +2950,18 @@ input[type='range']::-webkit-slider-thumb {
   .app.layout-immersive .hr-badge {
     order: 1;
     flex: 0 0 auto;
+    margin-left: auto;
   }
   .app.layout-immersive .goal-ring-pill {
     order: 2;
     flex: 0 0 auto;
+    /* flush-right push when hr-badge is absent (no sensor connected) — .hr-badge
+       is only rendered v-if connected, so this DOM sibling selector still works
+       even though visual order (above) puts hr-badge first when both exist */
+    margin-left: auto;
+  }
+  .app.layout-immersive .hr-badge ~ .goal-ring-pill {
+    margin-left: 0;
   }
   .app.layout-immersive .head-actions {
     order: 3;

@@ -2935,21 +2935,42 @@ input[type='range']::-webkit-slider-thumb {
   white-space: nowrap;
 }
 
-/* narrow screens (#113): the stat strip gets its own header row instead of
-   fighting the badges; fullscreen overlays drop below the taller header */
+/* narrow screens (#113, reworked #190): brand + HR badge + goal ring + menu stay on
+   one slim top row (always visible, never competing for space); the four live-stat
+   pills (time/distance/kcal/pace) drop to their own row below. Unwrapping .stat-strip
+   via display: contents promotes its children to direct flex items of <header> so
+   they can interleave with .brand/.head-actions via `order`, without moving markup. */
 @media (max-width: 700px) {
   .app.layout-immersive > header {
     flex-wrap: wrap;
   }
   .app.layout-immersive .stat-strip {
-    order: 5;
-    flex: 1 1 100%;
-    margin: 6px 0 0;
+    display: contents;
   }
-  .app.layout-immersive .sstat,
   .app.layout-immersive .hr-badge {
+    order: 1;
+    flex: 0 0 auto;
+  }
+  .app.layout-immersive .goal-ring-pill {
+    order: 2;
+    flex: 0 0 auto;
+  }
+  .app.layout-immersive .head-actions {
+    order: 3;
+  }
+  /* zero-width line-break forced between the top row (brand/hr/goal/menu) and the
+     stat pills below — a display: contents element's ::before still generates a real
+     flex item of <header>, so this needs no extra markup */
+  .app.layout-immersive .stat-strip::before {
+    content: '';
+    order: 4;
+    flex-basis: 100%;
+  }
+  .app.layout-immersive .stat-strip .sstat:not(.goal-ring-pill) {
+    order: 5;
     flex: 1 1 0;
     padding: 8px 6px;
+    margin-top: 6px;
   }
   .app.layout-immersive .sstat .sv {
     font-size: 16px;
@@ -2957,11 +2978,15 @@ input[type='range']::-webkit-slider-thumb {
   .app.layout-immersive .sstat .sk {
     font-size: 9px;
   }
-  .app.layout-immersive .view-flip {
-    top: 118px;
+  /* the 2D card is `position: fixed` with its own top offset (13vh), independent of
+     the header's actual height — the badge needs its own clearance from the header
+     (#190: brand/HR/goal/menu row + stats row is taller than the old 96px/13vh
+     assumed). Matches .track-wrap.flat's specificity so it actually wins here. */
+  .app.layout-immersive .track-wrap.flat .view-flip {
+    top: 36px;
   }
   .app.layout-immersive > .warn {
-    top: 168px;
+    top: 214px;
     width: 92vw;
   }
 }

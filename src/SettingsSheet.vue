@@ -7,7 +7,7 @@ import type { HealthProvider } from './health'
 // The composable objects are passed through whole (their `state` is reactive); methods
 // are called directly on them — only actions that mutate App-owned state (the weight
 // log) go back up as emits.
-defineProps<{
+const props = defineProps<{
   tm: {
     state: TreadmillState
     connect: () => Promise<void> | void
@@ -121,6 +121,19 @@ const SECTION_LABEL: Record<SettingsSection, () => string> = {
   advanced: () => t('settings.section.advanced'),
 }
 const section = ref<SettingsSection>('devices')
+
+// Forget-device confirm (#190): forgetting drops the remembered id for good
+// (unlike Disconnect, which just ends the current session) — worth a step before
+// it fires, unlike the plain restyle this replaces.
+const confirmForget = ref<'tm' | 'hr' | null>(null)
+function requestForget(kind: 'tm' | 'hr') {
+  confirmForget.value = kind
+}
+function confirmForgetNow() {
+  if (confirmForget.value === 'tm') props.tm.forget()
+  else if (confirmForget.value === 'hr') props.hr.forget()
+  confirmForget.value = null
+}
 </script>
 
 <template>
@@ -165,7 +178,11 @@ const section = ref<SettingsSection>('devices')
             <button v-else class="btn ghost sm" @click="tm.disconnect">
               {{ t('settings.disconnect') }}
             </button>
-            <button v-if="tm.state.remembered" class="btn ghost sm forget" @click="tm.forget">
+            <button
+              v-if="tm.state.remembered"
+              class="btn ghost sm forget"
+              @click="requestForget('tm')"
+            >
               {{ t('settings.forget') }}
             </button>
           </div>
@@ -192,7 +209,11 @@ const section = ref<SettingsSection>('devices')
             <button v-else class="btn ghost sm" @click="hr.disconnect">
               {{ t('settings.disconnect') }}
             </button>
-            <button v-if="hr.state.remembered" class="btn ghost sm forget" @click="hr.forget">
+            <button
+              v-if="hr.state.remembered"
+              class="btn ghost sm forget"
+              @click="requestForget('hr')"
+            >
               {{ t('settings.forget') }}
             </button>
           </div>
@@ -428,6 +449,20 @@ const section = ref<SettingsSection>('devices')
         </label>
       </template>
     </div>
+
+    <div v-if="confirmForget" class="confirm-backdrop" @click="confirmForget = null">
+      <div class="confirm-panel" @click.stop>
+        <p>{{ t('settings.forgetConfirm') }}</p>
+        <div class="confirm-actions">
+          <button class="btn ghost sm" @click="confirmForget = null">
+            {{ t('picker.cancel') }}
+          </button>
+          <button class="btn forget sm" @click="confirmForgetNow">
+            {{ t('settings.forget') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -602,5 +637,36 @@ const section = ref<SettingsSection>('devices')
   color: inherit;
   font: inherit;
   padding: 6px 10px;
+}
+
+/* forget-device confirm (#190) */
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(23, 50, 77, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.confirm-panel {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 20px 22px;
+  width: min(320px, 86vw);
+  box-shadow: 0 20px 40px rgba(23, 50, 77, 0.25);
+}
+.confirm-panel p {
+  font-size: 14px;
+  color: #17324d;
+  line-height: 1.5;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
 }
 </style>

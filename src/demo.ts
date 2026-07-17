@@ -6,6 +6,7 @@ import { reactive } from 'vue'
 import type { TreadmillState } from './treadmill'
 import type { HeartRateState } from './heartrate'
 import { SPEED_MIN, SPEED_MAX, SPEED_STEP } from './protocol'
+import type { Session, SeriesPoint } from './statistics'
 
 export function isDemo(): boolean {
   return (
@@ -169,6 +170,13 @@ export function demoHeartRate() {
 }
 
 // --- canonical seed fixture: populates every feature surface once, idempotently ---
+// #196: 90-day window so the month heatmap, week nav and streak/milestone badges all
+// have real range to page through, not just a handful of days. Deterministic — no
+// Math.random/Date.now — so the README screenshots stay reproducible; `wobble` stands
+// in for randomness via a sine wave instead.
+function seedWobble(n: number, amp: number) {
+  return Math.sin(n * 1.7) * amp
+}
 export function seedDemoData() {
   if (localStorage.getItem('walkfit.history')) return // never clobber real data
   const day = (offset: number, h: number, m = 15) => {
@@ -177,52 +185,91 @@ export function seedDemoData() {
     d.setHours(h, m, 0, 0)
     return d.toISOString()
   }
-  const walk = (offset: number, h: number, km: number, minutes: number, hrBase: number) => ({
-    date: day(offset, h),
-    distance: Math.round(km * 1000),
-    duration: minutes * 60,
-    kcal: Math.round(km * 52),
-    steps: Math.round(km * 1400),
-    avgHr: hrBase + 8,
-    hrMin: hrBase - 12,
-    hrMax: hrBase + 26,
-  })
-  const history = [
-    walk(20, 8, 1.8, 26, 104),
-    walk(19, 18, 2.4, 33, 108),
-    walk(17, 7, 1.2, 17, 101),
-    walk(16, 19, 3.1, 41, 112),
-    walk(15, 8, 2.0, 28, 106),
-    walk(13, 18, 2.6, 35, 109),
-    walk(12, 7, 1.5, 21, 103),
-    walk(11, 19, 3.4, 44, 114),
-    walk(9, 8, 2.2, 30, 107),
-    walk(8, 18, 2.8, 37, 110),
-    walk(6, 7, 1.9, 27, 105),
-    walk(5, 19, 3.0, 39, 111),
-    walk(4, 8, 2.3, 31, 108),
-    walk(3, 18, 2.7, 36, 109),
-    walk(2, 7, 2.1, 29, 106),
-    walk(1, 19, 3.2, 42, 113),
-    walk(0, 8, 1.6, 22, 104),
-  ]
+  // in-session speed/HR shape (#149) for the walk-detail sparkline — a short
+  // deterministic arc around the walk's average, not real telemetry
+  function walkSeries(minutes: number, avgSpeed: number, hrBase: number) {
+    const steps = 18
+    const points: SeriesPoint[] = []
+    for (let i = 0; i <= steps; i++) {
+      const t = Math.round((i / steps) * minutes * 60)
+      const speed = Math.max(SPEED_MIN, Math.round((avgSpeed + seedWobble(i, 0.6)) * 10) / 10)
+      const bpm = Math.round(hrBase + speed * 6 + seedWobble(i + 3, 5))
+      points.push([t, speed, bpm])
+    }
+    return points
+  }
+  function walk(
+    offset: number,
+    h: number,
+    km: number,
+    minutes: number,
+    hrBase: number,
+    opts: { workout?: string; withSeries?: boolean } = {},
+  ) {
+    const avgSpeed = Math.round((km / (minutes / 60)) * 10) / 10
+    return {
+      date: day(offset, h),
+      distance: Math.round(km * 1000),
+      duration: minutes * 60,
+      kcal: Math.round(km * 52),
+      steps: Math.round(km * 1400),
+      avgHr: hrBase + 8,
+      hrMin: hrBase - 12,
+      hrMax: hrBase + 26,
+      ...(opts.workout ? { workout: opts.workout } : {}),
+      ...(opts.withSeries ? { series: walkSeries(minutes, avgSpeed, hrBase) } : {}),
+    }
+  }
+  // real preset/HR-target names (workouts.ts / App.vue's HR_TARGETS + i18n's
+  // 'session.hrWorkout' format) so tagged sessions in the walk log look genuine
+  const PLAN_NAMES = ['Fat Burn 30', 'Easy Walk 30', 'Power Walk 45']
+  const HR_NAMES = ['Fat burn HR workout', 'Cardio HR workout', 'Light HR workout']
+  const history: Session[] = []
+  // offset 89 (oldest) down to 0 (today). A deliberate 5-day gap at offset 46-50
+  // breaks the streak on purpose — visible as a blank stretch in the month heatmap
+  // and week nav, not just a smooth unbroken history. Elsewhere every 5th day is a
+  // rest day; the most recent 15 days are walked every day for a clean live streak.
+  for (let offset = 89; offset >= 0; offset--) {
+    const inGap = offset <= 50 && offset >= 46
+    const inLiveStreak = offset <= 14
+    const isRestDay = !inLiveStreak && offset % 5 === 4
+    if (inGap || isRestDay) continue
+    const dow = offset % 7
+    const morning = dow % 2 === 0
+    const km = Math.max(1.0, Math.round((2.0 + seedWobble(offset, 1.0) + (dow >= 5 ? 0.6 : 0)) * 10) / 10)
+    const minutes = Math.max(12, Math.round(km * 14 + seedWobble(offset + 1, 2)))
+    const hrBase = 100 + Math.round(seedWobble(offset + 2, 6))
+    const taggedIdx = offset % 6
+    const workout =
+      taggedIdx === 0
+        ? PLAN_NAMES[offset % PLAN_NAMES.length]
+        : taggedIdx === 3
+          ? HR_NAMES[offset % HR_NAMES.length]
+          : undefined
+    const withSeries = offset % 4 === 0
+    history.push(walk(offset, morning ? 8 : 19, km, minutes, hrBase, { workout, withSeries }))
+  }
+  // deliberate multi-session day (#43 DayTotals rollup across >1 walk/day): a short
+  // extra evening walk stacked on top of today's morning session
+  history.push(walk(0, 20, 1.4, 20, 106))
   const weigh = (offset: number, kg: number, fat: number, muscle: number) => ({
     date: day(offset, 7, 5),
-    kg,
+    kg: Math.round(kg * 10) / 10,
     source: 'demo',
-    fatPct: fat,
-    muscleKg: muscle,
+    fatPct: Math.round(fat * 10) / 10,
+    muscleKg: Math.round(muscle * 10) / 10,
   })
-  const weights = [
-    weigh(20, 84.6, 26.4, 54.0),
-    weigh(17, 84.1, 26.1, 54.2),
-    weigh(14, 83.7, 25.8, 54.4),
-    weigh(11, 83.4, 25.6, 54.5),
-    weigh(8, 83.0, 25.2, 54.7),
-    weigh(5, 82.6, 24.9, 54.9),
-    weigh(2, 82.3, 24.7, 55.1),
-    weigh(0, 82.1, 24.5, 55.2),
-  ]
+  // ~weekly weigh-ins across the same 90-day window, net downward trend with small
+  // non-monotonic noise (real scales don't produce a perfectly straight line)
+  const weighInOffsets = [88, 81, 74, 67, 60, 53, 46, 39, 32, 25, 18, 11, 4, 0]
+  const weights = weighInOffsets.map((offset, i) =>
+    weigh(
+      offset,
+      85.0 - i * 0.3 + seedWobble(i, 0.25),
+      26.5 - i * 0.13 + seedWobble(i + 1, 0.15),
+      53.8 + i * 0.1 + seedWobble(i + 2, 0.1),
+    ),
+  )
   const custom = [
     {
       id: 'custom-demo',
@@ -236,11 +283,21 @@ export function seedDemoData() {
         { speed: 2.5, minutes: 5 },
       ],
     },
+    {
+      id: 'custom-demo-2',
+      name: 'Lunch loop',
+      focus: 'Short brisk-paced break walk',
+      segments: [
+        { speed: 3.0, minutes: 3 },
+        { speed: 5.0, minutes: 10 },
+        { speed: 3.0, minutes: 3 },
+      ],
+    },
   ]
   localStorage.setItem('walkfit.setupDone', '1')
   localStorage.setItem('walkfit.history', JSON.stringify(history))
   localStorage.setItem('walkfit.weight.log', JSON.stringify(weights))
-  localStorage.setItem('walkfit.weight', '82.1')
+  localStorage.setItem('walkfit.weight', String(weights[weights.length - 1]!.kg))
   localStorage.setItem('walkfit.weight.goal', '80')
   localStorage.setItem('walkfit.workouts.custom', JSON.stringify(custom))
 }

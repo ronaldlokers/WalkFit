@@ -24,15 +24,10 @@ import {
   relayZoneLines,
   hurdleTicks,
   waterfallPoints,
-  dayPhase,
-  skyAt,
-  weatherFor,
-  WEATHER_FOG,
-  TIME_PHASES,
-  isNight,
 } from './scenic'
-import type { TimeOfDay } from './scenic'
 import type { Prop } from './scenic'
+import { dayPhase, skyAt, weatherFor, WEATHER_FOG, TIME_PHASES, isNight } from './scenicSky'
+import type { TimeOfDay } from './scenicSky'
 
 const props = defineProps<{
   distance: number

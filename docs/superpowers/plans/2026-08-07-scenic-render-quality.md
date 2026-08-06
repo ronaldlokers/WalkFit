@@ -517,11 +517,36 @@ import {
 } from './scenicMeshes'
 ```
 
-Add local wrappers with the same signatures the call sites already use, so the ~20 call sites below need no edits beyond the new `repeatMetres` argument:
+`REPEAT` lives in `src/scenicMeshes.ts`, not in the component, and is exported — the divides-400 property above is a correctness constraint, and a constant buried in an untestable `.vue` file cannot be guarded by a test. Add it there, next to `ribbonArrays`, and import it into the component.
+
+Add this case to `src/scenicMeshes.test.ts` in the same step (add `REPEAT` and `LAP_M` to that file's imports):
 
 ```ts
-// texture tiling scale per surface, in metres of arc per texture repeat
-const REPEAT = { track: 6, lane: 40, infield: 12, kerb: 8, mark: 1 }
+describe('REPEAT', () => {
+  it('every tiling scale divides the lap exactly, or the texture jumps at the seam', () => {
+    // ribbonArrays sets u = s / repeatMetres, so the closing ring lands at
+    // u = LAP_M / repeatMetres. A fractional value there means the tile does not meet
+    // itself where the loop closes — a visible seam across the start/finish line.
+    for (const [name, metres] of Object.entries(REPEAT)) {
+      expect(`${name}: ${LAP_M % metres}`).toBe(`${name}: 0`)
+    }
+  })
+})
+```
+
+The assertion is written to interpolate the surface name so a failure says which one is wrong, rather than just `expected 4 to be 0`.
+
+Then add local wrappers with the same signatures the call sites already use, so the ~20 call sites below need no edits beyond the new `repeatMetres` argument:
+
+```ts
+// Texture tiling scale per surface, in metres of arc per texture repeat.
+//
+// Every value here MUST divide LAP_M (400) exactly. `ribbonArrays` sets u = s /
+// repeatMetres, so the closing ring lands at u = 400 / repeatMetres — and unless that
+// is a whole number the tile does not line up with itself where the loop closes, which
+// reads as the texture visibly jumping at the start/finish line. 400 / 5 = 80,
+// 400 / 40 = 10, 400 / 10 = 40, 400 / 8 = 50, 400 / 1 = 400. All integers.
+const REPEAT = { track: 5, lane: 40, infield: 10, kerb: 8, mark: 1 }
 
 function buildLoopRibbon(
   o0: number,

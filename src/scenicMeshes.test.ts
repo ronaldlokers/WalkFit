@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ribbonArrays, stripArrays } from './scenicMeshes'
+import { ribbonArrays, stripArrays, REPEAT } from './scenicMeshes'
 import { trackPoint, LAP_M, TRACK_IN, TRACK_OUT } from './scenic'
 
 const BREAK_S = 120 // an arbitrary arc position on the first bend, for the strip cases
@@ -65,5 +65,16 @@ describe('stripArrays', () => {
   it('carries a full 0..1 uv quad', () => {
     const r = stripArrays(0, 0.5, 0.07, TRACK_IN, TRACK_OUT)
     expect([...r.uv]).toEqual([0, 0, 0, 1, 1, 0, 1, 1])
+  })
+})
+
+describe('REPEAT', () => {
+  it('every tiling scale divides the lap exactly, or the texture jumps at the seam', () => {
+    // ribbonArrays sets u = s / repeatMetres, so the closing ring lands at
+    // u = LAP_M / repeatMetres. A fractional value there means the tile does not meet
+    // itself where the loop closes — a visible seam across the start/finish line.
+    for (const [name, metres] of Object.entries(REPEAT)) {
+      expect(`${name}: ${LAP_M % metres}`).toBe(`${name}: 0`)
+    }
   })
 })

@@ -26,6 +26,14 @@ import {
   waterfallPoints,
 } from './scenic'
 import type { Prop } from './scenic'
+import {
+  ribbonArrays,
+  stripArrays,
+  geometryFrom,
+  ensureUv,
+  assertSameAttributes,
+  REPEAT,
+} from './scenicMeshes'
 import { dayPhase, skyAt, weatherFor, WEATHER_FOG, TIME_PHASES, isNight } from './scenicSky'
 import type { TimeOfDay } from './scenicSky'
 
@@ -195,31 +203,20 @@ onMounted(() => {
     return g
   }
 
-  // Closed ribbon around the whole loop between lateral offsets [o0, o1], sampled every
-  // 2 m. Winding chosen so face normals point +y (visible from above; FrontSide culling).
-  function buildLoopRibbon(o0: number, o1: number, y: number, m: THREE.Material): THREE.Mesh {
-    const step = 2
-    const n = Math.ceil(LAP_M / step)
-    const pts: number[] = []
-    const idx: number[] = []
-    for (let i = 0; i <= n; i++) {
-      const s = (i / n) * LAP_M
-      const a = trackPoint(s, o0)
-      const b = trackPoint(s, o1)
-      pts.push(a.x, y, a.z, b.x, y, b.z)
-      if (i > 0) {
-        const k = (i - 1) * 2
-        idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3)
-      }
-    }
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3))
-    g.setIndex(idx)
-    g.computeVertexNormals()
-    return new THREE.Mesh(g, m)
+  // Closed ribbon around the whole loop between lateral offsets [o0, o1]. Winding chosen
+  // so face normals point +y (visible from above; FrontSide culling).
+  function buildLoopRibbon(
+    o0: number,
+    o1: number,
+    y: number,
+    m: THREE.Material,
+    repeatMetres = REPEAT.mark,
+  ): THREE.Mesh {
+    return new THREE.Mesh(geometryFrom(ribbonArrays(o0, o1, y, repeatMetres)), m)
   }
 
-  // Short strip across the track at arc position s (finish line, lane staggers).
+  // Short strip across the track at arc position s (finish line, lane staggers, relay and
+  // hurdle marks).
   function buildCrossStrip(
     s: number,
     widthM: number,
@@ -228,21 +225,7 @@ onMounted(() => {
     o0 = TRACK_IN,
     o1 = TRACK_OUT,
   ): THREE.Mesh {
-    const a0 = trackPoint(s, o0)
-    const a1 = trackPoint(s, o1)
-    const b0 = trackPoint(s + widthM, o0)
-    const b1 = trackPoint(s + widthM, o1)
-    const g = new THREE.BufferGeometry()
-    g.setAttribute(
-      'position',
-      new THREE.Float32BufferAttribute(
-        [a0.x, y, a0.z, a1.x, y, a1.z, b0.x, y, b0.z, b1.x, y, b1.z],
-        3,
-      ),
-    )
-    g.setIndex([0, 2, 1, 1, 2, 3])
-    g.computeVertexNormals()
-    return new THREE.Mesh(g, m)
+    return new THREE.Mesh(geometryFrom(stripArrays(s, widthM, y, o0, o1)), m)
   }
 
   // --- static world, built once ---
@@ -262,10 +245,10 @@ onMounted(() => {
   disposables.push(groundGeo)
 
   // infield: a slightly lighter green fill inside the inner kerb
-  track(buildLoopRibbon(TRACK_IN - 30, TRACK_IN, 0.0, mat.infield))
+  track(buildLoopRibbon(TRACK_IN - 30, TRACK_IN, 0.0, mat.infield, REPEAT.infield))
   // the red track band with white lane lines (lines sit 4 cm above the surface —
   // less separation z-fights into shimmer on the far side of the loop)
-  track(buildLoopRibbon(TRACK_IN, TRACK_OUT, 0.02, mat.track))
+  track(buildLoopRibbon(TRACK_IN, TRACK_OUT, 0.02, mat.track, REPEAT.track))
   for (let lane = 0; lane <= LANES; lane++) {
     const o = TRACK_IN + lane * LANE_W
     track(buildLoopRibbon(o - 0.03, o + 0.03, 0.06, mat.laneLine))
@@ -277,7 +260,7 @@ onMounted(() => {
     track(buildCrossStrip(st.s, 0.4, 0.07, mat.finish, st.o0 + 0.06, st.o1 - 0.06))
   }
   // raised white kerb on the inside edge, like a real track's inner rail
-  track(buildLoopRibbon(TRACK_IN - 0.2, TRACK_IN - 0.02, 0.08, mat.kerb))
+  track(buildLoopRibbon(TRACK_IN - 0.2, TRACK_IN - 0.02, 0.08, mat.kerb, REPEAT.kerb))
   // relay exchange-zone limits: a yellow line across each lane at both ends of the
   // three 30 m zones around the 100/200/300 m marks
   for (const l of relayZoneLines()) {
@@ -292,22 +275,21 @@ onMounted(() => {
   {
     const pts = waterfallPoints()
     const w = 0.14
-    const v: number[] = []
-    const idx: number[] = []
+    const position: number[] = []
+    const uv: number[] = []
+    const index: number[] = []
     pts.forEach((p, i) => {
       const a = trackPoint(p.s - w, p.o)
       const b = trackPoint(p.s + w, p.o)
-      v.push(a.x, 0.065, a.z, b.x, 0.065, b.z)
+      position.push(a.x, 0.065, a.z, b.x, 0.065, b.z)
+      const u = i / (pts.length - 1)
+      uv.push(u, 0, u, 1)
       if (i > 0) {
         const k = (i - 1) * 2
-        idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3)
+        index.push(k, k + 2, k + 1, k + 1, k + 2, k + 3)
       }
     })
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3))
-    g.setIndex(idx)
-    g.computeVertexNormals()
-    track(new THREE.Mesh(g, mat.finish))
+    track(new THREE.Mesh(geometryFrom({ position, uv, index }), mat.finish))
   }
   // dashed green break line at the 200 m point (end of the first bend)
   {
@@ -405,7 +387,7 @@ onMounted(() => {
         }
         const g = (m.geometry as THREE.BufferGeometry).clone()
         g.applyMatrix4(m.matrixWorld)
-        g.deleteAttribute('uv') // primitives carry uv, the custom ribbons don't — unify
+        ensureUv(g) // was deleteAttribute('uv') — textured surfaces need uv, not none
         const arr = byMat.get(material) ?? []
         arr.push(g)
         byMat.set(material, arr)
@@ -417,6 +399,7 @@ onMounted(() => {
       if (!keepTextured.includes(root as THREE.Mesh)) scene.remove(root)
     }
     for (const [material, geoms] of byMat) {
+      assertSameAttributes(geoms, material.name || material.type)
       const merged = mergeGeometries(geoms)
       geoms.forEach((g) => g.dispose())
       if (!merged) continue

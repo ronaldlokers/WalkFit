@@ -6,6 +6,7 @@
 // component's merge pass to DELETE uv from every primitive so mergeGeometries would
 // accept a mixed batch. Textured surfaces need the opposite, so every builder here emits
 // uv and the merge pass fills in zeros for anything still missing it.
+import * as THREE from 'three'
 import { trackPoint, LAP_M } from './scenic'
 
 export interface MeshArrays {
@@ -13,6 +14,15 @@ export interface MeshArrays {
   uv: number[]
   index: number[]
 }
+
+// Texture tiling scale per surface, in metres of arc per texture repeat.
+//
+// Every value here MUST divide LAP_M (400) exactly. `ribbonArrays` sets u = s /
+// repeatMetres, so the closing ring lands at u = 400 / repeatMetres — and unless that
+// is a whole number the tile does not line up with itself where the loop closes, which
+// reads as the texture visibly jumping at the start/finish line. 400 / 5 = 80,
+// 400 / 40 = 10, 400 / 10 = 40, 400 / 8 = 50, 400 / 1 = 400. All integers.
+export const REPEAT = { track: 5, lane: 40, infield: 10, kerb: 8, mark: 1 }
 
 // Closed ribbon around the whole loop between lateral offsets [o0, o1], sampled every
 // `step` metres. `u` advances one unit per `repeatMetres` of arc so a tiled texture keeps
@@ -61,5 +71,36 @@ export function stripArrays(
     position: [a0.x, y, a0.z, a1.x, y, a1.z, b0.x, y, b0.z, b1.x, y, b1.z],
     uv: [0, 0, 0, 1, 1, 0, 1, 1],
     index: [0, 2, 1, 1, 2, 3],
+  }
+}
+
+export function geometryFrom(a: MeshArrays): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(a.position, 3))
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(a.uv, 2))
+  g.setIndex(a.index)
+  g.computeVertexNormals()
+  return g
+}
+
+// mergeGeometries silently produces garbage if the batch disagrees on which attributes
+// exist. Everything we build carries uv; three.js primitives do too, but a future
+// geometry might not — fill in zeros rather than deleting uv from the ones that have it.
+export function ensureUv(g: THREE.BufferGeometry): void {
+  if (g.getAttribute('uv')) return
+  const count = g.getAttribute('position')!.count
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(count * 2), 2))
+}
+
+// Fail loudly at build time instead of rendering a corrupted mesh. A mismatch here is
+// the single most likely way this file breaks, and it is invisible without the check.
+export function assertSameAttributes(geoms: THREE.BufferGeometry[], label: string): void {
+  if (geoms.length < 2) return
+  const key = (g: THREE.BufferGeometry) => Object.keys(g.attributes).sort().join(',')
+  const first = key(geoms[0]!)
+  for (const g of geoms) {
+    if (key(g) !== first) {
+      throw new Error(`scenic merge: attribute mismatch for "${label}" — ${key(g)} vs ${first}`)
+    }
   }
 }

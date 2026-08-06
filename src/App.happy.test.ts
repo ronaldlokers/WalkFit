@@ -376,6 +376,7 @@ describe('App happy path', () => {
   })
 
   it('recent walks list expands to a detail view and deletes a session (#67)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-13T20:00:00') })
     localStorage.setItem(
       'walkfit.history',
       JSON.stringify([
@@ -412,6 +413,7 @@ describe('App happy path', () => {
     expect(JSON.parse(localStorage.getItem('walkfit.history')!)[0].date).toBe(
       '2026-07-14T08:00:00.000Z',
     )
+    vi.useRealTimers()
   })
 
   it('wizard step 4 embeds the same tabbed WorkoutPicker as the header menu, including HR targets', async () => {

@@ -12,13 +12,21 @@ describe('tierFromFrames', () => {
 
   it('uses the median, so leading shader-compile spikes do not force low', () => {
     // the first handful of frames are always slow: shader compilation, texture upload
-    const frames = [400, 120, 90, 60, ...Array(PROBE_FRAMES - 4).fill(8)]
+    const frames = [2000, 900, 700, 400, ...Array(PROBE_FRAMES - 4).fill(8)]
     expect(tierFromFrames(frames)).toBe('high')
   })
 
   it('falls back to low when there is not enough data to judge', () => {
     expect(tierFromFrames([])).toBe('low')
     expect(tierFromFrames([8, 8])).toBe('low')
+  })
+
+  it('needs at least half a probe of samples before it will judge', () => {
+    const fast = (n: number) => Array(n).fill(8)
+    // one sample short of the cutoff: not enough data, stay conservative
+    expect(tierFromFrames(fast(PROBE_FRAMES / 2 - 1))).toBe('low')
+    // exactly at the cutoff: enough to judge, and these frames are fast
+    expect(tierFromFrames(fast(PROBE_FRAMES / 2))).toBe('high')
   })
 })
 

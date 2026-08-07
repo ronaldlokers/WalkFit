@@ -834,6 +834,22 @@ el.appendChild(renderer.domElement)
 
 `outputColorSpace` is already `SRGBColorSpace` by default in three 0.185 — do not set it, and do not convert any existing hex value. Task 10 re-authors the palette against ACES.
 
+**In the same step, take the sky dome out of tone mapping.** The dome is a `MeshBasicMaterial` with `fog: false` whose bottom vertex ring is painted to equal `scene.fog.color`, so it blends invisibly into the real fog at the horizon. three.js applies fog AFTER tone mapping and its fog uniform bypasses the curve, so once ACES is on, real fogged geometry still fades to the raw hex while a tone-mapped dome does not — the two diverge and the ground/sky seam the original code engineered away comes back. Night fog `0x2c3046` darkens by roughly 65% through the curve, which is plainly visible.
+
+Add `toneMapped: false` beside the existing `fog: false`, and record why in the comment above the dome — this is exactly the kind of flag a later reader deletes as redundant:
+
+```ts
+// Sky dome: vertex-color gradient from fog color at the horizon to sky color overhead,
+// following the camera. Kills the hard seam where fogged ground meets a flat background.
+// toneMapped:false is load-bearing — three.js applies fog AFTER tone mapping, so real
+// fogged geometry fades to the raw hex. If the dome were tone mapped it would no longer
+// match the fog it is painted to blend into, and the seam would come back.
+```
+
+This cannot be deferred to Task 10's palette re-author: the dome and `THREE.Fog` read the SAME hex, so no single value can satisfy a tone-mapped dome and an un-tone-mapped fog at once.
+
+The painted markings (`laneLine`, `finish`, `relay`, `hurdle`, `breakLine`) deliberately STAY tone mapped — they are real surfaces in the world and should darken with everything else at night.
+
 - [ ] **Step 2: Drive the sun from `skyBodies`**
 
 Add `skyBodies` to the `./scenicSky` import. The directional light needs an explicit target in the scene for the shadow camera (Task 8) to aim:
@@ -906,6 +922,25 @@ if (!probeDone) {
   }
 }
 ```
+
+**React to the setting changing while the view is open.** `tier`, `probeSamples` and `probeDone` are closure state captured at mount, and nothing watches the prop — so unlike `timeOfDay` (re-read from `props` every frame), changing Settings → 3D quality would do nothing until a 2D/3D toggle or a reload, making the control look broken. It is invisible while `applyTier` is a stub, but Tasks 7-9 give it real work, so wire it now. Add inside `onMounted`, near the existing `stopDistanceWatch` block:
+
+```ts
+// Settings can change while the view is open. Without this the quality control appears
+// dead until the component remounts, because tier/probeDone are closure state captured
+// at mount. Switching back to 'auto' restarts the probe from scratch.
+const stopQualityWatch = watch(
+  () => props.quality,
+  (q) => {
+    const setting = q ?? 'auto'
+    probeSamples.length = 0
+    probeDone = setting !== 'auto'
+    if (probeDone && setting !== tier) applyTier(setting as Tier)
+  },
+)
+```
+
+`watch()` called outside `setup()` is not auto-disposed — the file already says so for `stopDistanceWatch`. Add `stopQualityWatch()` to `cleanup` alongside `stopDistanceWatch?.()`, or every 2D↔3D toggle leaks a watcher.
 
 `applyTier` for now only records the choice; Tasks 7-9 give it work to do:
 

@@ -104,3 +104,40 @@ export function skyAt(phase: number, weather: WeatherId = 'clear'): SkyState {
 export function isNight(phase: number): boolean {
   return phase >= 0.82 || phase < 0.02
 }
+
+// --- sun and moon ---
+// The directional light used to sit at a hardcoded (-40, 60, 30) forever, so a dawn sky
+// was lit like noon. Elevation follows the same stylised cycle the palette does — this is
+// a day cycle over walked distance, not astronomy — and drives long raking shadows at
+// dawn and sunset, which is most of what sells the scene as outdoors.
+
+export interface CelestialBody {
+  azimuth: number // radians, 0 = +x, increasing toward +z
+  elevation: number // radians, negative = below the horizon
+  visible: boolean
+}
+export interface SkyBodies {
+  sun: CelestialBody
+  moon: CelestialBody
+  starOpacity: number
+}
+
+export const SUN_PEAK_PHASE = 0.45 // the "day" palette keyframe
+const MAX_ELEVATION = Math.PI * 0.42 // just shy of straight overhead
+
+export function skyBodies(phase: number): SkyBodies {
+  const p = ((phase % 1) + 1) % 1
+  // one full circuit per cycle; elevation is a cosine peaking at SUN_PEAK_PHASE, so it
+  // crosses zero a quarter-cycle either side and goes negative through the night band
+  const azimuth = p * Math.PI * 2
+  const elevation = Math.cos((p - SUN_PEAK_PHASE) * Math.PI * 2) * MAX_ELEVATION
+  const sunUp = elevation > 0 && !isNight(p)
+  // stars ramp over the 0.05-phase shoulder either side of the night band rather than
+  // popping on at its edge
+  const starOpacity = isNight(p) ? 1 : Math.max(0, Math.min(1, (p - 0.77) / 0.05))
+  return {
+    sun: { azimuth, elevation, visible: sunUp },
+    moon: { azimuth: azimuth + Math.PI, elevation: -elevation, visible: !sunUp },
+    starOpacity,
+  }
+}

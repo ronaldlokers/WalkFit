@@ -7,6 +7,7 @@ import {
   weatherFor,
   WEATHER_FOG,
   TIME_PHASES,
+  skyBodies,
 } from './scenicSky'
 
 describe('day/night', () => {
@@ -49,5 +50,47 @@ describe('ambience (#72)', () => {
     expect(isNight(TIME_PHASES.day)).toBe(false)
     expect(isNight(TIME_PHASES.dawn)).toBe(false)
     expect(TIME_PHASES.sunset).toBeCloseTo(0.75, 5)
+  })
+})
+
+describe('skyBodies', () => {
+  it('sun climbs from dawn to the day keyframe and falls after it', () => {
+    const dawn = skyBodies(0).sun.elevation
+    const morning = skyBodies(0.18).sun.elevation
+    const day = skyBodies(0.45).sun.elevation
+    const late = skyBodies(0.62).sun.elevation
+    expect(morning).toBeGreaterThan(dawn)
+    expect(day).toBeGreaterThan(morning)
+    expect(late).toBeLessThan(day)
+  })
+
+  it('sun is below the horizon and hidden through the whole night band', () => {
+    for (const phase of [0.87, 0.9, 0.95, 0.99, 0.0001]) {
+      if (!isNight(phase)) continue
+      expect(skyBodies(phase).sun.elevation).toBeLessThan(0)
+      expect(skyBodies(phase).sun.visible).toBe(false)
+    }
+  })
+
+  it('moon is visible exactly when the sun is not', () => {
+    for (let p = 0; p < 1; p += 0.01) {
+      const b = skyBodies(p)
+      expect(b.moon.visible).toBe(!b.sun.visible)
+    }
+  })
+
+  it('stars are out at night and gone by day, and ramp rather than pop', () => {
+    expect(skyBodies(TIME_PHASES.day).starOpacity).toBe(0)
+    expect(skyBodies(TIME_PHASES.night).starOpacity).toBeGreaterThan(0.5)
+    const a = skyBodies(0.8).starOpacity
+    const b = skyBodies(0.84).starOpacity
+    expect(b).toBeGreaterThan(a)
+    expect(a).toBeGreaterThanOrEqual(0)
+  })
+
+  it('sun and moon sit on opposite sides of the sky', () => {
+    const b = skyBodies(0.45)
+    const delta = Math.abs(b.sun.azimuth - b.moon.azimuth) % (Math.PI * 2)
+    expect(delta).toBeCloseTo(Math.PI, 3)
   })
 })

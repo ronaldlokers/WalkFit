@@ -72,6 +72,21 @@ describe('skyBodies', () => {
     }
   })
 
+  it('the sun is actually up at the dawn and sunset presets', () => {
+    // the whole point of those presets is a low sun — a cosine keyed to the wrong phases
+    // once put it 68° underground at dawn, which no other test noticed
+    for (const preset of ['dawn', 'day', 'sunset'] as const) {
+      const b = skyBodies(TIME_PHASES[preset])
+      expect(`${preset}: ${b.sun.elevation > 0}`).toBe(`${preset}: true`)
+      expect(`${preset}: ${b.sun.visible}`).toBe(`${preset}: true`)
+    }
+    // and low at the ends, high in the middle
+    const deg = (r: number) => (r * 180) / Math.PI
+    expect(deg(skyBodies(TIME_PHASES.dawn).sun.elevation)).toBeLessThan(15)
+    expect(deg(skyBodies(TIME_PHASES.sunset).sun.elevation)).toBeLessThan(30)
+    expect(deg(skyBodies(TIME_PHASES.day).sun.elevation)).toBeGreaterThan(60)
+  })
+
   it('the moon is up exactly when the sun is below the horizon', () => {
     for (let p = 0; p < 1; p += 0.01) {
       const b = skyBodies(p)

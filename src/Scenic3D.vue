@@ -139,7 +139,7 @@ onMounted(() => {
     cam.near = 1
     cam.far = SUN_DIST * 2
     cam.updateProjectionMatrix()
-    sun.shadow.bias = -0.0006
+    sun.shadow.bias = -0.0015
   }
 
   // Sky dome: vertex-color gradient from fog color at the horizon to sky color overhead,

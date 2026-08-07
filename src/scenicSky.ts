@@ -123,7 +123,44 @@ export interface SkyBodies {
 }
 
 export const SUN_PEAK_PHASE = 0.45 // the "day" palette keyframe
+export const SUN_SET_PHASE = 0.8 // sun reaches the horizon shortly after the sunset keyframe
 const MAX_ELEVATION = Math.PI * 0.42 // just shy of straight overhead
+// isNight()'s dawn edge (phase < 0.02). Elevation must stay negative right up to this
+// edge — see the p < NIGHT_DAWN_EDGE branch in sunElevation below.
+const NIGHT_DAWN_EDGE = 0.02
+
+// Elevation has to agree with the PALETTE, not with an arbitrary cosine. A plain
+// cos(p - 0.45) crosses zero at 0.20 and 0.70, which puts the sun 68° underground at the
+// dawn keyframe (0.02) and 23° under at sunset (0.75) — the two presets that exist
+// precisely to give a low sun. Instead: rise from the horizon at phase 0, peak at the day
+// keyframe, return to the horizon at SUN_SET_PHASE, and stay below through the night.
+function nightElevation(p: number): number {
+  // p spans SUN_SET_PHASE..(1 + NIGHT_DAWN_EDGE) here (the caller wraps the pre-dawn
+  // tail by passing p + 1), dipping to a nadir around the middle of the dark stretch.
+  return (
+    -Math.sin(Math.PI * ((p - SUN_SET_PHASE) / (1 - SUN_SET_PHASE + NIGHT_DAWN_EDGE))) *
+    MAX_ELEVATION *
+    0.5
+  )
+}
+
+function sunElevation(p: number): number {
+  if (p < NIGHT_DAWN_EDGE) {
+    // Still inside the night band (isNight's dawn edge is 0.02). The rise branch below
+    // would give a tiny POSITIVE elevation this close to phase 0, which contradicts
+    // isNight() saying this is still night — route it through the night curve instead,
+    // continuing from before the wrap (p + 1) so it's continuous with the p -> 1 tail.
+    return nightElevation(p + 1)
+  }
+  if (p <= SUN_PEAK_PHASE) return Math.sin((Math.PI / 2) * (p / SUN_PEAK_PHASE)) * MAX_ELEVATION
+  if (p <= SUN_SET_PHASE) {
+    return (
+      Math.sin((Math.PI / 2) * ((SUN_SET_PHASE - p) / (SUN_SET_PHASE - SUN_PEAK_PHASE))) *
+      MAX_ELEVATION
+    )
+  }
+  return nightElevation(p)
+}
 
 const STAR_SHOULDER = 0.05 // phase width of the fade either side of the night band
 
@@ -143,13 +180,14 @@ function starFade(p: number): number {
 
 export function skyBodies(phase: number): SkyBodies {
   const p = ((phase % 1) + 1) % 1
-  // one full circuit per cycle; elevation is a cosine peaking at SUN_PEAK_PHASE, so it
-  // crosses zero a quarter-cycle either side and goes negative through the night band
+  // one full circuit per cycle; elevation rises from the horizon at phase 0, peaks at
+  // SUN_PEAK_PHASE, and returns to the horizon at SUN_SET_PHASE, staying negative
+  // through the night band the rest of the way round — see sunElevation above.
   const azimuth = p * Math.PI * 2
-  const elevation = Math.cos((p - SUN_PEAK_PHASE) * Math.PI * 2) * MAX_ELEVATION
-  // elevation's zero-crossings sit at p = 0.20 and p = 0.70, both well outside the night
-  // band ([0.82, 1) ∪ [0, 0.02)), so !isNight(p) can never actually flip this today —
-  // kept as a defensive guard against future retuning of either curve, not dead code.
+  const elevation = sunElevation(p)
+  // elevation's zero-crossings sit right at the night band's edges (SUN_SET_PHASE and
+  // NIGHT_DAWN_EDGE) by construction, so !isNight(p) rarely flips this on its own — kept
+  // as a defensive guard against future retuning of either curve, not dead code.
   const sunUp = elevation > 0 && !isNight(p)
   const starOpacity = starFade(p)
   return {

@@ -1431,7 +1431,7 @@ const pace = computed(() => {
       </div>
       <div v-if="walkGoal" class="goal-progress">
         <div class="goal-bar">
-          <div class="goal-fill" :style="{ width: goalProgress * 100 + '%' }"></div>
+          <div class="goal-fill" :style="{ transform: `scaleX(${goalProgress})` }"></div>
         </div>
         <span class="goal-pct">{{
           goalProgress >= 1 ? t('goal.reached') : Math.round(goalProgress * 100) + '%'
@@ -2647,11 +2647,17 @@ input[type='range']::-webkit-slider-thumb {
   background: rgba(23, 50, 77, 0.12);
   overflow: hidden;
 }
+/* Scaled, not resized: animating `width` relayouts the flex row on every frame of the
+   transition. The element is full-width and squashed to `scaleX(goalProgress)` instead,
+   which the compositor handles on its own. `goalProgress` is already clamped to 0..1.
+   The rounded cap comes from .goal-bar's own radius plus its overflow:hidden — a radius
+   here would be squashed horizontally along with everything else. */
 .goal-fill {
   height: 100%;
+  width: 100%;
   background: var(--accent);
-  border-radius: 3px;
-  transition: width 0.3s;
+  transform-origin: left center;
+  transition: transform 0.3s;
 }
 .goal-pct {
   font-size: 12px;

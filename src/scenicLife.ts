@@ -122,6 +122,13 @@ export function stepPhase(distance: number, stride: number): number {
   return p < 0 ? p + 1 : p
 }
 
+// stepPhase's period is one GAIT CYCLE — left foot to left foot — because limbs swing in
+// antiphase, so one sine period covers two footfalls. strideLength returns the length of a
+// single footfall. Feed one to the other and every limb animates at twice the real cadence.
+export function gaitCycleM(stride: number): number {
+  return stride * 2
+}
+
 export function cadenceHz(speedKmh: number, stride: number): number {
   return mps(speedKmh) / stride
 }

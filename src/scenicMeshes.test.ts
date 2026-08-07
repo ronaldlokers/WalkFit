@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ribbonArrays, stripArrays, REPEAT } from './scenicMeshes'
+import { ribbonArrays, stripArrays, REPEAT, runnerParts } from './scenicMeshes'
 import { trackPoint, LAP_M, TRACK_IN, TRACK_OUT } from './scenic'
 
 const BREAK_S = 120 // an arbitrary arc position on the first bend, for the strip cases
@@ -65,6 +65,25 @@ describe('stripArrays', () => {
   it('carries a full 0..1 uv quad', () => {
     const r = stripArrays(0, 0.5, 0.07, TRACK_IN, TRACK_OUT)
     expect([...r.uv]).toEqual([0, 0, 0, 1, 1, 0, 1, 1])
+  })
+})
+
+describe('runnerParts', () => {
+  it('puts the foot on the ground when the leg is mounted at the hip', () => {
+    // the defect this pins: a limb short enough to be an arm cannot reach the ground from
+    // the hip, and pacers floated 35.5 cm above the track for two rounds
+    const { body, arm, leg } = runnerParts()
+    leg.computeBoundingBox()
+    arm.computeBoundingBox()
+    body.computeBoundingBox()
+    const HIP_Y = 0.86
+    expect(leg.boundingBox!.min.y + HIP_Y).toBeCloseTo(0, 2)
+    expect(leg.boundingBox!.max.y).toBeCloseTo(0, 2) // pivots at its top
+    expect(arm.boundingBox!.min.y).toBeGreaterThan(leg.boundingBox!.min.y) // arms are shorter
+    expect(body.boundingBox!.max.y).toBeGreaterThan(1.6) // head clears eye height
+    body.dispose()
+    arm.dispose()
+    leg.dispose()
   })
 })
 

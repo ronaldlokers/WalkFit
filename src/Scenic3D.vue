@@ -26,10 +26,9 @@ import {
   waterfallPoints,
   laneDistanceToS,
   laneMeasurementO,
-  worldHash,
 } from './scenic'
 import type { Prop } from './scenic'
-import { pacers, stepPhase, strideLength } from './scenicLife'
+import { pacers, stepPhase, strideLength, gaitCycleM } from './scenicLife'
 import type { Pacer } from './scenicLife'
 import {
   ribbonArrays,
@@ -661,7 +660,14 @@ onMounted(() => {
   // scene.add here runs AFTER the bake block above, so these are never swept into
   // staticRoots — pacers move every frame and must not be merged into the static world.
   const { body: pacerBodyGeo, arm: pacerArmGeo, leg: pacerLegGeo } = runnerParts()
-  const PACER_POOL = TIER_BUDGET.high.pacers
+  // The real maximum across every tier, not just 'high' — the per-frame loop below iterates
+  // pacerRigs.length, so any future tier with a higher pacer count would silently never
+  // render its extras if this only tracked one tier.
+  const PACER_POOL = Math.max(...Object.values(TIER_BUDGET).map((b) => b.pacers))
+  // Seeds come from the source of truth pacers() itself derives them from, not a second copy
+  // of the formula — two copies agreeing by coincidence means changing one silently shows
+  // every rig the wrong colour with no test failing.
+  const seedSource = pacers(0, PACER_POOL)
   interface PacerRig {
     group: THREE.Group
     armL: THREE.Mesh
@@ -673,10 +679,10 @@ onMounted(() => {
   const pacerRigs: PacerRig[] = []
   for (let i = 0; i < PACER_POOL; i++) {
     const kit = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 })
-    // Fixed per rig at construction, seeded the same way pacers() derives seed for index i,
-    // so the colour a rig shows is the one its pacer would have asked for — no need to touch
-    // it again every frame.
-    kit.color.setHSL(worldHash(i * 31 + 7), 0.55, 0.5)
+    // Fixed per rig at construction, taken from pacers()'s own seed for index i, so the
+    // colour a rig shows is the one its pacer would have asked for — no need to touch it
+    // again every frame.
+    kit.color.setHSL(seedSource[i]!.seed, 0.55, 0.5)
     const group = new THREE.Group()
     const mk = (g: THREE.BufferGeometry, x: number, y: number) => {
       const m = new THREE.Mesh(g, kit)
@@ -791,7 +797,7 @@ onMounted(() => {
     // Measured, not modelled: state.steps is the belt's own pedometer, so the arms swing
     // at your real cadence rather than an assumed one.
     const stride = strideLength(props.distance, props.steps ?? 0)
-    const bodyPhase = stepPhase(d, stride) * Math.PI * 2
+    const bodyPhase = stepPhase(d, gaitCycleM(stride)) * Math.PI * 2
     const bodySwing = Math.sin(bodyPhase) * 0.55
     avatarBody.position.set(camera.position.x, 0, camera.position.z)
     avatarBody.rotation.y = camera.rotation.y
@@ -886,7 +892,9 @@ onMounted(() => {
       // Arms swing LESS than legs, not more. From behind — the only angle a walker sees a
       // pacer from — a wide arm swing foreshortens into a splayed "cactus" pose instead of
       // reading as a pump alongside the torso.
-      const ph = stepPhase(p.d, 0.9) * Math.PI * 2
+      // Faster runners take LONGER steps, not just quicker ones — a fixed step length makes
+      // the quick ones look like they are sprinting on the spot.
+      const ph = stepPhase(p.d, gaitCycleM(0.6 + 0.045 * p.speed)) * Math.PI * 2
       const swing = Math.sin(ph)
       rig.legL.rotation.x = swing * 0.55
       rig.legR.rotation.x = -swing * 0.55
@@ -908,7 +916,9 @@ onMounted(() => {
       const at = trackPoint(laneDistanceToS(o, rd % (LAP_M + 2 * Math.PI * o)), rabbitDrawO)
       rabbitGroup.position.set(at.x, 0, at.z)
       rabbitGroup.rotation.y = Math.atan2(-at.tx, -at.tz)
-      const ph = stepPhase(rd, 0.9) * Math.PI * 2
+      // No target-speed prop reaches the rabbit here (only its distance does), so it swings
+      // at the default walking gait cycle rather than a speed-scaled one like the pacers.
+      const ph = stepPhase(rd, gaitCycleM(0.72)) * Math.PI * 2
       const rabbitSwing = Math.sin(ph)
       rabbitLegL.rotation.x = rabbitSwing * 0.55
       rabbitLegR.rotation.x = -rabbitSwing * 0.55

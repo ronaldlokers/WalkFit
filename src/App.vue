@@ -1071,7 +1071,17 @@ async function startWalk() {
   if (!state.running && !pausedWalk.value) {
     finalizeSession()
     resetStats()
+    // Stop leaves `active` set, so a Stop -> Start mid-plan resets the walker without going
+    // through startWorkout. Without this the rabbit is stranded where it was AND frozen until
+    // state.elapsed climbs back past rabbitElapsed.
+    if (rabbitDistance.value !== null) {
+      rabbitDistance.value = state.distance
+      rabbitElapsed = state.elapsed
+    }
   }
+  // The pause/resume path needs none of this: state.elapsed only advances while
+  // state.running && state.speed > 0 (treadmill.ts), so rabbitElapsed never goes stale
+  // across a pause and this branch is skipped entirely on resume.
   pausedWalk.value = false
   await start()
 }

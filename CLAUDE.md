@@ -140,11 +140,13 @@ Keep pinned Playwright version and image tag in sync.
 - `src/scenicMeshes.ts` — pure vertex/uv/index array builders plus the three.js mesh and
   procedural `CanvasTexture` factories, extracted from `Scenic3D.vue`. Every `REPEAT` value
   must divide `LAP_M` exactly, or the texture misaligns with itself at the start/finish seam.
-- `src/scenicLife.ts` — **pure, three.js-free** (App.vue imports it directly, so a three
-  import would drag three.js into the main chunk): ambient `pacers(t, count)` whose
-  positions are analytic in elapsed time rather than accumulated, `strideLength`/
-  `stepPhase`/`cadenceHz` (cadence is MEASURED from the belt's own pedometer via
-  `state.steps`, not modelled), and `paceGap`. Unit-tested in `src/scenicLife.test.ts`.
+- `src/scenicLife.ts` — **pure, three.js-free** (must stay that way so App.vue COULD import
+  it directly — a three import here would drag three.js out of Scenic3D.vue's lazy chunk
+  and into the main bundle): ambient `pacers(t, count)` whose positions are analytic in
+  elapsed time rather than accumulated, `strideLength`/`stepPhase`/`gaitCycleM`/`cadenceHz`
+  (cadence is MEASURED from the belt's own pedometer via `state.steps`, not modelled —
+  `gaitCycleM` converts a footfall's `strideLength` into the two-footfall period `stepPhase`
+  actually swings limbs over), and `paceGap`. Unit-tested in `src/scenicLife.test.ts`.
 - `src/App.vue` — the rest of the UI: loop, chart, controls,
   header live-stat strip (time/distance/kcal/speed/pace — real zeros faded while idle),
   header overflow menu, onboarding wizard; the statistics and settings sheets live in

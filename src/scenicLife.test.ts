@@ -11,6 +11,7 @@ import {
   MAX_STRIDE_M,
   strideLength,
   stepPhase,
+  gaitCycleM,
   cadenceHz,
   paceGap,
 } from './scenicLife'
@@ -192,6 +193,21 @@ describe('stepPhase', () => {
       expect(p).toBeGreaterThanOrEqual(0)
       expect(p).toBeLessThan(1)
     }
+  })
+})
+
+describe('gaitCycleM', () => {
+  it('is two steps, because a swing period is left-foot to left-foot', () => {
+    expect(gaitCycleM(0.72)).toBeCloseTo(1.44, 6)
+  })
+
+  it('one swing period covers exactly two steps of walking', () => {
+    // the units bug this exists to prevent: phase must advance by exactly 1 over 2 strides
+    const stride = 0.72
+    const cycle = gaitCycleM(stride)
+    expect(stepPhase(0, cycle)).toBeCloseTo(stepPhase(2 * stride, cycle), 6)
+    // and NOT over one stride — that would be the 2x-cadence bug
+    expect(Math.abs(stepPhase(stride, cycle) - stepPhase(0, cycle))).toBeGreaterThan(0.4)
   })
 })
 

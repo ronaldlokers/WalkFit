@@ -424,12 +424,17 @@ describe('weight-loss workout — Skip segment (#110)', () => {
     await startFirstPlan(w)
     expect(w.find('.imm-workout').text()).toContain('seg 1/')
     const distBefore = fakeTm.distance
+    // the rabbit must not bank the skipped seconds either — a real regression found in
+    // review let a 200 m jump wrap the loop into nonsense
+    const rabbit = () => (w.vm as unknown as { rabbitDistance: number | null }).rabbitDistance
+    const rabbitBefore = rabbit()
     await w
       .findAll('button')
       .find((b) => b.text() === 'Skip')!
       .trigger('click')
     expect(w.find('.imm-workout').text()).toContain('seg 2/')
     expect(fakeTm.distance).toBe(distBefore) // speed-integrated elsewhere, untouched by the jump
+    expect(rabbit()).toBe(rabbitBefore)
   })
 
   it('on the last segment ends the workout, same as End', async () => {

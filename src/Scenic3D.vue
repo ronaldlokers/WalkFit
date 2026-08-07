@@ -34,14 +34,25 @@ import {
   assertSameAttributes,
   REPEAT,
 } from './scenicMeshes'
-import { dayPhase, skyAt, weatherFor, WEATHER_FOG, TIME_PHASES, isNight } from './scenicSky'
+import {
+  dayPhase,
+  skyAt,
+  skyBodies,
+  weatherFor,
+  WEATHER_FOG,
+  TIME_PHASES,
+  isNight,
+} from './scenicSky'
 import type { TimeOfDay } from './scenicSky'
+import { tierFromFrames, resolveTier, PROBE_FRAMES } from './scenicQuality'
+import type { Tier, QualitySetting } from './scenicQuality'
 
 const props = defineProps<{
   distance: number
   speed: number
   weatherSeed?: number // per-walk weather pick (#72); omitted = clear
   timeOfDay?: TimeOfDay // Settings override; 'auto' follows walked distance
+  quality?: QualitySetting
 }>()
 const emit = defineEmits<{ unsupported: [] }>()
 
@@ -76,6 +87,13 @@ onMounted(() => {
   // contexts, and leaking one per 2D↔3D toggle can evict the real renderer's (#60).
   probeCtx.getExtension('WEBGL_lose_context')?.loseContext()
 
+  // Start on the cheap tier and upgrade once if the machine turns out to be fast. Never
+  // downgrade mid-session: a tier flip during a walk is more jarring than a few dropped
+  // frames, and the walker cannot do anything about it either way.
+  let tier: Tier = props.quality === 'high' ? 'high' : 'low'
+  const probeSamples: number[] = []
+  let probeDone = props.quality !== 'auto' && props.quality !== undefined
+
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(60, 1, 0.3, FOG_FAR + 60)
   // per-walk weather (#72): deterministic from the session seed
@@ -85,12 +103,18 @@ onMounted(() => {
 
   renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  // ACES compresses the highlights, which is what lets the palette be authored at real
+  // outdoor brightness instead of the muted values the old un-tone-mapped scene needed.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = 1.0
   el.appendChild(renderer.domElement)
 
   const hemi = new THREE.HemisphereLight(0xffffff, 0x30363f, 0.9)
   const sun = new THREE.DirectionalLight(0xffffff, 1)
-  sun.position.set(-40, 60, 30)
-  scene.add(hemi, sun)
+  const sunTarget = new THREE.Object3D()
+  scene.add(hemi, sun, sunTarget)
+  sun.target = sunTarget
+  const SUN_DIST = 120
 
   // Sky dome: vertex-color gradient from fog color at the horizon to sky color overhead,
   // following the camera. Kills the hard seam where fogged ground meets a flat background.
@@ -421,6 +445,14 @@ onMounted(() => {
     const phase = tod === 'auto' ? dayPhase(d) : TIME_PHASES[tod]
     // floodlights read as lit only after dark (#72) — one shared unlit material
     mat.floodOn.color.setHex(isNight(phase) ? 0xfff2c8 : 0x9aa0a8)
+    const bodies = skyBodies(phase)
+    // keep the light rig centred on the walker so its shadow box stays useful
+    sunTarget.position.set(camera.position.x, 0, camera.position.z)
+    sun.position.set(
+      camera.position.x + Math.cos(bodies.sun.azimuth) * Math.cos(bodies.sun.elevation) * SUN_DIST,
+      Math.max(2, Math.sin(bodies.sun.elevation) * SUN_DIST),
+      camera.position.z + Math.sin(bodies.sun.azimuth) * Math.cos(bodies.sun.elevation) * SUN_DIST,
+    )
     const sky = skyAt(phase, weather)
     scene.fog!.color.setHex(sky.fog)
     const domeKey = sky.sky * 0x1000000 + sky.fog
@@ -435,6 +467,10 @@ onMounted(() => {
     renderer!.render(scene, camera)
   }
 
+  function applyTier(next: Tier) {
+    tier = next
+  }
+
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   let last = performance.now()
   let lastRendered = Infinity // skip GPU work while the belt is stopped and nothing moved (#62)
@@ -442,6 +478,14 @@ onMounted(() => {
     if (disposed) return
     const dt = Math.min(0.1, (now - last) / 1000)
     last = now
+    if (!probeDone) {
+      probeSamples.push(dt * 1000)
+      if (probeSamples.length >= PROBE_FRAMES) {
+        probeDone = true
+        const next = resolveTier(props.quality ?? 'auto', tierFromFrames(probeSamples))
+        if (next !== tier) applyTier(next)
+      }
+    }
     const target = props.distance
     if (Math.abs(target - display) > LAP_M / 4) display = target // view (re)opened — snap
     // advance at belt speed, gently corrected toward the true integrated distance

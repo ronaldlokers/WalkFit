@@ -86,6 +86,7 @@ const debugOn = defineModel<boolean>('debugOn', { required: true })
 const stravaAutoUpload = defineModel<boolean>('stravaAutoUpload', { required: true })
 const goalWeight = defineModel<number>('goalWeight', { required: true })
 const scenicTime = defineModel<string>('scenicTime', { required: true })
+const scenicQuality = defineModel<string>('scenicQuality', { required: true })
 const viewMode = defineModel<'track' | 'scenic'>('viewMode', { required: true })
 const goalKcal = defineModel<number>('goalKcal', { required: true })
 const goalSteps = defineModel<number>('goalSteps', { required: true })
@@ -309,6 +310,14 @@ function confirmForgetNow() {
             <option value="day">{{ t('settings.todDay') }}</option>
             <option value="sunset">{{ t('settings.todSunset') }}</option>
             <option value="night">{{ t('settings.todNight') }}</option>
+          </select>
+        </div>
+        <div class="set-row">
+          <span>{{ t('settings.quality') }}</span>
+          <select v-model="scenicQuality" class="set-select">
+            <option value="auto">{{ t('settings.qualityAuto') }}</option>
+            <option value="low">{{ t('settings.qualityLow') }}</option>
+            <option value="high">{{ t('settings.qualityHigh') }}</option>
           </select>
         </div>
       </template>

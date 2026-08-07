@@ -471,6 +471,9 @@ const weatherSeed = Date.now() % 100000
 // time-of-day override for the 3D view (Settings → Display)
 const scenicTime = ref(localStorage.getItem('walkfit.scenic.time') || 'auto')
 watch(scenicTime, (v) => localStorage.setItem('walkfit.scenic.time', v))
+// render-quality tier override for the 3D view (Settings → Display); 'auto' probes the device
+const scenicQuality = ref(localStorage.getItem('walkfit.scenic.quality') || 'auto')
+watch(scenicQuality, (v) => localStorage.setItem('walkfit.scenic.quality', v))
 
 // --- live calorie counter ---
 // Integrated per-tick from actual speed (via metForSpeed), not a single average-speed
@@ -1367,6 +1370,7 @@ const pace = computed(() => {
           :speed="state.speed"
           :weather-seed="weatherSeed"
           :time-of-day="scenicTime as never"
+          :quality="scenicQuality as never"
           @unsupported="scenicUnsupported"
         />
       </div>
@@ -1792,6 +1796,7 @@ const pace = computed(() => {
         v-model:goal-steps="goals.steps"
         v-model:goal-minutes="goals.minutes"
         v-model:scenic-time="scenicTime"
+        v-model:scenic-quality="scenicQuality"
         v-model:goal-weight="goalWeight"
         v-model:strava-auto-upload="stravaAutoUpload"
         :tm="{ state, connect, disconnect, forget: forgetTreadmill }"

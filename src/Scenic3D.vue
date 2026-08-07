@@ -128,7 +128,7 @@ onMounted(() => {
   const SHADOW_BOX = 60 // metres either side of the camera
   function enableShadows() {
     renderer!.shadowMap.enabled = true
-    renderer!.shadowMap.type = THREE.PCFSoftShadowMap
+    renderer!.shadowMap.type = THREE.PCFShadowMap
     sun.castShadow = true
     sun.shadow.mapSize.set(2048, 2048)
     const cam = sun.shadow.camera
@@ -136,10 +136,14 @@ onMounted(() => {
     cam.right = SHADOW_BOX
     cam.top = SHADOW_BOX
     cam.bottom = -SHADOW_BOX
-    cam.near = 1
-    cam.far = SUN_DIST * 2
+    // Tight near/far around the sun's fixed distance (not 1..SUN_DIST*2): every bias unit
+    // spends its precision on the box that actually matters instead of empty space, so a
+    // much smaller bias still clears the self-shadow acne below.
+    cam.near = SUN_DIST - 80
+    cam.far = SUN_DIST + 80
     cam.updateProjectionMatrix()
-    sun.shadow.bias = -0.0015
+    sun.shadow.bias = -0.0004
+    sun.shadow.normalBias = 0.03
   }
 
   // Sky dome: vertex-color gradient from fog color at the horizon to sky color overhead,
@@ -196,6 +200,9 @@ onMounted(() => {
     transparent: true,
     depthWrite: false,
   })
+  // Set when the bake merges the blob discs into one mesh (below) — lets applyTier hide
+  // them the instant real shadows come on, and bring them back if shadows go off again.
+  let blobMesh: THREE.Mesh | null = null
   function makeTextures(size: number) {
     const aniso = Math.min(4, renderer!.capabilities.getMaxAnisotropy())
     const t = {
@@ -312,9 +319,10 @@ onMounted(() => {
       g.scale.setScalar(p.scale)
     }
     // Cheap tier runs no shadow map: fake ground contact with a static dark disc instead.
-    // Decided at build time, not tier-reactively — the world is baked once, so a
-    // mid-session low→high upgrade leaves these in place under the real shadows. That's
-    // a slightly dark patch for a couple of seconds, not worth rebuilding the whole bake.
+    // Built for every prop regardless of the tier the session eventually settles on — the
+    // world is baked once, so the auto probe's low→high upgrade (or a later Settings
+    // downgrade) can't add or remove geometry. The merged blob mesh is instead toggled
+    // visible/invisible in applyTier to match whichever tier is actually active.
     if (!TIER_BUDGET[tier].shadowMap && p.type !== 'flood') {
       const blob = new THREE.Mesh(blobGeo, blobMat)
       blob.rotation.x = -Math.PI / 2
@@ -363,7 +371,6 @@ onMounted(() => {
   const ground = new THREE.Mesh(groundGeo, mat.grass)
   ground.rotation.x = -Math.PI / 2
   ground.position.y = -0.02
-  ground.receiveShadow = true
   scene.add(ground)
   disposables.push(groundGeo)
 
@@ -527,6 +534,7 @@ onMounted(() => {
       if (!merged) continue
       disposables.push(merged)
       const m = new THREE.Mesh(merged, material)
+      if (material === blobMat) blobMesh = m
       // everything in the scenery ring both casts and receives; the flat painted
       // markings only receive, or their 4 cm lift casts a visible false shadow
       const painted =
@@ -535,7 +543,11 @@ onMounted(() => {
         material === mat.relay ||
         material === mat.hurdle ||
         material === mat.breakLine
-      m.castShadow = !painted
+      // Flat ground ribbons must not cast: they are DoubleSide, so they write their own
+      // depth into the shadow map and self-shadow into acne, and the kerb's 6 cm lift
+      // throws a false stripe across the track at low sun angles. Nothing is under them.
+      const flatGround = material === mat.track || material === mat.infield || material === mat.kerb
+      m.castShadow = !painted && !flatGround
       m.receiveShadow = true
       scene.add(m)
     }
@@ -600,6 +612,12 @@ onMounted(() => {
     }
     Object.values(old).forEach((t) => t.dispose())
     if (budget.shadowMap && !renderer!.shadowMap.enabled) enableShadows()
+    else if (!budget.shadowMap && renderer!.shadowMap.enabled) {
+      // downgrade: stop paying for the depth pre-pass, and bring the blobs back
+      renderer!.shadowMap.enabled = false
+      sun.castShadow = false
+    }
+    if (blobMesh) blobMesh.visible = !budget.shadowMap
   }
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches

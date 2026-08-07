@@ -1424,7 +1424,7 @@ const pace = computed(() => {
       <button class="btn halt" :disabled="!state.connected" @click="stopWalk">
         {{ t('actions.stop') }}
       </button>
-      <button class="btn ghost" @click="resetStats">{{ t('actions.reset') }}</button>
+      <button class="btn ghost reset" @click="resetStats">{{ t('actions.reset') }}</button>
     </section>
 
     <section v-if="!active && !hrTarget" class="controls" :class="{ disabled: !state.connected }">
@@ -2833,8 +2833,9 @@ input[type='range']::-webkit-slider-thumb {
   flex: 1.6;
   font-size: 16px;
 }
-/* the mock's dock: Start + Stop only (no pause/reset) */
-.app.layout-immersive > .action-row .btn.ghost {
+/* The dock is Start + Pause + Stop. Reset stays out: Stop then Start already clears the
+   session, and a destructive control in the walking dock is easy to hit by accident. */
+.app.layout-immersive > .action-row .btn.ghost.reset {
   display: none;
 }
 /* workouts hide the speed card — the action row then stands alone, fully rounded */

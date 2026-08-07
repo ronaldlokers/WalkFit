@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
-import { reactive } from 'vue'
+import { reactive, nextTick } from 'vue'
 import type { TreadmillState } from './treadmill'
 import type { HeartRateState } from './heartrate'
 
@@ -346,6 +346,44 @@ describe('HR workout', () => {
       .trigger('click')
     expect(w.find('.tlist').exists()).toBe(true)
     expect(w.find('.hr-workout-pane').exists()).toBe(false)
+  })
+
+  it('the rabbit runs only for weight-loss plans and starts level with you (#realism slice 3)', async () => {
+    const App = (await import('./App.vue')).default
+    const w = (mounted = mount(App))
+    await toMain(w)
+
+    const rabbit = () => (w.vm as unknown as { rabbitDistance: number | null }).rabbitDistance
+
+    // free walk, no plan: no rabbit at all
+    expect(rabbit()).toBe(null)
+
+    fakeTm.distance = 120
+    await w
+      .findAll('button')
+      .find((b) => b.text() === '☰')!
+      .trigger('click')
+    await w
+      .findAll('button')
+      .find((b) => b.text().includes('Workout'))!
+      .trigger('click')
+    await w.findAll('.tcard')[0]!.trigger('click')
+    await w
+      .findAll('button')
+      .find((b) => b.text().includes('Start workout'))!
+      .trigger('click')
+
+    // starts level with the walker, not back at zero
+    expect(rabbit()).toBeCloseTo(120, 1)
+
+    // and advances at the segment's target speed while the belt is running
+    const before = rabbit()!
+    fakeTm.running = true
+    for (let i = 0; i < 10; i++) {
+      fakeTm.elapsed += 1
+      await nextTick()
+    }
+    expect(rabbit()!).toBeGreaterThan(before)
   })
 })
 

@@ -69,6 +69,8 @@ const props = defineProps<{
   weatherSeed?: number // per-walk weather pick (#72); omitted = clear
   timeOfDay?: TimeOfDay // Settings override; 'auto' follows walked distance
   quality?: QualitySetting
+  steps?: number
+  rabbitDistance?: number | null // target-pace rabbit (#realism slice 3); null/omitted = none
 }>()
 const emit = defineEmits<{ unsupported: [] }>()
 
@@ -693,6 +695,28 @@ onMounted(() => {
     pacerRigs.push({ group, armL, armR, legL, legR, kit })
   }
 
+  // --- target-pace rabbit (live, never baked) ---
+  // Same split-limb rig as the pacers above — a limb short enough to read as an arm
+  // cannot reach the ground from the hip, hence separate pacerArmGeo/pacerLegGeo rather
+  // than one shared geometry. Runs lane 2 so it is beside the walker rather than under
+  // the camera.
+  const rabbitKit = new THREE.MeshStandardMaterial({ color: 0x3ba55d, roughness: 0.7 })
+  const rabbitGroup = new THREE.Group()
+  const mkRabbitLimb = (g: THREE.BufferGeometry, x: number, y: number) => {
+    const m = new THREE.Mesh(g, rabbitKit)
+    m.position.set(x, y, 0)
+    m.castShadow = true
+    rabbitGroup.add(m)
+    return m
+  }
+  mkRabbitLimb(pacerBodyGeo, 0, 0)
+  const rabbitArmL = mkRabbitLimb(pacerArmGeo, -0.22, 1.42)
+  const rabbitArmR = mkRabbitLimb(pacerArmGeo, 0.22, 1.42)
+  const rabbitLegL = mkRabbitLimb(pacerLegGeo, -0.09, 0.86)
+  const rabbitLegR = mkRabbitLimb(pacerLegGeo, 0.09, 0.86)
+  rabbitGroup.visible = false
+  scene.add(rabbitGroup)
+
   // One label, reused for whichever pacer is nearest AHEAD of the walker — Zwift shows
   // who you are about to catch, not a name tag on every body in the scene.
   const labelCanvas = document.createElement('canvas')
@@ -827,6 +851,23 @@ onMounted(() => {
       rig.legR.rotation.x = -swing * 0.55
       rig.armL.rotation.x = -swing * 0.4
       rig.armR.rotation.x = swing * 0.4
+    }
+    // Target-pace rabbit: same split-limb rig and swing amplitudes as the pacers above.
+    const rd = props.rabbitDistance
+    if (rd == null) {
+      rabbitGroup.visible = false
+    } else {
+      rabbitGroup.visible = true
+      const o = laneMeasurementO(2)
+      const at = trackPoint(laneDistanceToS(o, rd), o)
+      rabbitGroup.position.set(at.x, 0, at.z)
+      rabbitGroup.rotation.y = Math.atan2(-at.tx, -at.tz)
+      const ph = stepPhase(rd, 0.9) * Math.PI * 2
+      const rabbitSwing = Math.sin(ph)
+      rabbitLegL.rotation.x = rabbitSwing * 0.55
+      rabbitLegR.rotation.x = -rabbitSwing * 0.55
+      rabbitArmL.rotation.x = -rabbitSwing * 0.4
+      rabbitArmR.rotation.x = rabbitSwing * 0.4
     }
     if (nearestIdx >= 0) {
       const p = list[nearestIdx]!
@@ -1054,6 +1095,7 @@ onMounted(() => {
     pacerArmGeo.dispose()
     pacerLegGeo.dispose()
     pacerRigs.forEach((r) => r.kit.dispose())
+    rabbitKit.dispose()
     labelTex.dispose()
     labelSprite.material.dispose()
     renderer?.dispose()

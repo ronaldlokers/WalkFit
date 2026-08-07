@@ -989,6 +989,24 @@ const timeToNext = computed(() =>
   curSeg.value ? Math.max(0, curSeg.value.end - state.elapsed) : 0,
 )
 
+// Target-pace rabbit (#realism slice 3): integrated here because this is the one place
+// that already knows the workout's target speed. Weight-loss plans only — an HR target
+// defines a heart rate, not a pace, so there is no pace to chase.
+const rabbitDistance = ref<number | null>(null)
+watch(active, (a) => {
+  rabbitDistance.value = a ? state.distance : null
+})
+watch(
+  () => state.elapsed,
+  (now, prev) => {
+    if (rabbitDistance.value === null || !state.running) return
+    const seg = curSeg.value
+    if (!seg) return
+    const dt = Math.max(0, now - (prev ?? now))
+    rabbitDistance.value += ((seg.speed * 1000) / 3600) * dt
+  },
+)
+
 // Countdown beeps in the last 3 s of a segment, then announce the new speed at the
 // switch. Elapsed ticks at ~1 Hz, so track the last-beeped second to fire each once.
 // At 5 s a spoken heads-up names the upcoming change (#110) so a jump never surprises.
@@ -1371,6 +1389,8 @@ const pace = computed(() => {
           :weather-seed="weatherSeed"
           :time-of-day="scenicTime as never"
           :quality="scenicQuality as never"
+          :steps="state.steps"
+          :rabbit-distance="rabbitDistance"
           @unsupported="scenicUnsupported"
         />
       </div>

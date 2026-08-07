@@ -30,6 +30,8 @@ import {
 import type { Prop } from './scenic'
 import { pacers, stepPhase, strideLength, gaitCycleM } from './scenicLife'
 import type { Pacer } from './scenicLife'
+import { stadium, PART_SIZES } from './scenicVenue'
+import type { VenuePart } from './scenicVenue'
 import {
   ribbonArrays,
   stripArrays,
@@ -48,6 +50,11 @@ import {
   starPositions,
   cloudTexture,
   runnerParts,
+  chainLinkTexture,
+  seatingTexture,
+  pitchLinesTexture,
+  skylineTexture,
+  sandTexture,
 } from './scenicMeshes'
 import {
   dayPhase,
@@ -302,8 +309,13 @@ onMounted(() => {
   // Set when the bake merges the blob discs into one mesh (below) — lets applyTier hide
   // them the instant real shadows come on, and bring them back if shadows go off again.
   let blobMesh: THREE.Mesh | null = null
+  // pitchLines is generated once at 1024 regardless of tier (see makeTextures below) and
+  // memoized here so a tier change reuses the same texture object instead of pointlessly
+  // regenerating an identical 1024 copy every toggle.
+  let pitchLinesTex: THREE.CanvasTexture | null = null
   function makeTextures(size: number) {
     const aniso = Math.min(4, renderer!.capabilities.getMaxAnisotropy())
+    pitchLinesTex ??= pitchLinesTexture(1024)
     const t = {
       tartan: tartanTexture(size),
       grass: grassTexture(size, 108),
@@ -311,6 +323,13 @@ onMounted(() => {
       bark: barkTexture(size),
       foliage: foliageTexture(size),
       concrete: concreteTexture(size),
+      chainLink: chainLinkTexture(size),
+      seating: seatingTexture(size),
+      // always 1024: at 256 px across a 100 m plane the pitch markings are mush, and this
+      // is the one surface where physical scale makes the tier's texture budget unusable
+      pitchLines: pitchLinesTex,
+      skyline: skylineTexture(size),
+      sand: sandTexture(size),
     }
     for (const tex of Object.values(t)) tex.anisotropy = aniso
     // `ribbonArrays` spans v from 0 to 1 across the ribbon's width however wide it is,
@@ -323,6 +342,10 @@ onMounted(() => {
     t.infield.repeat.set(1, 30 / REPEAT.infield) // infield ribbon spans 30 m inward
     t.concrete.repeat.set(1, 0.18 / REPEAT.kerb) // kerb: TRACK_IN-0.2 .. TRACK_IN-0.02
     t.grass.repeat.set(60, 60) // one big 700 m plane, so tile it hard
+    // v spans the 2 m fence height at 4 m per u repeat; LAP_M / 4 = 100, a whole number,
+    // so the chain-link meets itself at the seam. Set here (not once at buildVenue time)
+    // so a tier change, which swaps in a fresh chainLink texture instance, keeps it.
+    t.chainLink.repeat.set(1, 2 / 4)
     return t
   }
   // Task 6 deliberately left this out because nothing read it yet; it has a reader now.
@@ -367,6 +390,25 @@ onMounted(() => {
     }),
     laneLine: new THREE.MeshBasicMaterial({ color: 0xdfe4ea, side: THREE.DoubleSide }),
     finish: new THREE.MeshBasicMaterial({ color: 0xf2f5f9, side: THREE.DoubleSide }),
+    seating: surface({ color: 0xffffff, map: tex.seating, roughness: 0.9 }),
+    fence: new THREE.MeshBasicMaterial({
+      map: tex.chainLink,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false, // a mesh fence must not occlude what is behind it
+    }),
+    clubhouse: surface({ color: 0xd8cfc0, roughness: 0.85 }),
+    roof: surface({ color: 0x7a4b3a, roughness: 0.8 }),
+    pitch: surface({ color: 0xffffff, map: tex.pitchLines, roughness: 1, side: THREE.DoubleSide }),
+    sand: surface({ color: 0xffffff, map: tex.sand, roughness: 1, side: THREE.DoubleSide }),
+    mat: surface({ color: 0x2f5fa8, roughness: 0.9, side: THREE.DoubleSide }),
+    skylineMat: new THREE.MeshBasicMaterial({
+      map: tex.skyline,
+      transparent: true,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: true, // it SHOULD fade into the distance — that is the depth cue
+    }),
   }
   // assertSameAttributes/mergeGeometries errors prefer material.name — without this every
   // merge batch reports as generic "MeshStandardMaterial", useless for diagnosing which one.
@@ -431,6 +473,123 @@ onMounted(() => {
       blob.position.y = 0.03
       blob.scale.setScalar(1.6)
       g.add(blob)
+    }
+    return g
+  }
+
+  // Static venue furniture. Added BEFORE the bake, like the scenery ring — these never
+  // move, so they merge by material and cost a handful of draw calls between them.
+  function buildVenue(p: VenuePart): THREE.Object3D {
+    const g = new THREE.Group()
+    const at = trackPoint(p.s, p.o)
+
+    if (p.type === 'stand') {
+      // Eight stepped rows swept along the home straight. Built as a box per row rather
+      // than an extruded profile: the straight is straight, so boxes are exact here and
+      // far simpler than sampling the loop.
+      const len = p.span!
+      const rows = 8
+      for (let r = 0; r < rows; r++) {
+        const step = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.45, len), mat.seating)
+        // set x directly rather than translateX — translate is applied in the object's
+        // own rotated frame, and this group gets rotated to face the track below
+        step.position.set(r * 1.1, 0.22 + r * 0.45, 0)
+        g.add(step)
+      }
+      const backWall = new THREE.Mesh(new THREE.BoxGeometry(0.4, 4.2, len), mat.clubhouse)
+      backWall.position.set(rows * 1.1, 2.1, 0)
+      g.add(backWall)
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(rows * 1.2, 0.25, len), mat.roof)
+      roof.position.set(rows * 0.55, 5.4, 0)
+      g.add(roof)
+      for (let i = 0; i < 4; i++) {
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 5.3, 6), mat.clubhouse)
+        col.position.set(0, 2.65, -len / 2 + (len * (i + 0.5)) / 4)
+        g.add(col)
+      }
+      // sweep it along the straight: the home straight runs from s=0 toward -z at x = +R
+      const mid = trackPoint(p.s + len / 2, p.o)
+      g.position.set(mid.x, 0, mid.z)
+      g.rotation.y = Math.atan2(-mid.tx, -mid.tz)
+    } else if (p.type === 'fence') {
+      // A vertical loop ribbon, 2 m tall. NOT ribbonArrays — that builds a FLAT ribbon
+      // between two lateral offsets, and a fence needs its second edge lifted in y, not
+      // pushed sideways. LAP_M / 4 = 100, a whole number, so the chain-link meets itself
+      // at the seam.
+      const pts: number[] = []
+      const uv: number[] = []
+      const idx: number[] = []
+      const step = 2
+      const n = Math.ceil(LAP_M / step)
+      for (let i = 0; i <= n; i++) {
+        const s = (i / n) * LAP_M
+        const a = trackPoint(s, p.o)
+        pts.push(a.x, 0, a.z, a.x, 2, a.z)
+        const u = s / 4
+        uv.push(u, 0, u, 1)
+        if (i > 0) {
+          const k = (i - 1) * 2
+          idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3)
+        }
+      }
+      g.add(new THREE.Mesh(geometryFrom({ position: pts, uv, index: idx }), mat.fence))
+    } else if (p.type === 'fencePost') {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.1, 5), mat.pole)
+      post.position.set(at.x, 1.05, at.z)
+      g.add(post)
+    } else if (p.type === 'clubhouse') {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(9, 3.4, 6), mat.clubhouse)
+      body.position.set(at.x, 1.7, at.z)
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(7, 2, 4), mat.roof)
+      roof.position.set(at.x, 4.4, at.z)
+      roof.rotation.y = Math.PI / 4
+      g.add(body, roof)
+    } else if (p.type === 'flagpole') {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 7, 5), mat.pole)
+      pole.position.set(at.x, 3.5, at.z)
+      g.add(pole)
+    } else if (p.type === 'pitch') {
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.pitch!), mat.pitch)
+      plane.rotation.x = -Math.PI / 2
+      plane.position.set(at.x, 0.01, at.z)
+      g.add(plane)
+    } else if (p.type === 'jumpRunway') {
+      const run = new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.jumpRunway!), mat.track)
+      run.rotation.x = -Math.PI / 2
+      run.position.set(at.x, 0.012, at.z)
+      run.rotation.z = Math.atan2(-at.tx, -at.tz)
+      g.add(run)
+    } else if (p.type === 'jumpPit') {
+      const pit = new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.jumpPit!), mat.sand)
+      pit.rotation.x = -Math.PI / 2
+      pit.position.set(at.x, 0.012, at.z)
+      pit.rotation.z = Math.atan2(-at.tx, -at.tz)
+      g.add(pit)
+    } else if (p.type === 'highJump') {
+      const apron = new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.highJump!), mat.track)
+      apron.rotation.x = -Math.PI / 2
+      apron.position.set(at.x, 0.012, at.z)
+      const bed = new THREE.Mesh(new THREE.BoxGeometry(5, 0.6, 3), mat.mat)
+      bed.position.set(at.x, 0.3, at.z)
+      g.add(apron, bed)
+    } else if (p.type === 'shotCircle') {
+      // PART_SIZES.shotCircle is a [diameter, diameter] footprint; CircleGeometry wants a
+      // radius.
+      const ring = new THREE.Mesh(
+        new THREE.CircleGeometry(PART_SIZES.shotCircle![0] / 2, 20),
+        mat.kerb,
+      )
+      ring.rotation.x = -Math.PI / 2
+      ring.position.set(at.x, 0.013, at.z)
+      g.add(ring)
+    } else {
+      // skyline: one cylinder shell at the horizon, alpha-cut to a rooftop profile
+      const shell = new THREE.Mesh(
+        new THREE.CylinderGeometry(p.o, p.o, 55, 48, 1, true),
+        mat.skylineMat,
+      )
+      shell.position.set(0, 20, 0)
+      g.add(shell)
     }
     return g
   }
@@ -597,6 +756,7 @@ onMounted(() => {
   }
 
   for (const p of surroundings()) scene.add(buildProp(p))
+  for (const p of stadium()) scene.add(buildVenue(p))
 
   // Bake the static world into one mesh per material (#62): the loop ribbons, cross
   // strips, and ~50 scenery groups otherwise cost ~350 draw calls per frame on a scene
@@ -957,13 +1117,25 @@ onMounted(() => {
       [mat.grass, tex.grass],
       [mat.infield, tex.infield],
       [mat.track, tex.tartan],
+      [mat.seating, tex.seating],
+      [mat.fence, tex.chainLink],
+      [mat.skylineMat, tex.skyline],
+      [mat.sand, tex.sand],
+      // pitchLines is intentionally NOT here: it never changes resolution (always 1024),
+      // and makeTextures() hands back the same memoized texture object every call, so
+      // mat.pitch.map already points at the current one — remapping it would be a no-op.
     ]
     for (const [m, t] of remap) {
       const mm = m as THREE.Material & { map?: THREE.Texture | null }
       mm.map = t
       mm.needsUpdate = true
     }
-    Object.values(old).forEach((t) => t.dispose())
+    // pitchLines is excluded here too — old.pitchLines and tex.pitchLines are the SAME
+    // memoized object (see makeTextures), so disposing it would kill the texture
+    // mat.pitch is still using.
+    Object.entries(old).forEach(([k, t]) => {
+      if (k !== 'pitchLines') t.dispose()
+    })
     if (budget.shadowMap && !renderer!.shadowMap.enabled) enableShadows()
     else if (!budget.shadowMap && renderer!.shadowMap.enabled) {
       // downgrade: stop paying for the depth pre-pass, and bring the blobs back

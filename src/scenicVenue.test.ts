@@ -1,13 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  stadium,
-  STAND_O,
-  FENCE_O,
-  GATE_S0,
-  GATE_S1,
-  SKYLINE_R,
-  type VenueType,
-} from './scenicVenue'
+import { stadium, STAND_O, FENCE_O, GATE_S0, GATE_S1, SKYLINE_R, PART_SIZES } from './scenicVenue'
 import { TRACK_IN, TRACK_OUT, LAP_M, BEND_R, STRAIGHT_M, trackPoint } from './scenic'
 
 describe('stadium', () => {
@@ -38,19 +30,12 @@ describe('stadium', () => {
     // A rotation-agnostic circular reach would be wrong here: the pitch's 37.7 m diagonal
     // exceeds the 36.5 m kerb half-width even though its 20 m half-width fits easily.
     //
-    // `sizes` convention: [widthAcrossTrack, lengthAlongTrack] — Task 3's renderer must
-    // build each mesh to match, e.g. the pitch as a 40 (x, across) x 64 (z, along) plane.
+    // `PART_SIZES` convention: [widthAcrossTrack, lengthAlongTrack] — Task 3's renderer
+    // builds each mesh to match, e.g. the pitch as a 40 (x, across) x 64 (z, along) plane.
     const kerbR = BEND_R + TRACK_IN // 36.5 m — the inner boundary's half-width on a straight
     const halfLen = STRAIGHT_M / 2
-    const sizes: Partial<Record<VenueType, [number, number]>> = {
-      pitch: [40, 64],
-      jumpRunway: [1.3, 30],
-      jumpPit: [3, 8],
-      highJump: [10, 8],
-      shotCircle: [2.14, 2.14],
-    }
     for (const p of stadium()) {
-      const size = sizes[p.type]
+      const size = PART_SIZES[p.type]
       if (!size) continue
       const at = trackPoint(p.s, p.o)
       const [w, l] = size

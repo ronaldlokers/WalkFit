@@ -34,6 +34,17 @@ export interface VenuePart {
   span?: number // arc length, for parts swept along the track (stand, fence)
 }
 
+// Footprint of each sized part, as [widthAcrossTrack, lengthAlongTrack] in metres. The
+// renderer builds meshes to these and scenicVenue.test.ts checks them against the kerb —
+// one table, so a resize cannot pass the test while changing what is drawn.
+export const PART_SIZES: Partial<Record<VenueType, [number, number]>> = {
+  pitch: [40, 64],
+  jumpRunway: [1.3, 30],
+  jumpPit: [3, 8],
+  highJump: [10, 8],
+  shotCircle: [2.14, 2.14],
+}
+
 // The midpoint of the back straight, directly opposite the stand. Derived from the track
 // geometry rather than hardcoded — an earlier slice shipped duplicated constants twice.
 const BACK_STRAIGHT_MID = STRAIGHT_M + Math.PI * BEND_R + STRAIGHT_M / 2

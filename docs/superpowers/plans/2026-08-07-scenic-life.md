@@ -51,7 +51,7 @@ Reason: an HR target defines a heart rate band, not a pace. The only speed avail
 **Interfaces:**
 
 - Consumes: `worldHash`, `LAP_M` from `./scenic`.
-- Produces: `type PacerKind = 'walker' | 'jogger' | 'runner' | 'intervals'`; `interface Pacer { lane: number; d: number; speed: number; kind: PacerKind; seed: number; lateral: number }`; `pacers(t: number, count: number): Pacer[]`; `PACER_LANES` (the lanes pacers may use), `PACER_LATERAL_M`; `INTERVAL_PERIOD_M`, `INTERVAL_FAST_KMH`, `INTERVAL_SLOW_KMH`.
+- Produces: `type PacerKind = 'walker' | 'jogger' | 'runner' | 'intervals'`; `interface Pacer { lane: number; d: number; speed: number; kind: PacerKind; seed: number; drawO: number }`; `pacers(t: number, count: number): Pacer[]`; `PACER_LANES` (the lanes pacers may use), `PACER_LATERAL_M`; `INTERVAL_PERIOD_M`, `INTERVAL_FAST_KMH`, `INTERVAL_SLOW_KMH`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -573,12 +573,11 @@ for (let i = 0; i < pacerRigs.length; i++) {
     rig.group.visible = false
     continue
   }
-  // p.lateral puts the two occupants of a shared lane on opposite sides, so when the
-  // faster one laps the slower — which happens within about a minute — it reads as an
-  // overtake rather than two meshes intersecting. Arc distance still measures along the
-  // lane's own line; only the drawn position shifts sideways.
-  const laneO = laneMeasurementO(p.lane)
-  const at = trackPoint(laneDistanceToS(laneO, p.d), laneO + p.lateral)
+  // Arc distance is measured along the lane's own surveyed line, but the body is DRAWN at
+  // p.drawO — offset to one side of the lane centre, so when a faster pacer laps a slower
+  // one in the same lane (which happens within about a minute) it reads as an overtake
+  // rather than two meshes intersecting.
+  const at = trackPoint(laneDistanceToS(laneMeasurementO(p.lane), p.d), p.drawO)
   const dx = at.x - camera.position.x
   const dz = at.z - camera.position.z
   const far = fogBand.far

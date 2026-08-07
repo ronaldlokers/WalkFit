@@ -7,7 +7,8 @@
 // accept a mixed batch. Textured surfaces need the opposite, so every builder here emits
 // uv and the merge pass fills in zeros for anything still missing it.
 import * as THREE from 'three'
-import { trackPoint, LAP_M } from './scenic'
+import { trackPoint, LAP_M, worldHash } from './scenic'
+import type { Tier } from './scenicQuality'
 
 export interface MeshArrays {
   position: number[]
@@ -103,4 +104,147 @@ export function assertSameAttributes(geoms: THREE.BufferGeometry[], label: strin
       throw new Error(`scenic merge: attribute mismatch for "${label}" — ${key(g)} vs ${first}`)
     }
   }
+}
+
+// Every surface texture is generated at runtime into a canvas — no asset files, so the
+// offline service worker precache is unaffected and the bundle does not grow. All noise
+// comes from worldHash, so a given size always produces the identical texture.
+function canvas(size: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
+  const c = document.createElement('canvas')
+  c.width = size
+  c.height = size
+  return [c, c.getContext('2d')!]
+}
+
+function finish(c: HTMLCanvasElement): THREE.CanvasTexture {
+  const t = new THREE.CanvasTexture(c)
+  t.wrapS = THREE.RepeatWrapping
+  t.wrapT = THREE.RepeatWrapping
+  t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
+
+// red tartan: base colour, fine rubber granules, faint roll marks along the lap
+export function tartanTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.fillStyle = '#9c4238'
+  ctx.fillRect(0, 0, size, size)
+  const grains = size * size * 0.12
+  for (let i = 0; i < grains; i++) {
+    const x = worldHash(i * 3 + 1) * size
+    const y = worldHash(i * 3 + 2) * size
+    const v = worldHash(i * 3 + 3)
+    ctx.fillStyle = v < 0.5 ? 'rgba(0,0,0,0.16)' : 'rgba(255,190,170,0.12)'
+    ctx.fillRect(x, y, 1.5, 1.5)
+  }
+  ctx.strokeStyle = 'rgba(0,0,0,0.05)'
+  ctx.lineWidth = 1
+  for (let i = 0; i < 12; i++) {
+    const y = (i / 12) * size + worldHash(i + 900) * 4
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    ctx.lineTo(size, y)
+    ctx.stroke()
+  }
+  return finish(c)
+}
+
+// grass / infield: value noise plus blade streaks. `hue` shifts the two green surfaces
+// apart so ground and infield do not read as one continuous plane.
+export function grassTexture(size: number, hue: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.fillStyle = `hsl(${hue}, 28%, 22%)`
+  ctx.fillRect(0, 0, size, size)
+  const cells = Math.max(16, size / 8)
+  for (let i = 0; i < cells * cells; i++) {
+    const x = (i % cells) * (size / cells)
+    const y = Math.floor(i / cells) * (size / cells)
+    const v = worldHash(i * 7 + 11)
+    ctx.fillStyle = `hsla(${hue + (v - 0.5) * 14}, 30%, ${18 + v * 12}%, 0.7)`
+    ctx.fillRect(x, y, size / cells, size / cells)
+  }
+  ctx.strokeStyle = 'rgba(160,200,140,0.10)'
+  for (let i = 0; i < size * 1.5; i++) {
+    const x = worldHash(i * 5 + 31) * size
+    const y = worldHash(i * 5 + 32) * size
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(x + (worldHash(i * 5 + 33) - 0.5) * 3, y - 3)
+    ctx.stroke()
+  }
+  return finish(c)
+}
+
+// trunk striation
+export function barkTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.fillStyle = '#5d4634'
+  ctx.fillRect(0, 0, size, size)
+  for (let i = 0; i < size / 2; i++) {
+    const x = worldHash(i * 4 + 51) * size
+    ctx.fillStyle = worldHash(i * 4 + 52) < 0.5 ? 'rgba(0,0,0,0.22)' : 'rgba(210,180,150,0.10)'
+    ctx.fillRect(x, 0, 1 + worldHash(i * 4 + 53) * 2, size)
+  }
+  return finish(c)
+}
+
+// leaf-cluster noise for the crowns
+export function foliageTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.fillStyle = '#3f7d3a'
+  ctx.fillRect(0, 0, size, size)
+  for (let i = 0; i < size * 2; i++) {
+    const x = worldHash(i * 6 + 71) * size
+    const y = worldHash(i * 6 + 72) * size
+    const r = 2 + worldHash(i * 6 + 73) * (size / 24)
+    const v = worldHash(i * 6 + 74)
+    ctx.fillStyle = `rgba(${40 + v * 40}, ${100 + v * 60}, ${40 + v * 30}, 0.55)`
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  return finish(c)
+}
+
+// off-white concrete with panel joints — kerb now, grandstand in slice 2
+export function concreteTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.fillStyle = '#e8ecf2'
+  ctx.fillRect(0, 0, size, size)
+  for (let i = 0; i < size * size * 0.04; i++) {
+    ctx.fillStyle = `rgba(120,130,145,${0.04 + worldHash(i + 131) * 0.06})`
+    ctx.fillRect(worldHash(i * 2 + 132) * size, worldHash(i * 2 + 133) * size, 2, 2)
+  }
+  ctx.strokeStyle = 'rgba(110,120,135,0.35)'
+  ctx.lineWidth = Math.max(1, size / 256)
+  for (const f of [0.25, 0.5, 0.75]) {
+    ctx.beginPath()
+    ctx.moveTo(0, f * size)
+    ctx.lineTo(size, f * size)
+    ctx.stroke()
+  }
+  return finish(c)
+}
+
+// Lambert on the cheap tier (it accepts a map and costs far less), Standard on the
+// expensive one where roughness response is worth paying for.
+export function surface(
+  tier: Tier,
+  opts: {
+    color: number
+    map?: THREE.Texture
+    roughness?: number
+    side?: THREE.Side
+    flatShading?: boolean
+  },
+): THREE.Material {
+  const base = {
+    color: opts.color,
+    map: opts.map,
+    side: opts.side ?? THREE.FrontSide,
+    flatShading: opts.flatShading ?? false,
+  }
+  return tier === 'high'
+    ? new THREE.MeshStandardMaterial({ ...base, roughness: opts.roughness ?? 0.9, metalness: 0 })
+    : new THREE.MeshLambertMaterial(base)
 }

@@ -33,6 +33,12 @@ import {
   ensureUv,
   assertSameAttributes,
   REPEAT,
+  tartanTexture,
+  grassTexture,
+  barkTexture,
+  foliageTexture,
+  concreteTexture,
+  surface,
 } from './scenicMeshes'
 import {
   dayPhase,
@@ -44,7 +50,7 @@ import {
   isNight,
 } from './scenicSky'
 import type { TimeOfDay } from './scenicSky'
-import { tierFromFrames, resolveTier, PROBE_FRAMES } from './scenicQuality'
+import { tierFromFrames, resolveTier, PROBE_FRAMES, TIER_BUDGET } from './scenicQuality'
 import type { Tier, QualitySetting } from './scenicQuality'
 
 const props = defineProps<{
@@ -161,25 +167,66 @@ onMounted(() => {
     pole: new THREE.CylinderGeometry(0.09, 0.12, 1, 6),
     head: new THREE.BoxGeometry(1.6, 0.5, 0.25),
   }
-  const flat = (color: number) => new THREE.MeshLambertMaterial({ color, flatShading: true })
+  function makeTextures(size: number) {
+    const aniso = Math.min(4, renderer!.capabilities.getMaxAnisotropy())
+    const t = {
+      tartan: tartanTexture(size),
+      grass: grassTexture(size, 108),
+      infield: grassTexture(size, 96),
+      bark: barkTexture(size),
+      foliage: foliageTexture(size),
+      concrete: concreteTexture(size),
+    }
+    for (const tex of Object.values(t)) tex.anisotropy = aniso
+    // `ribbonArrays` spans v from 0 to 1 across the ribbon's width however wide it is,
+    // while REPEAT scales u only. Left alone, the 7.32 m track band and the 0.18 m kerb
+    // would get wildly different u:v aspect ratios and the kerb would smear into streaks.
+    // Scale v by the ribbon's real width so both axes tile at the same metres-per-repeat.
+    // A fractional v repeat is fine: unlike u, v does not wrap around a closed loop, so
+    // there is no seam for it to misalign at.
+    t.tartan.repeat.set(1, (TRACK_OUT - TRACK_IN) / REPEAT.track)
+    t.infield.repeat.set(1, 30 / REPEAT.infield) // infield ribbon spans 30 m inward
+    t.concrete.repeat.set(1, 0.18 / REPEAT.kerb) // kerb: TRACK_IN-0.2 .. TRACK_IN-0.02
+    t.grass.repeat.set(60, 60) // one big 700 m plane, so tile it hard
+    return t
+  }
+  // Task 6 deliberately left this out because nothing read it yet; it has a reader now.
+  let budget = TIER_BUDGET[tier]
+  let tex = makeTextures(budget.textureSize)
+
   const mat = {
-    trunk: flat(0x5d4634),
-    crown1: flat(0x3f7d3a),
-    crown2: flat(0x59923e),
-    pine: flat(0x2c5d33),
-    rock: flat(0x777d87),
-    pole: flat(0x4a505b),
+    trunk: surface(tier, { color: 0xffffff, map: tex.bark, roughness: 0.95 }),
+    crown1: surface(tier, { color: 0xffffff, map: tex.foliage, roughness: 1, flatShading: true }),
+    crown2: surface(tier, { color: 0xc8e0a8, map: tex.foliage, roughness: 1, flatShading: true }),
+    pine: surface(tier, { color: 0x8fb890, map: tex.foliage, roughness: 1, flatShading: true }),
+    rock: surface(tier, { color: 0x777d87, roughness: 0.85, flatShading: true }),
+    pole: surface(tier, { color: 0x4a505b, roughness: 0.6 }),
     floodOn: new THREE.MeshBasicMaterial({ color: 0xfff2c8 }), // unlit — reads as lit at night
-    kerb: new THREE.MeshLambertMaterial({ color: 0xe8ecf2, side: THREE.DoubleSide }),
+    kerb: surface(tier, {
+      color: 0xffffff,
+      map: tex.concrete,
+      roughness: 0.9,
+      side: THREE.DoubleSide,
+    }),
     breakLine: new THREE.MeshBasicMaterial({ color: 0x3ba55d, side: THREE.DoubleSide }),
     relay: new THREE.MeshBasicMaterial({ color: 0xd8b638, side: THREE.DoubleSide }),
     hurdle: new THREE.MeshBasicMaterial({ color: 0x2e7d4f, side: THREE.DoubleSide }),
-    grass: new THREE.MeshLambertMaterial({ color: 0x2f4a2b }),
+    grass: surface(tier, { color: 0xffffff, map: tex.grass, roughness: 1 }),
     // The loop ribbons reverse travel direction halfway around, so a fixed triangle
     // winding faces down on one straight and up on the other — DoubleSide instead of
     // per-segment winding gymnastics (they're flat strips only ever seen from above).
-    infield: new THREE.MeshLambertMaterial({ color: 0x355530, side: THREE.DoubleSide }),
-    track: new THREE.MeshLambertMaterial({ color: 0x9c4238, side: THREE.DoubleSide }), // red tartan
+    infield: surface(tier, {
+      color: 0xffffff,
+      map: tex.infield,
+      roughness: 1,
+      side: THREE.DoubleSide,
+    }),
+    track: surface(tier, {
+      color: 0xffffff,
+      map: tex.tartan,
+      roughness: 0.85,
+      side: THREE.DoubleSide,
+    }),
     laneLine: new THREE.MeshBasicMaterial({ color: 0xdfe4ea, side: THREE.DoubleSide }),
     finish: new THREE.MeshBasicMaterial({ color: 0xf2f5f9, side: THREE.DoubleSide }),
   }
@@ -401,22 +448,16 @@ onMounted(() => {
 
   // Bake the static world into one mesh per material (#62): the loop ribbons, cross
   // strips, and ~50 scenery groups otherwise cost ~350 draw calls per frame on a scene
-  // that never changes. Textured meshes (signposts, lane numbers) keep their own
-  // uv-specific draws; the dome and lights stay live.
+  // that never changes. The dome and lights stay live.
   {
     scene.updateMatrixWorld(true)
     const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>()
-    const keepTextured: THREE.Mesh[] = []
     const staticRoots = scene.children.filter((c) => c !== dome && !(c as THREE.Light).isLight)
     for (const root of staticRoots) {
       root.traverse((o) => {
         const m = o as THREE.Mesh
         if (!m.isMesh) return
-        const material = m.material as THREE.Material & { map?: THREE.Texture }
-        if (material.map) {
-          keepTextured.push(m)
-          return
-        }
+        const material = m.material as THREE.Material
         const g = (m.geometry as THREE.BufferGeometry).clone()
         g.applyMatrix4(m.matrixWorld)
         ensureUv(g) // was deleteAttribute('uv') — textured surfaces need uv, not none
@@ -425,11 +466,7 @@ onMounted(() => {
         byMat.set(material, arr)
       })
     }
-    // preserve world transforms of the textured meshes while their parents go away
-    for (const m of keepTextured) scene.attach(m)
-    for (const root of staticRoots) {
-      if (!keepTextured.includes(root as THREE.Mesh)) scene.remove(root)
-    }
+    for (const root of staticRoots) scene.remove(root)
     for (const [material, geoms] of byMat) {
       assertSameAttributes(geoms, material.name || material.type)
       const merged = mergeGeometries(geoms)
@@ -477,6 +514,27 @@ onMounted(() => {
 
   function applyTier(next: Tier) {
     tier = next
+    budget = TIER_BUDGET[tier]
+    // regenerate at the new resolution and swap the maps in place — the materials and
+    // meshes stay, only the texture objects change, so the baked geometry is untouched
+    const old = tex
+    tex = makeTextures(budget.textureSize)
+    const remap: [THREE.Material, THREE.Texture][] = [
+      [mat.trunk, tex.bark],
+      [mat.crown1, tex.foliage],
+      [mat.crown2, tex.foliage],
+      [mat.pine, tex.foliage],
+      [mat.kerb, tex.concrete],
+      [mat.grass, tex.grass],
+      [mat.infield, tex.infield],
+      [mat.track, tex.tartan],
+    ]
+    for (const [m, t] of remap) {
+      const mm = m as THREE.Material & { map?: THREE.Texture | null }
+      mm.map = t
+      mm.needsUpdate = true
+    }
+    Object.values(old).forEach((t) => t.dispose())
   }
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -606,6 +664,7 @@ onMounted(() => {
     dome.material.dispose()
     Object.values(geo).forEach((g) => g.dispose())
     Object.values(mat).forEach((m) => m.dispose())
+    Object.values(tex).forEach((t) => t.dispose())
     renderer?.dispose()
     // dispose() alone leaves the context slot occupied until GC — force-release it so
     // repeated 2D↔3D toggles can't exhaust the browser's context budget (#60)

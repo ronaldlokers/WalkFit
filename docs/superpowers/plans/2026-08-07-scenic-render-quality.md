@@ -682,10 +682,15 @@ describe('skyBodies', () => {
     }
   })
 
-  it('moon is visible exactly when the sun is not', () => {
+  // NOT `expect(b.moon.visible).toBe(!b.sun.visible)` — the implementation defines both
+  // from one variable, so that form can never fail however wrong that variable is. Check
+  // the moon against the independent inputs instead.
+  it('the moon is up exactly when the sun is below the horizon', () => {
     for (let p = 0; p < 1; p += 0.01) {
       const b = skyBodies(p)
-      expect(b.moon.visible).toBe(!b.sun.visible)
+      const sunShouldBeUp = b.sun.elevation > 0 && !isNight(p)
+      expect(`${p.toFixed(2)}: ${b.moon.visible}`).toBe(`${p.toFixed(2)}: ${!sunShouldBeUp}`)
+      if (b.moon.visible) expect(b.moon.elevation).toBeGreaterThanOrEqual(0)
     }
   })
 
@@ -696,6 +701,16 @@ describe('skyBodies', () => {
     const b = skyBodies(0.84).starOpacity
     expect(b).toBeGreaterThan(a)
     expect(a).toBeGreaterThanOrEqual(0)
+  })
+
+  // The night band wraps through phase 0, so it has two edges and the dawn one is easy
+  // to leave un-ramped. Sampling only the dusk shoulder would miss a 1 -> 0 snap at 0.02.
+  it('stars fade at BOTH edges of the night band, including the dawn wrap', () => {
+    expect(skyBodies(0.8).starOpacity).toBeLessThan(skyBodies(0.815).starOpacity)
+    expect(skyBodies(0.8199).starOpacity).toBeCloseTo(skyBodies(0.8201).starOpacity, 2)
+    expect(skyBodies(0.0199).starOpacity).toBeCloseTo(skyBodies(0.0201).starOpacity, 2)
+    expect(skyBodies(0.03).starOpacity).toBeGreaterThan(skyBodies(0.05).starOpacity)
+    expect(skyBodies(0.07).starOpacity).toBe(0)
   })
 
   it('sun and moon sit on opposite sides of the sky', () => {
@@ -735,6 +750,22 @@ export interface SkyBodies {
 
 export const SUN_PEAK_PHASE = 0.45 // the "day" palette keyframe
 const MAX_ELEVATION = Math.PI * 0.42 // just shy of straight overhead
+const STAR_SHOULDER = 0.05 // phase width of the fade either side of the night band
+
+// Stars are fully out through the night band and fade across a shoulder on each side.
+// Both shoulders must meet the band's edges at 1, or the stars snap on/off at the
+// boundary instead of fading. The dawn edge is the one that is easy to get wrong,
+// because the night band wraps through phase 0: a naive single ramp keyed off the dusk
+// side leaves p = 0.0199 at full brightness and p = 0.0201 at zero.
+function starFade(p: number): number {
+  if (isNight(p)) return 1
+  const clamp = (v: number) => Math.max(0, Math.min(1, v))
+  // dusk shoulder, ramping up to the 0.82 edge
+  if (p >= 0.82 - STAR_SHOULDER) return clamp((p - (0.82 - STAR_SHOULDER)) / STAR_SHOULDER)
+  // dawn shoulder, ramping down from the 0.02 edge
+  if (p < 0.02 + STAR_SHOULDER) return clamp((0.02 + STAR_SHOULDER - p) / STAR_SHOULDER)
+  return 0
+}
 
 export function skyBodies(phase: number): SkyBodies {
   const p = ((phase % 1) + 1) % 1
@@ -742,10 +773,12 @@ export function skyBodies(phase: number): SkyBodies {
   // crosses zero a quarter-cycle either side and goes negative through the night band
   const azimuth = p * Math.PI * 2
   const elevation = Math.cos((p - SUN_PEAK_PHASE) * Math.PI * 2) * MAX_ELEVATION
+  // The !isNight term is currently redundant — the elevation zero-crossings sit at
+  // p = 0.20 and p = 0.70 while the night band is [0.82, 1) ∪ [0, 0.02), so elevation
+  // alone already decides it. Kept as a guard in case those constants drift; it is not
+  // dead code to delete.
   const sunUp = elevation > 0 && !isNight(p)
-  // stars ramp over the 0.05-phase shoulder either side of the night band rather than
-  // popping on at its edge
-  const starOpacity = isNight(p) ? 1 : Math.max(0, Math.min(1, (p - 0.77) / 0.05))
+  const starOpacity = starFade(p)
   return {
     sun: { azimuth, elevation, visible: sunUp },
     moon: { azimuth: azimuth + Math.PI, elevation: -elevation, visible: !sunUp },

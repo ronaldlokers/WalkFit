@@ -830,6 +830,14 @@ onMounted(() => {
     },
   )
 
+  // Same reason as stopQualityWatch: update() is the only path to renderer.render() and the
+  // frame loop skips it while the belt is stopped, so without this a time-of-day change made
+  // from Settings does nothing at all until the walker moves.
+  const stopTimeWatch = watch(
+    () => props.timeOfDay,
+    () => update(display),
+  )
+
   const ro = new ResizeObserver(() => {
     const w = el.clientWidth
     const h = el.clientHeight
@@ -855,6 +863,7 @@ onMounted(() => {
     stopLoop()
     stopDistanceWatch?.()
     stopQualityWatch()
+    stopTimeWatch()
     document.removeEventListener('visibilitychange', onVisibility)
     renderer?.domElement.removeEventListener('webglcontextlost', onContextLost)
     renderer?.domElement.removeEventListener('webglcontextrestored', onContextRestored)

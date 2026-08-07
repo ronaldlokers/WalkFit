@@ -775,7 +775,14 @@ onMounted(() => {
     // loop, typically three or four are actually visible.
     const wanted = TIER_BUDGET[tier].pacers
     const list = pacers(sessionSeconds, wanted)
-    let nearest: { rig: PacerRig; p: Pacer; dist: number } | null = null
+    // Forward direction in the xz plane, from the same point the camera is looking at.
+    // Used to reject pacers behind the walker — labelling someone you have already
+    // overtaken puts a name tag on empty screen.
+    const fwdX = ahead.x - camera.position.x
+    const fwdZ = ahead.z - camera.position.z
+    const fwdLen = Math.hypot(fwdX, fwdZ) || 1
+    let nearestIdx = -1
+    let nearestDist = Infinity
     for (let i = 0; i < pacerRigs.length; i++) {
       const rig = pacerRigs[i]!
       const p: Pacer | undefined = list[i]
@@ -800,8 +807,13 @@ onMounted(() => {
         continue
       }
       rig.group.visible = true
-      const dist = Math.sqrt(dx * dx + dz * dz)
-      if (dist < 30 && (!nearest || dist < nearest.dist)) nearest = { rig, p, dist }
+      const dist = Math.hypot(dx, dz)
+      // positive dot product = in front of the walker
+      const forwardness = (dx * fwdX + dz * fwdZ) / fwdLen
+      if (dist < 30 && forwardness > 0 && dist < nearestDist) {
+        nearestDist = dist
+        nearestIdx = i
+      }
       rig.group.position.set(at.x, 0, at.z)
       // the tangent comes from trackPoint, not from the Pacer — a Pacer has no heading
       rig.group.rotation.y = Math.atan2(-at.tx, -at.tz)
@@ -816,9 +828,15 @@ onMounted(() => {
       rig.armL.rotation.x = -swing * 0.4
       rig.armR.rotation.x = swing * 0.4
     }
-    if (nearest) {
-      drawLabel(`${nearest.p.kind} · ${nearest.p.speed.toFixed(1)} km/h`)
-      labelSprite.position.set(nearest.rig.group.position.x, 2.1, nearest.rig.group.position.z)
+    if (nearestIdx >= 0) {
+      const p = list[nearestIdx]!
+      const rig = pacerRigs[nearestIdx]!
+      drawLabel(`${p.kind} · ${p.speed.toFixed(1)} km/h`)
+      labelSprite.position.set(rig.group.position.x, 2.1, rig.group.position.z)
+      // A Sprite shrinks with distance, so a fixed world size is unreadable at 30 m and
+      // overwhelming at 2 m. Grow it with range, clamped at both ends.
+      const s = Math.min(2.5, Math.max(0.6, nearestDist / 8))
+      labelSprite.scale.set(2.2 * s, 0.55 * s, 1)
       labelSprite.visible = true
     } else {
       labelSprite.visible = false

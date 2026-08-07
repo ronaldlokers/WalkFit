@@ -95,3 +95,29 @@ export function pacers(t: number, count: number): Pacer[] {
   }
   return out
 }
+
+// --- cadence ---
+// The belt reports its own step count (treadmill.ts records it from the fff1 running
+// frame), so the avatar's cadence is MEASURED, not modelled: legs, arms and — in a later
+// slice — the camera bob all move at the walker's real rate.
+
+export const DEFAULT_STRIDE_M = 0.72
+export const MIN_STRIDE_M = 0.4
+export const MAX_STRIDE_M = 1.0
+
+export function strideLength(distance: number, steps: number): number {
+  if (steps <= 0 || distance <= 0) return DEFAULT_STRIDE_M
+  const raw = distance / steps
+  return Math.min(MAX_STRIDE_M, Math.max(MIN_STRIDE_M, raw))
+}
+
+// 0..1 through the current step, driven by walked distance rather than wall clock so it
+// stays locked to the belt and is deterministic in tests.
+export function stepPhase(distance: number, stride: number): number {
+  const p = (distance / stride) % 1
+  return p < 0 ? p + 1 : p
+}
+
+export function cadenceHz(speedKmh: number, stride: number): number {
+  return mps(speedKmh) / stride
+}

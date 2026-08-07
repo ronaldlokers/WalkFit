@@ -6,6 +6,12 @@ import {
   INTERVAL_PERIOD_M,
   INTERVAL_FAST_KMH,
   INTERVAL_SLOW_KMH,
+  DEFAULT_STRIDE_M,
+  MIN_STRIDE_M,
+  MAX_STRIDE_M,
+  strideLength,
+  stepPhase,
+  cadenceHz,
 } from './scenicLife'
 import { TRACK_IN, LANE_W } from './scenic'
 import { TIER_BUDGET } from './scenicQuality'
@@ -135,5 +141,64 @@ describe('pacers', () => {
       half / ((INTERVAL_FAST_KMH * 1000) / 3600) + half / ((INTERVAL_SLOW_KMH * 1000) / 3600)
     const p1 = pacers(cycleSecs, 8).find((p) => p.kind === 'intervals')!
     expect(p1.d - p0.d).toBeCloseTo(INTERVAL_PERIOD_M, 3)
+  })
+})
+
+describe('strideLength', () => {
+  it('measures your real stride from the belt pedometer', () => {
+    expect(strideLength(1000, 1400)).toBeCloseTo(0.714, 3)
+  })
+
+  it('falls back to the default when there is no pedometer data', () => {
+    // pre-#43 device state, a sensor gap, or the very first tick of a session
+    expect(strideLength(0, 0)).toBe(DEFAULT_STRIDE_M)
+    expect(strideLength(500, 0)).toBe(DEFAULT_STRIDE_M)
+  })
+
+  it('clamps nonsense rather than letting the legs thrash', () => {
+    expect(strideLength(1000, 2)).toBe(MAX_STRIDE_M) // 500 m per step
+    expect(strideLength(1, 1000)).toBe(MIN_STRIDE_M) // 1 mm per step
+  })
+})
+
+describe('stepPhase', () => {
+  it('completes exactly one cycle per stride walked', () => {
+    const s = 0.72
+    expect(stepPhase(0, s)).toBeCloseTo(0, 6)
+    expect(stepPhase(s * 0.5, s)).toBeCloseTo(0.5, 6)
+    expect(stepPhase(s * 3, s)).toBeCloseTo(0, 6)
+  })
+
+  it('is continuous across the lap wrap', () => {
+    // phase comes from total distance, so 400 m is not special — but guard it anyway,
+    // because a naive implementation keyed off trackPoint's wrapped s would jump here
+    const s = 0.72
+    const a = stepPhase(399.999, s)
+    const b = stepPhase(400.001, s)
+    expect(Math.abs(b - a)).toBeLessThan(0.01)
+  })
+
+  it('always lands in [0, 1)', () => {
+    for (const d of [0, 0.1, 12.34, 399.99, 1000.5]) {
+      const p = stepPhase(d, 0.72)
+      expect(p).toBeGreaterThanOrEqual(0)
+      expect(p).toBeLessThan(1)
+    }
+  })
+})
+
+describe('cadenceHz', () => {
+  it('rises with speed and falls with a longer stride', () => {
+    expect(cadenceHz(6, 0.72)).toBeGreaterThan(cadenceHz(3, 0.72))
+    expect(cadenceHz(5, 0.9)).toBeLessThan(cadenceHz(5, 0.6))
+  })
+
+  it('gives a plausible walking cadence at a walking pace', () => {
+    // 5 km/h at a 0.72 m stride is about 116 steps per minute
+    expect(cadenceHz(5, 0.72) * 60).toBeCloseTo(115.7, 1)
+  })
+
+  it('is zero when stopped', () => {
+    expect(cadenceHz(0, 0.72)).toBe(0)
   })
 })

@@ -10,6 +10,9 @@ import {
   skyBodies,
 } from './scenicSky'
 
+const lumOf = (c: number) =>
+  0.2126 * ((c >> 16) & 0xff) + 0.7152 * ((c >> 8) & 0xff) + 0.0722 * (c & 0xff)
+
 describe('day/night', () => {
   it('phase starts at dawn (0) and wraps after DAY_LENGTH_M', () => {
     expect(dayPhase(0)).toBe(0)
@@ -50,6 +53,43 @@ describe('ambience (#72)', () => {
     expect(isNight(TIME_PHASES.day)).toBe(false)
     expect(isNight(TIME_PHASES.dawn)).toBe(false)
     expect(TIME_PHASES.sunset).toBeCloseTo(0.75, 5)
+  })
+
+  it('weather desaturates the sky without brightening it', () => {
+    for (const phase of [TIME_PHASES.day, TIME_PHASES.night]) {
+      const lum = (c: number) =>
+        0.2126 * ((c >> 16) & 0xff) + 0.7152 * ((c >> 8) & 0xff) + 0.0722 * (c & 0xff)
+      const clear = skyAt(phase, 'clear')
+      for (const w of ['overcast', 'mist'] as const) {
+        const bad = skyAt(phase, w)
+        expect(`${w}@${phase}`).toBe(
+          lum(bad.sky) <= lum(clear.sky) + 1 ? `${w}@${phase}` : `${w}@${phase} brightened the sky`,
+        )
+      }
+    }
+    // and the headline case: a misty night must stay darker than a clear day
+    expect(lumOf(skyAt(TIME_PHASES.night, 'mist').sky)).toBeLessThan(
+      lumOf(skyAt(TIME_PHASES.day, 'clear').sky),
+    )
+  })
+})
+
+describe('palette brightness (#realism slice 1)', () => {
+  it('daylight is authored bright for ACES, not muted', () => {
+    const day = skyAt(0.45)
+    // the muted palette peaked at sunIntensity 1.1; ACES compresses highlights, so real
+    // outdoor brightness needs a much larger number to survive tone mapping
+    expect(day.sunIntensity).toBeGreaterThan(2)
+    // and the day sky is genuinely blue: blue channel well clear of red
+    const r = (day.sky >> 16) & 0xff
+    const b = day.sky & 0xff
+    expect(b - r).toBeGreaterThan(60)
+  })
+
+  it('night stays dark — tone mapping must not be allowed to lift it into day', () => {
+    const night = skyAt(0.87)
+    expect(night.sunIntensity).toBeLessThan(0.5)
+    expect(night.ambient).toBeLessThan(0.5)
   })
 })
 

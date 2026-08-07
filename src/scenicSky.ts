@@ -18,11 +18,11 @@ export const WEATHER_FOG: Record<WeatherId, { near: number; far: number }> = {
   overcast: { near: 45, far: 190 },
   mist: { near: 15, far: 100 },
 }
-// how strongly the sky/fog colors pull toward gray, and the light dimming
-const WEATHER_GRAY: Record<WeatherId, { mix: number; gray: number; sun: number }> = {
-  clear: { mix: 0, gray: 0x9a9da6, sun: 1 },
-  overcast: { mix: 0.55, gray: 0x8a8d96, sun: 0.55 },
-  mist: { mix: 0.7, gray: 0xb9bcc4, sun: 0.45 },
+// how strongly the sky/fog colors desaturate, and the light dimming
+const WEATHER_GRAY: Record<WeatherId, { mix: number; sun: number }> = {
+  clear: { mix: 0, sun: 1 },
+  overcast: { mix: 0.55, sun: 0.55 },
+  mist: { mix: 0.7, sun: 0.45 },
 }
 
 // Fixed times of day for the Settings override (#72); 'auto' follows walked distance.
@@ -54,16 +54,19 @@ export interface SkyState {
 interface SkyKey extends SkyState {
   at: number
 }
-// Keyframes around the cycle; lerped between. Dark-theme friendly: even "noon" stays
-// muted so the app chrome around the canvas doesn't clash.
+// Keyframes around the cycle; lerped between. Authored at real outdoor brightness for
+// ACES tone mapping (which compresses the highlights), rather than the muted values the
+// old un-tone-mapped renderer needed to avoid clashing with the dark app chrome. That
+// clash is now handled where it belongs — the HUD pills carry their own scrim and the
+// canvas has a vignette (App.vue) — instead of by dimming the world.
 const SKY_KEYS: SkyKey[] = [
-  { at: 0.0, sky: 0x3a2f45, fog: 0x6d5468, sunIntensity: 0.7, sunColor: 0xffb08a, ambient: 0.7 }, // dawn
-  { at: 0.18, sky: 0x4a6a8a, fog: 0x7a8ea3, sunIntensity: 1.0, sunColor: 0xfff2dd, ambient: 0.9 }, // morning
-  { at: 0.45, sky: 0x527099, fog: 0x8298ad, sunIntensity: 1.1, sunColor: 0xffffff, ambient: 1.0 }, // day
-  { at: 0.62, sky: 0x4a5c80, fog: 0x8a7f8e, sunIntensity: 0.9, sunColor: 0xffe0b0, ambient: 0.85 }, // late
-  { at: 0.75, sky: 0x51345a, fog: 0x8a5c62, sunIntensity: 0.6, sunColor: 0xff9a5c, ambient: 0.6 }, // sunset
-  { at: 0.87, sky: 0x1c1f33, fog: 0x2c3046, sunIntensity: 0.2, sunColor: 0x9ab0ff, ambient: 0.35 }, // night
-  { at: 1.0, sky: 0x3a2f45, fog: 0x6d5468, sunIntensity: 0.7, sunColor: 0xffb08a, ambient: 0.7 }, // wraps to dawn
+  { at: 0.0, sky: 0x54486a, fog: 0xa8788a, sunIntensity: 3.2, sunColor: 0xffb08a, ambient: 0.4 }, // dawn
+  { at: 0.18, sky: 0x5f95d6, fog: 0xa8c4e0, sunIntensity: 2.3, sunColor: 0xfff2dd, ambient: 1.1 }, // morning
+  { at: 0.45, sky: 0x6ba8e8, fog: 0xb9d4ee, sunIntensity: 2.6, sunColor: 0xffffff, ambient: 1.2 }, // day
+  { at: 0.62, sky: 0x6b8fc4, fog: 0xc0a9a8, sunIntensity: 2.1, sunColor: 0xffe0b0, ambient: 1.0 }, // late
+  { at: 0.75, sky: 0x6d4270, fog: 0xc4707a, sunIntensity: 2.6, sunColor: 0xff9a5c, ambient: 0.55 }, // sunset
+  { at: 0.87, sky: 0x161a2e, fog: 0x24283c, sunIntensity: 0.2, sunColor: 0x9ab0ff, ambient: 0.3 }, // night
+  { at: 1.0, sky: 0x54486a, fog: 0xa8788a, sunIntensity: 3.2, sunColor: 0xffb08a, ambient: 0.4 }, // wraps to dawn
 ]
 
 function lerp(a: number, b: number, t: number): number {
@@ -83,6 +86,18 @@ function lerpColor(a: number, b: number, t: number): number {
   )
 }
 
+// Weather desaturates the sky toward its OWN luminance rather than toward a fixed gray.
+// Mixing toward a constant made a misty night (#8a8d98) come out brighter than a clear
+// day (#527099) — weather was adding light instead of removing colour.
+function overcastify(base: number, mix: number): number {
+  const r = (base >> 16) & 0xff
+  const g = (base >> 8) & 0xff
+  const b = base & 0xff
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  const t = (c: number) => Math.round(c + (lum - c) * mix)
+  return (t(r) << 16) | (t(g) << 8) | t(b)
+}
+
 export function skyAt(phase: number, weather: WeatherId = 'clear'): SkyState {
   let i = 0
   while (i < SKY_KEYS.length - 2 && SKY_KEYS[i + 1]!.at <= phase) i++
@@ -91,8 +106,8 @@ export function skyAt(phase: number, weather: WeatherId = 'clear'): SkyState {
   const t = (phase - a.at) / (b.at - a.at)
   const w = WEATHER_GRAY[weather]
   return {
-    sky: lerpColor(lerpColor(a.sky, b.sky, t), w.gray, w.mix),
-    fog: lerpColor(lerpColor(a.fog, b.fog, t), w.gray, w.mix),
+    sky: overcastify(lerpColor(a.sky, b.sky, t), w.mix),
+    fog: overcastify(lerpColor(a.fog, b.fog, t), w.mix),
     sunIntensity: lerp(a.sunIntensity, b.sunIntensity, t) * w.sun,
     sunColor: lerpColor(a.sunColor, b.sunColor, t),
     ambient: lerp(a.ambient, b.ambient, t) * (weather === 'clear' ? 1 : 0.85),

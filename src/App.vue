@@ -1964,6 +1964,22 @@ code {
 .scene3d-wrap {
   position: relative;
 }
+/* A bright sky is now possible (render-quality slice 1), so the HUD needs its own
+   contrast rather than relying on a dim world. Darkens only the top and bottom bands,
+   where the header stats and the control pill sit. */
+.scene3d-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(8, 10, 14, 0.42) 0%,
+    rgba(8, 10, 14, 0) 22%,
+    rgba(8, 10, 14, 0) 72%,
+    rgba(8, 10, 14, 0.5) 100%
+  );
+}
 
 .chart-wrap {
   margin: 0 0 18px;
@@ -2742,7 +2758,7 @@ input[type='range']::-webkit-slider-thumb {
   transform: translateX(-50%);
   z-index: 10;
   margin: 0;
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.85);
   color: #17324d;
@@ -2815,7 +2831,7 @@ input[type='range']::-webkit-slider-thumb {
   bottom: 104px;
   z-index: 10;
   width: min(560px, 94vw);
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.85);
   box-shadow: 0 10px 28px rgba(23, 50, 77, 0.14);

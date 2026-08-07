@@ -1816,12 +1816,69 @@ const SKY_KEYS: SkyKey[] = [
 ]
 ```
 
-- [ ] **Step 4: Run the tests**
+- [ ] **Step 4: Stop weather from brightening the night**
+
+Found by inspecting a rendered night screenshot during Task 6, not by any test.
+
+`skyAt` currently mixes the palette toward a **fixed** light gray per weather (`WEATHER_GRAY`: `clear` 0x9a9da6 / mix 0, `overcast` 0x8a8d96 / mix 0.55, `mist` 0xb9bcc4 / mix 0.7). Because that target never changes with the time of day, weather _brightens_ a night sky instead of dimming it:
+
+```
+             night sky      day sky
+clear        #1c1f33        #527099
+overcast     #585c69        #718097
+mist         #8a8d98   <--  #9aa5b7
+```
+
+A misty night renders `#8a8d98`, which is brighter than a clear day's `#527099`. That is backwards, and Task 10's brighter daylight palette makes it more obvious, not less.
+
+Fix the mixing rather than the keyframes: desaturate toward the base colour's own luminance instead of toward a constant. Overcast then greys out a bright sky and leaves a dark one dark. In `src/scenicSky.ts`, replace the `w.gray` usage in `skyAt`:
+
+```ts
+// Weather desaturates the sky toward its OWN luminance rather than toward a fixed gray.
+// Mixing toward a constant made a misty night (#8a8d98) come out brighter than a clear
+// day (#527099) — weather was adding light instead of removing colour.
+function overcastify(base: number, mix: number): number {
+  const r = (base >> 16) & 0xff
+  const g = (base >> 8) & 0xff
+  const b = base & 0xff
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  const t = (c: number) => Math.round(c + (lum - c) * mix)
+  return (t(r) << 16) | (t(g) << 8) | t(b)
+}
+```
+
+`skyAt` then uses `overcastify(lerpColor(a.sky, b.sky, t), w.mix)` and the same for `fog`. The `gray` field in `WEATHER_GRAY` becomes unused — delete it from the table and its type, or lint will flag it. Keep `mix` and `sun`.
+
+Add to `src/scenicSky.test.ts`:
+
+```ts
+it('weather desaturates the sky without brightening it', () => {
+  for (const phase of [TIME_PHASES.day, TIME_PHASES.night]) {
+    const lum = (c: number) =>
+      0.2126 * ((c >> 16) & 0xff) + 0.7152 * ((c >> 8) & 0xff) + 0.0722 * (c & 0xff)
+    const clear = skyAt(phase, 'clear')
+    for (const w of ['overcast', 'mist'] as const) {
+      const bad = skyAt(phase, w)
+      expect(`${w}@${phase}`).toBe(
+        lum(bad.sky) <= lum(clear.sky) + 1 ? `${w}@${phase}` : `${w}@${phase} brightened the sky`,
+      )
+    }
+  }
+  // and the headline case: a misty night must stay darker than a clear day
+  expect(lumOf(skyAt(TIME_PHASES.night, 'mist').sky)).toBeLessThan(
+    lumOf(skyAt(TIME_PHASES.day, 'clear').sky),
+  )
+})
+```
+
+with a `lumOf` helper at the top of the file. The `+ 1` tolerance absorbs rounding; the string-interpolated assertion names the offending weather instead of just printing two numbers.
+
+- [ ] **Step 5: Run the tests**
 
 Run: `npm test`
-Expected: PASS, including the pre-existing `skyAt` cases from Task 1 (day is still brighter than night, the wrap still matches dawn).
+Expected: PASS, including the pre-existing `skyAt` cases from Task 1 (day is still brighter than night, the wrap still matches dawn) and the pre-existing ambience case (`overcast` and `mist` still dim the sun — that assertion reads `sunIntensity`, which this step does not touch).
 
-- [ ] **Step 5: Retune the HUD in `src/App.vue`**
+- [ ] **Step 6: Retune the HUD in `src/App.vue`**
 
 Add a vignette over the 3D canvas. In the `.scene3d-wrap` rule (line 1959), add a pseudo-element:
 
@@ -1849,11 +1906,11 @@ Add a vignette over the 3D canvas. In the `.scene3d-wrap` rule (line 1959), add 
 
 Then find the `.imm-*` HUD pill rules in the immersive block (from line 2667) and raise the scrim: wherever a pill sets a translucent dark `background`, increase its alpha by roughly 0.15 (for example `rgba(18, 21, 27, 0.55)` becomes `rgba(18, 21, 27, 0.7)`). Do not restyle the pills otherwise — this is a contrast fix, not a redesign.
 
-- [ ] **Step 6: Judge it on real hardware**
+- [ ] **Step 7: Judge it on real hardware**
 
 This is not automatable and is the risk the spec called out. `npm run dev`, `?demo`, 3D view, and step through all four fixed times of day with a workout running so the `.imm-workout` ribbon is populated. Every HUD number must be readable at each of dawn, day, sunset and night. If day is too bright, lower `renderer.toneMappingExposure` toward 0.85 rather than dimming `SKY_KEYS` again — exposure is one number and does not undo the palette work.
 
-- [ ] **Step 7: Regenerate the e2e baseline if it shifted**
+- [ ] **Step 8: Regenerate the e2e baseline if it shifted**
 
 Run: `npm run e2e`
 
@@ -1866,7 +1923,7 @@ docker run --rm -v "$PWD":/work -w /work -e CI=1 mcr.microsoft.com/playwright:v1
 
 Then re-run `npm run e2e` to confirm green. If `wizard.png` passed the first time, skip this step and do not regenerate — an unnecessary baseline churn is noise in the diff.
 
-- [ ] **Step 8: Full verification and commit**
+- [ ] **Step 9: Full verification and commit**
 
 Run: `npm run lint && npm run format:check && npm run typecheck && npm test && npm run build && npm run e2e`
 Expected: all PASS, including the bundle-size guard.

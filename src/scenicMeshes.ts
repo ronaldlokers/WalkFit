@@ -343,3 +343,91 @@ export function surface(opts: {
   if (opts.map) base.map = opts.map
   return new THREE.MeshStandardMaterial(base)
 }
+
+// Chain-link: an alpha texture, so the fence reads as mesh rather than a wall.
+export function chainLinkTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.clearRect(0, 0, size, size)
+  ctx.strokeStyle = 'rgba(150, 158, 170, 0.85)'
+  ctx.lineWidth = Math.max(1, size / 128)
+  const cell = size / 8
+  for (let i = -8; i < 16; i++) {
+    ctx.beginPath()
+    ctx.moveTo(i * cell, 0)
+    ctx.lineTo(i * cell + size, size)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(i * cell, size)
+    ctx.lineTo(i * cell + size, 0)
+    ctx.stroke()
+  }
+  return finish(c)
+}
+
+// Stepped terracing with seat rows — read at a distance, so bands rather than seats.
+export function seatingTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.fillStyle = '#8d93a0'
+  ctx.fillRect(0, 0, size, size)
+  const rows = 8
+  for (let r = 0; r < rows; r++) {
+    const y = (r / rows) * size
+    ctx.fillStyle = r % 2 === 0 ? '#3f6fa8' : '#4a7cb8'
+    ctx.fillRect(0, y, size, (size / rows) * 0.62)
+    ctx.fillStyle = 'rgba(30, 36, 46, 0.35)'
+    ctx.fillRect(0, y + (size / rows) * 0.62, size, Math.max(1, size / 128))
+  }
+  return finish(c)
+}
+
+// Football pitch markings: touchlines, halfway, centre circle, two penalty boxes.
+export function pitchLinesTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.fillStyle = '#2f5230'
+  ctx.fillRect(0, 0, size, size)
+  ctx.strokeStyle = 'rgba(236, 242, 248, 0.8)'
+  ctx.lineWidth = Math.max(2, size / 200)
+  const m = size * 0.06
+  ctx.strokeRect(m, m, size - 2 * m, size - 2 * m)
+  ctx.beginPath()
+  ctx.moveTo(m, size / 2)
+  ctx.lineTo(size - m, size / 2)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.arc(size / 2, size / 2, size * 0.12, 0, Math.PI * 2)
+  ctx.stroke()
+  const bw = size * 0.34
+  const bh = size * 0.14
+  ctx.strokeRect(size / 2 - bw / 2, m, bw, bh)
+  ctx.strokeRect(size / 2 - bw / 2, size - m - bh, bw, bh)
+  return finish(c)
+}
+
+// Rooftop silhouette for the distant ring — alpha above the roofline so sky shows through.
+export function skylineTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.clearRect(0, 0, size, size)
+  ctx.fillStyle = '#39414f'
+  let x = 0
+  let i = 0
+  while (x < size) {
+    const w = size * (0.02 + worldHash(i * 7 + 3) * 0.05)
+    const h = size * (0.25 + worldHash(i * 7 + 4) * 0.5)
+    ctx.fillRect(x, size - h, w, h)
+    x += w
+    i++
+  }
+  return finish(c)
+}
+
+// Long-jump sand.
+export function sandTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.fillStyle = '#cbb68c'
+  ctx.fillRect(0, 0, size, size)
+  for (let i = 0; i < size * size * 0.05; i++) {
+    ctx.fillStyle = `rgba(150, 132, 96, ${0.1 + worldHash(i + 71) * 0.15})`
+    ctx.fillRect(worldHash(i * 2 + 72) * size, worldHash(i * 2 + 73) * size, 2, 2)
+  }
+  return finish(c)
+}

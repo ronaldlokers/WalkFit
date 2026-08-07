@@ -743,13 +743,11 @@ onMounted(() => {
   camera.add(armL, armR)
   scene.add(camera) // a camera must be in the scene graph for its children to render
 
-  // Without a shadow map the invisible body casts nothing, so give the walker a disc
-  // instead — the same fallback shape used for props on the cheap tier. blobGeo/blobMat
-  // are already created and disposed by the shadow work above; not disposed again here.
-  const avatarBlob = new THREE.Mesh(blobGeo, blobMat)
-  avatarBlob.rotation.x = -Math.PI / 2
-  avatarBlob.scale.setScalar(1.1)
-  scene.add(avatarBlob)
+  // No ground blob for the walker on the low tier. Your feet sit outside the frustum by
+  // construction (visible ground starts about 2.65 m out at eye height 1.6 m with a 60
+  // degree FOV), so a disc under you renders nothing, and one far enough forward to be
+  // visible reads as a mark on the track rather than as your shadow. The high tier's real
+  // cast shadow works because shadows stretch AWAY from you into view when the sun is low.
 
   // One label, reused for whichever pacer is nearest AHEAD of the walker — Zwift shows
   // who you are about to catch, not a name tag on every body in the scene.
@@ -799,13 +797,6 @@ onMounted(() => {
     avatarBody.rotation.y = camera.rotation.y
     armL.rotation.x = bodySwing
     armR.rotation.x = -bodySwing
-    // The blob has to sit AHEAD of the walker, not under them: the camera's own feet are
-    // below the bottom of the frustum (visible ground starts about 2.65 m out at eye height
-    // 1.6 m with a 60 degree FOV), so a disc at camera.position never renders a single pixel.
-    // 3.5 m clears that threshold while still reading as ground contact at your feet.
-    const blobAt = trackPoint(d + 3.5)
-    avatarBlob.visible = !TIER_BUDGET[tier].shadowMap
-    avatarBlob.position.set(blobAt.x, 0.03, blobAt.z)
     // Settings can pin the time of day; 'auto' follows walked distance (#72)
     const tod = props.timeOfDay ?? 'auto'
     const phase = tod === 'auto' ? dayPhase(d) : TIME_PHASES[tod]

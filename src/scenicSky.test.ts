@@ -72,10 +72,14 @@ describe('skyBodies', () => {
     }
   })
 
-  it('moon is visible exactly when the sun is not', () => {
+  it('the moon is up exactly when the sun is below the horizon', () => {
     for (let p = 0; p < 1; p += 0.01) {
       const b = skyBodies(p)
-      expect(b.moon.visible).toBe(!b.sun.visible)
+      // derived from elevation and the night band, NOT from b.sun.visible
+      const sunShouldBeUp = b.sun.elevation > 0 && !isNight(p)
+      expect(`${p.toFixed(2)}: ${b.moon.visible}`).toBe(`${p.toFixed(2)}: ${!sunShouldBeUp}`)
+      // and a visible moon is never below the ground
+      if (b.moon.visible) expect(b.moon.elevation).toBeGreaterThanOrEqual(0)
     }
   })
 
@@ -92,5 +96,16 @@ describe('skyBodies', () => {
     const b = skyBodies(0.45)
     const delta = Math.abs(b.sun.azimuth - b.moon.azimuth) % (Math.PI * 2)
     expect(delta).toBeCloseTo(Math.PI, 3)
+  })
+
+  it('stars fade at BOTH edges of the night band, including the dawn wrap', () => {
+    // dusk shoulder: rising toward the night band
+    expect(skyBodies(0.8).starOpacity).toBeLessThan(skyBodies(0.815).starOpacity)
+    // the boundaries themselves must not jump
+    expect(skyBodies(0.8199).starOpacity).toBeCloseTo(skyBodies(0.8201).starOpacity, 2)
+    expect(skyBodies(0.0199).starOpacity).toBeCloseTo(skyBodies(0.0201).starOpacity, 2)
+    // dawn shoulder: falling away from the night band, gone by 0.07
+    expect(skyBodies(0.03).starOpacity).toBeGreaterThan(skyBodies(0.05).starOpacity)
+    expect(skyBodies(0.07).starOpacity).toBe(0)
   })
 })

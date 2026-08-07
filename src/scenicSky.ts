@@ -125,16 +125,33 @@ export interface SkyBodies {
 export const SUN_PEAK_PHASE = 0.45 // the "day" palette keyframe
 const MAX_ELEVATION = Math.PI * 0.42 // just shy of straight overhead
 
+const STAR_SHOULDER = 0.05 // phase width of the fade either side of the night band
+
+// Stars are fully out through the night band and fade across a shoulder on each side.
+// Both shoulders must meet the band's edges at 1, or the stars snap on/off at the
+// boundary instead of fading — the dawn edge in particular is easy to miss, because
+// the night band wraps through phase 0.
+function starFade(p: number): number {
+  if (isNight(p)) return 1
+  const clamp = (v: number) => Math.max(0, Math.min(1, v))
+  // dusk shoulder, ramping up to the 0.82 edge
+  if (p >= 0.82 - STAR_SHOULDER) return clamp((p - (0.82 - STAR_SHOULDER)) / STAR_SHOULDER)
+  // dawn shoulder, ramping down from the 0.02 edge
+  if (p < 0.02 + STAR_SHOULDER) return clamp((0.02 + STAR_SHOULDER - p) / STAR_SHOULDER)
+  return 0
+}
+
 export function skyBodies(phase: number): SkyBodies {
   const p = ((phase % 1) + 1) % 1
   // one full circuit per cycle; elevation is a cosine peaking at SUN_PEAK_PHASE, so it
   // crosses zero a quarter-cycle either side and goes negative through the night band
   const azimuth = p * Math.PI * 2
   const elevation = Math.cos((p - SUN_PEAK_PHASE) * Math.PI * 2) * MAX_ELEVATION
+  // elevation's zero-crossings sit at p = 0.20 and p = 0.70, both well outside the night
+  // band ([0.82, 1) ∪ [0, 0.02)), so !isNight(p) can never actually flip this today —
+  // kept as a defensive guard against future retuning of either curve, not dead code.
   const sunUp = elevation > 0 && !isNight(p)
-  // stars ramp over the 0.05-phase shoulder either side of the night band rather than
-  // popping on at its edge
-  const starOpacity = isNight(p) ? 1 : Math.max(0, Math.min(1, (p - 0.77) / 0.05))
+  const starOpacity = starFade(p)
   return {
     sun: { azimuth, elevation, visible: sunUp },
     moon: { azimuth: azimuth + Math.PI, elevation: -elevation, visible: !sunUp },

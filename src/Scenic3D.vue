@@ -40,6 +40,9 @@ import {
   concreteTexture,
   surface,
   blobShadowTexture,
+  glowTexture,
+  starPositions,
+  cloudTexture,
 } from './scenicMeshes'
 import {
   dayPhase,
@@ -146,6 +149,17 @@ onMounted(() => {
     sun.shadow.normalBias = 0.03
   }
 
+  // Declared ahead of the sky dome/bodies below because `addClouds()` (immediately
+  // invoked on the high tier) and the static-world bake both push disposable geometry
+  // into this array — a `const` further down would leave it in the temporal dead zone
+  // for that first `addClouds()` call.
+  const disposables: THREE.BufferGeometry[] = []
+  const track = (mesh: THREE.Mesh) => {
+    disposables.push(mesh.geometry as THREE.BufferGeometry)
+    scene.add(mesh)
+    return mesh
+  }
+
   // Sky dome: vertex-color gradient from fog color at the horizon to sky color overhead,
   // following the camera. Kills the hard seam where fogged ground meets a flat background.
   // toneMapped:false is load-bearing — three.js applies fog AFTER tone mapping, so real
@@ -167,6 +181,69 @@ onMounted(() => {
     }),
   )
   scene.add(dome)
+
+  // Sky bodies: a sun/moon glow sprite each, a star field that fades in at night, and a
+  // drifting cloud shell on the high tier. All four must dodge the static-world bake
+  // below (see the `staticRoots` filter) or they get merged into a mesh and vanish.
+  const SKY_R = 250 // just inside the 260 dome
+  const glowTex = glowTexture(128)
+  const sunSprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: glowTex,
+      color: 0xfff4dd,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    }),
+  )
+  sunSprite.scale.setScalar(46)
+  const moonSprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: glowTex, color: 0xcfd8ea, depthWrite: false, fog: false }),
+  )
+  moonSprite.scale.setScalar(26)
+  scene.add(sunSprite, moonSprite)
+
+  const starGeo = new THREE.BufferGeometry()
+  starGeo.setAttribute(
+    'position',
+    new THREE.BufferAttribute(starPositions(TIER_BUDGET[tier].stars, SKY_R), 3),
+  )
+  const starMat = new THREE.PointsMaterial({
+    color: 0xdfe6ff,
+    size: 1.6,
+    sizeAttenuation: false,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    fog: false,
+  })
+  const stars = new THREE.Points(starGeo, starMat)
+  scene.add(stars)
+
+  // clouds: a second dome shell just inside the sky dome, high tier only
+  let clouds: THREE.Mesh | null = null
+  let cloudTex: THREE.CanvasTexture | null = null
+  function addClouds() {
+    if (clouds) return
+    cloudTex = cloudTexture(512)
+    cloudTex.repeat.set(3, 2)
+    const g = new THREE.SphereGeometry(248, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2.2)
+    clouds = new THREE.Mesh(
+      g,
+      new THREE.MeshBasicMaterial({
+        map: cloudTex,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.BackSide,
+        depthWrite: false,
+        fog: false,
+      }),
+    )
+    disposables.push(g)
+    scene.add(clouds)
+  }
+  if (TIER_BUDGET[tier].clouds) addClouds()
+
   const cLo = new THREE.Color()
   const cHi = new THREE.Color()
   const cMix = new THREE.Color()
@@ -359,12 +436,7 @@ onMounted(() => {
   }
 
   // --- static world, built once ---
-  const disposables: THREE.BufferGeometry[] = []
-  const track = (mesh: THREE.Mesh) => {
-    disposables.push(mesh.geometry as THREE.BufferGeometry)
-    scene.add(mesh)
-    return mesh
-  }
+  // (disposables/track declared earlier — addClouds() needs them before this point)
 
   // grass everywhere (single big plane), slightly below the track surface
   const groundGeo = new THREE.PlaneGeometry(700, 700)
@@ -509,9 +581,13 @@ onMounted(() => {
     const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>()
     // sunTarget is a plain Object3D, not a Light, so it would otherwise be swept into
     // staticRoots and removed — after which its matrixWorld freezes and the directional
-    // light aims at the origin instead of following the walker.
+    // light aims at the origin instead of following the walker. The sun/moon sprites,
+    // star points and cloud shell are all live-updated per frame too (see update() below)
+    // — left in staticRoots they would get merged into a mesh and silently vanish.
+    const skyObjects: THREE.Object3D[] = [dome, sunSprite, moonSprite, stars]
+    if (clouds) skyObjects.push(clouds)
     const staticRoots = scene.children.filter(
-      (c) => c !== dome && !(c as THREE.Light).isLight && c !== sunTarget,
+      (c) => !skyObjects.includes(c) && !(c as THREE.Light).isLight && c !== sunTarget,
     )
     for (const root of staticRoots) {
       root.traverse((o) => {
@@ -585,6 +661,24 @@ onMounted(() => {
     sun.intensity = sky.sunIntensity
     sun.color.setHex(sky.sunColor)
     hemi.intensity = sky.ambient
+    const place = (o: THREE.Object3D, b: { azimuth: number; elevation: number }) => {
+      o.position.set(
+        camera.position.x + Math.cos(b.azimuth) * Math.cos(b.elevation) * SKY_R,
+        Math.sin(b.elevation) * SKY_R,
+        camera.position.z + Math.sin(b.azimuth) * Math.cos(b.elevation) * SKY_R,
+      )
+    }
+    place(sunSprite, bodies.sun)
+    place(moonSprite, bodies.moon)
+    sunSprite.visible = bodies.sun.visible
+    moonSprite.visible = bodies.moon.visible
+    starMat.opacity = bodies.starOpacity
+    stars.visible = bodies.starOpacity > 0.01
+    stars.position.set(camera.position.x, 0, camera.position.z)
+    if (clouds) {
+      clouds.position.set(camera.position.x, 0, camera.position.z)
+      clouds.rotation.y = d * 0.0004 // drift with walked distance, like everything else
+    }
     renderer!.render(scene, camera)
   }
 
@@ -618,6 +712,11 @@ onMounted(() => {
       sun.castShadow = false
     }
     if (blobMesh) blobMesh.visible = !budget.shadowMap
+    if (budget.clouds) addClouds()
+    starGeo.setAttribute(
+      'position',
+      new THREE.BufferAttribute(starPositions(budget.stars, SKY_R), 3),
+    )
   }
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -745,6 +844,13 @@ onMounted(() => {
     })
     domeGeo.dispose()
     dome.material.dispose()
+    glowTex.dispose()
+    sunSprite.material.dispose()
+    moonSprite.material.dispose()
+    starGeo.dispose()
+    starMat.dispose()
+    cloudTex?.dispose()
+    ;(clouds?.material as THREE.Material | undefined)?.dispose()
     blobTex.dispose()
     blobGeo.dispose()
     blobMat.dispose()

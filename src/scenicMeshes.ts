@@ -240,6 +240,60 @@ export function blobShadowTexture(size: number): THREE.CanvasTexture {
   return t
 }
 
+// soft radial disc used for both the sun (bright, additive) and the moon (pale)
+export function glowTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
+  g.addColorStop(0, 'rgba(255,255,255,1)')
+  g.addColorStop(0.22, 'rgba(255,255,255,0.85)')
+  g.addColorStop(0.5, 'rgba(255,255,255,0.18)')
+  g.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, size, size)
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
+
+// Deterministic star field on the upper hemisphere of a sphere of `radius`. Points below
+// about 8° elevation are skipped — they would sit inside the fog band and just smear.
+export function starPositions(count: number, radius: number): Float32Array {
+  const out = new Float32Array(count * 3)
+  for (let i = 0; i < count; i++) {
+    const azimuth = worldHash(i * 2 + 401) * Math.PI * 2
+    const elevation = 0.14 + worldHash(i * 2 + 402) * (Math.PI / 2 - 0.14)
+    out[i * 3] = Math.cos(azimuth) * Math.cos(elevation) * radius
+    out[i * 3 + 1] = Math.sin(elevation) * radius
+    out[i * 3 + 2] = Math.sin(azimuth) * Math.cos(elevation) * radius
+  }
+  return out
+}
+
+// fbm-ish cloud alpha: a few octaves of blurred blobs, tiled
+export function cloudTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.clearRect(0, 0, size, size)
+  for (let octave = 0; octave < 3; octave++) {
+    const blobs = 40 >> octave
+    const r = (size / 6) * (octave + 1)
+    ctx.globalAlpha = 0.16 / (octave + 1)
+    ctx.fillStyle = '#ffffff'
+    for (let i = 0; i < blobs; i++) {
+      const x = worldHash(i * 3 + octave * 97 + 501) * size
+      const y = worldHash(i * 3 + octave * 97 + 502) * size
+      ctx.beginPath()
+      ctx.arc(x, y, r * (0.4 + worldHash(i * 3 + octave * 97 + 503)), 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+  ctx.globalAlpha = 1
+  const t = new THREE.CanvasTexture(c)
+  t.wrapS = THREE.RepeatWrapping
+  t.wrapT = THREE.RepeatWrapping
+  t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
+
 // Always Standard: material class cannot change after the bake (materials are the merge
 // keys), so a tier-dependent class meant the auto-probed upgrade silently kept Lambert
 // and left every roughness value inert. The tier still gates what actually costs —

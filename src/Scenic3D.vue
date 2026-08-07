@@ -26,6 +26,7 @@ import {
   waterfallPoints,
   laneDistanceToS,
   laneMeasurementO,
+  worldHash,
 } from './scenic'
 import type { Prop } from './scenic'
 import { pacers, stepPhase } from './scenicLife'
@@ -657,7 +658,7 @@ onMounted(() => {
   // --- pacers (live, never baked) ---
   // scene.add here runs AFTER the bake block above, so these are never swept into
   // staticRoots — pacers move every frame and must not be merged into the static world.
-  const { body: pacerBodyGeo, limb: pacerLimbGeo } = runnerParts()
+  const { body: pacerBodyGeo, arm: pacerArmGeo, leg: pacerLegGeo } = runnerParts()
   const PACER_POOL = TIER_BUDGET.high.pacers
   interface PacerRig {
     group: THREE.Group
@@ -670,6 +671,10 @@ onMounted(() => {
   const pacerRigs: PacerRig[] = []
   for (let i = 0; i < PACER_POOL; i++) {
     const kit = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 })
+    // Fixed per rig at construction, seeded the same way pacers() derives seed for index i,
+    // so the colour a rig shows is the one its pacer would have asked for — no need to touch
+    // it again every frame.
+    kit.color.setHSL(worldHash(i * 31 + 7), 0.55, 0.5)
     const group = new THREE.Group()
     const mk = (g: THREE.BufferGeometry, x: number, y: number) => {
       const m = new THREE.Mesh(g, kit)
@@ -679,10 +684,10 @@ onMounted(() => {
       return m
     }
     mk(pacerBodyGeo, 0, 0)
-    const armL = mk(pacerLimbGeo, -0.22, 1.42)
-    const armR = mk(pacerLimbGeo, 0.22, 1.42)
-    const legL = mk(pacerLimbGeo, -0.09, 0.86)
-    const legR = mk(pacerLimbGeo, 0.09, 0.86)
+    const armL = mk(pacerArmGeo, -0.22, 1.42)
+    const armR = mk(pacerArmGeo, 0.22, 1.42)
+    const legL = mk(pacerLegGeo, -0.09, 0.86)
+    const legR = mk(pacerLegGeo, 0.09, 0.86)
     group.visible = false
     scene.add(group)
     pacerRigs.push({ group, armL, armR, legL, legR, kit })
@@ -751,7 +756,11 @@ onMounted(() => {
       // p.drawO — offset to one side of the lane centre, so when a faster pacer laps a slower
       // one in the same lane (which happens within about a minute) it reads as an overtake
       // rather than two meshes intersecting.
-      const at = trackPoint(laneDistanceToS(laneMeasurementO(p.lane), p.d), p.drawO)
+      const laneO = laneMeasurementO(p.lane)
+      // p.d grows for the whole session and laneDistanceToS costs O(d) — wrap to one lap of
+      // this lane first, which is equivalent because the track is a loop.
+      const laneLap = LAP_M + 2 * Math.PI * laneO
+      const at = trackPoint(laneDistanceToS(laneO, p.d % laneLap), p.drawO)
       const dx = at.x - camera.position.x
       const dz = at.z - camera.position.z
       const far = fogBand.far
@@ -763,14 +772,14 @@ onMounted(() => {
       rig.group.position.set(at.x, 0, at.z)
       // the tangent comes from trackPoint, not from the Pacer — a Pacer has no heading
       rig.group.rotation.y = Math.atan2(-at.tx, -at.tz)
-      rig.kit.color.setHSL(p.seed, 0.55, 0.5)
-      // limbs swing in antiphase, arms opposite legs, at the pacer's own cadence
+      // limbs swing in antiphase, arms opposite legs, at the pacer's own cadence — legs swing
+      // less than arms so the foot lift reads as a stride, not a kick
       const ph = stepPhase(p.d, 0.9) * Math.PI * 2
-      const swing = Math.sin(ph) * 0.7
-      rig.legL.rotation.x = swing
-      rig.legR.rotation.x = -swing
-      rig.armL.rotation.x = -swing
-      rig.armR.rotation.x = swing
+      const swing = Math.sin(ph)
+      rig.legL.rotation.x = swing * 0.55
+      rig.legR.rotation.x = -swing * 0.55
+      rig.armL.rotation.x = -swing * 0.7
+      rig.armR.rotation.x = swing * 0.7
     }
     renderer!.render(scene, camera)
   }
@@ -824,6 +833,7 @@ onMounted(() => {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   let last = performance.now()
   let lastRendered = Infinity // skip GPU work while the belt is stopped and nothing moved (#62)
+  let lastPacerRender = 0
   function frame(now: number) {
     if (disposed) return
     const dt = Math.min(0.1, (now - last) / 1000)
@@ -841,7 +851,12 @@ onMounted(() => {
     if (Math.abs(target - display) > LAP_M / 4) display = target // view (re)opened — snap
     // advance at belt speed, gently corrected toward the true integrated distance
     display += ((props.speed * 1000) / 3600) * dt + (target - display) * dt * 1.5
-    if (Math.abs(display - lastRendered) > 0.003) {
+    // The distance gate assumes a static scene when the belt is stopped — true before pacers
+    // existed. They keep moving while you stand still, so force a redraw at ~30 Hz even when
+    // the walked distance has not changed.
+    const moved = Math.abs(display - lastRendered) > 0.003
+    if (moved || sessionSeconds - lastPacerRender > 1 / 30) {
+      lastPacerRender = sessionSeconds
       lastRendered = display
       update(display)
     }
@@ -886,9 +901,12 @@ onMounted(() => {
   // watch() outside setup isn't auto-disposed, so keep the stop handle for cleanup.
   let stopDistanceWatch: (() => void) | null = null
   if (reducedMotion) {
+    const t0 = performance.now()
     stopDistanceWatch = watch(
       () => props.distance,
       (d) => {
+        // no rAF loop here, so sessionSeconds has no other way to advance
+        sessionSeconds = (performance.now() - t0) / 1000
         display = d
         update(d)
       },
@@ -973,7 +991,8 @@ onMounted(() => {
     Object.values(mat).forEach((m) => m.dispose())
     Object.values(tex).forEach((t) => t.dispose())
     pacerBodyGeo.dispose()
-    pacerLimbGeo.dispose()
+    pacerArmGeo.dispose()
+    pacerLegGeo.dispose()
     pacerRigs.forEach((r) => r.kit.dispose())
     renderer?.dispose()
     // dispose() alone leaves the context slot occupied until GC — force-release it so

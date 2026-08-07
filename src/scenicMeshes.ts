@@ -295,10 +295,15 @@ export function cloudTexture(size: number): THREE.CanvasTexture {
   return t
 }
 
-// A pacer is five meshes — body+head merged, two arms, two legs — sharing three
-// materials. Deliberately low-poly: on the Quality tier eight of them are the scene's
-// dominant per-frame cost, which is why the count is tier-gated.
-export function runnerParts(): { body: THREE.BufferGeometry; limb: THREE.BufferGeometry } {
+// A pacer is five meshes — body+head merged, two arms, two legs — sharing one material.
+// Arms and legs need DIFFERENT lengths: a leg has to reach the ground from the hip, and an
+// arm that long would hang past the knee. Each limb pivots at its top so a rotation about x
+// swings it from the shoulder or hip.
+export function runnerParts(): {
+  body: THREE.BufferGeometry
+  arm: THREE.BufferGeometry
+  leg: THREE.BufferGeometry
+} {
   const torso = new THREE.CapsuleGeometry(0.16, 0.5, 3, 6)
   torso.translate(0, 1.15, 0)
   const head = new THREE.SphereGeometry(0.12, 8, 6)
@@ -306,10 +311,15 @@ export function runnerParts(): { body: THREE.BufferGeometry; limb: THREE.BufferG
   const body = mergeGeometries([torso, head])!
   torso.dispose()
   head.dispose()
-  // Limb pivots at its top so a rotation about x swings it like a shoulder or hip.
-  const limb = new THREE.CapsuleGeometry(0.055, 0.42, 3, 5)
-  limb.translate(0, -0.24, 0)
-  return { body, limb }
+  // Leg: half-height is length/2 + radius = 0.43, so translating by that puts the pivot at
+  // the very top and the foot exactly 0.86 m below it. Mounted at hip y = 0.86, the foot
+  // lands on y = 0 — the track surface.
+  const leg = new THREE.CapsuleGeometry(0.06, 0.74, 3, 5)
+  leg.translate(0, -0.43, 0)
+  // Arm: 0.60 m from the shoulder, so the hand sits at y = 0.82 with the shoulder at 1.42.
+  const arm = new THREE.CapsuleGeometry(0.05, 0.5, 3, 5)
+  arm.translate(0, -0.3, 0)
+  return { body, arm, leg }
 }
 
 // Always Standard: material class cannot change after the bake (materials are the merge

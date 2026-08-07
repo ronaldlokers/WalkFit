@@ -799,8 +799,13 @@ onMounted(() => {
     avatarBody.rotation.y = camera.rotation.y
     armL.rotation.x = bodySwing
     armR.rotation.x = -bodySwing
+    // The blob has to sit AHEAD of the walker, not under them: the camera's own feet are
+    // below the bottom of the frustum (visible ground starts about 2.65 m out at eye height
+    // 1.6 m with a 60 degree FOV), so a disc at camera.position never renders a single pixel.
+    // 3.5 m clears that threshold while still reading as ground contact at your feet.
+    const blobAt = trackPoint(d + 3.5)
     avatarBlob.visible = !TIER_BUDGET[tier].shadowMap
-    avatarBlob.position.set(camera.position.x, 0.03, camera.position.z)
+    avatarBlob.position.set(blobAt.x, 0.03, blobAt.z)
     // Settings can pin the time of day; 'auto' follows walked distance (#72)
     const tod = props.timeOfDay ?? 'auto'
     const phase = tod === 'auto' ? dayPhase(d) : TIME_PHASES[tod]

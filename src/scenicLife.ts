@@ -16,11 +16,19 @@ export interface Pacer {
   speed: number // km/h, instantaneous
   kind: PacerKind
   seed: number // 0..1, stable per pacer — drives kit colour
+  lateral: number // metres offset from the lane's own line, so same-lane pacers pass beside each other rather than through
 }
 
 // Lane 1 is the walker's. Pacers use the outer lanes so a fast one overtaking cannot
 // clip through the camera.
 export const PACER_LANES = [2, 3, 4, 5, 6]
+
+// Two pacers share a lane once count exceeds PACER_LANES.length. They have different
+// speeds, so the faster WILL lap the slower — within about a minute for the closest pair.
+// Offsetting them to opposite sides of the lane turns that from two meshes intersecting
+// into an overtake, which is what real runners do anyway. A lane is 1.22 m wide, so
+// +/-0.3 m keeps both inside it.
+export const PACER_LATERAL_M = 0.3
 
 // Interval pacers run a square cycle: INTERVAL_PERIOD_M / 2 fast, then the same distance
 // slow. A square cycle keeps the position closed-form — see distanceAt below.
@@ -67,14 +75,18 @@ export function pacers(t: number, count: number): Pacer[] {
   for (let i = 0; i < count; i++) {
     const k = KINDS[i % KINDS.length]!
     const seed = worldHash(i * 31 + 7)
-    // Spread starts around the lap so a lane's pacers begin well apart; the +i term
-    // keeps two pacers landing in the same lane from starting on top of each other.
+    // Spread starts evenly around the lap (i * LAP_M / KINDS.length), jittered by the
+    // per-pacer seed so pacers landing in the same lane don't start on top of each other.
     const start = ((i * LAP_M) / KINDS.length + seed * 40) % LAP_M
     const offset = i * 0.37 // km/h, so same-lane pacers separate rather than travel merged
     const speed = k.kind === 'intervals' ? intervalSpeed(t) : k.speed + offset
     const d =
       k.kind === 'intervals' ? start + intervalDistance(t) : start + mps(k.speed + offset) * t
-    out.push({ lane: PACER_LANES[i % PACER_LANES.length]!, d, speed, kind: k.kind, seed })
+    // Same-lane pacers WILL lap each other eventually since their speeds differ — put
+    // them on opposite sides of the lane so that reads as an overtake, not a collision.
+    const row = Math.floor(i / PACER_LANES.length)
+    const lateral = row % 2 === 0 ? -PACER_LATERAL_M : PACER_LATERAL_M
+    out.push({ lane: PACER_LANES[i % PACER_LANES.length]!, d, speed, kind: k.kind, seed, lateral })
   }
   return out
 }

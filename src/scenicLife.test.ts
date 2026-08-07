@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   pacers,
   PACER_LANES,
+  PACER_LATERAL_M,
   INTERVAL_PERIOD_M,
   INTERVAL_FAST_KMH,
   INTERVAL_SLOW_KMH,
@@ -39,7 +40,7 @@ describe('pacers', () => {
     })
   })
 
-  it('same-lane pacers start apart and travel at different speeds, so they never merge', () => {
+  it('at t=0, same-lane pacers start at least 8 m apart with different speeds', () => {
     const list = pacers(0, 8)
     for (const lane of PACER_LANES) {
       const inLane = list.filter((p) => p.lane === lane)
@@ -51,6 +52,32 @@ describe('pacers', () => {
             wrapped >= 8 ? `lane ${lane} gap ${wrapped.toFixed(1)}` : `lane ${lane} gap >= 8`,
           )
           expect(inLane[i]!.speed).not.toBeCloseTo(inLane[j]!.speed, 3)
+        }
+      }
+    }
+  })
+
+  it('same-lane pacers stay on opposite sides of the lane, so overtakes never intersect', () => {
+    // Different speeds mean the faster WILL lap the slower — the lane-3 pair closes to
+    // within 8 m by about t = 65 s. Sampling only t = 0 hid this. What has to hold is that
+    // when they do meet, they are laterally apart.
+    for (let t = 0; t <= 400; t += 5) {
+      const byLane = new Map<number, { d: number; lateral: number }[]>()
+      for (const p of pacers(t, 8)) {
+        const arr = byLane.get(p.lane) ?? []
+        arr.push({ d: p.d, lateral: p.lateral })
+        byLane.set(p.lane, arr)
+      }
+      for (const [lane, list] of byLane) {
+        for (let a = 0; a < list.length; a++) {
+          for (let b = a + 1; b < list.length; b++) {
+            const sep = Math.abs(list[a]!.lateral - list[b]!.lateral)
+            expect(`t=${t} lane ${lane} lateral ${sep.toFixed(2)}`).toBe(
+              sep >= PACER_LATERAL_M
+                ? `t=${t} lane ${lane} lateral ${sep.toFixed(2)}`
+                : `t=${t} lane ${lane} lateral >= ${PACER_LATERAL_M}`,
+            )
+          }
         }
       }
     }

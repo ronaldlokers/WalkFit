@@ -118,6 +118,9 @@ onMounted(() => {
 
   // Sky dome: vertex-color gradient from fog color at the horizon to sky color overhead,
   // following the camera. Kills the hard seam where fogged ground meets a flat background.
+  // toneMapped:false is load-bearing — three.js applies fog AFTER tone mapping, so real
+  // fogged geometry fades to the raw hex. If the dome were tone mapped it would no longer
+  // match the fog it is painted to blend into, and the seam would come back.
   const domeGeo = new THREE.SphereGeometry(260, 24, 12)
   const domeColors = new THREE.Float32BufferAttribute(
     new Float32Array(domeGeo.attributes.position!.count * 3),
@@ -126,7 +129,12 @@ onMounted(() => {
   domeGeo.setAttribute('color', domeColors)
   const dome = new THREE.Mesh(
     domeGeo,
-    new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false }),
+    new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      side: THREE.BackSide,
+      fog: false,
+      toneMapped: false,
+    }),
   )
   scene.add(dome)
   const cLo = new THREE.Color()
@@ -544,6 +552,19 @@ onMounted(() => {
     )
   }
 
+  // Settings can change while the view is open. Without this the quality control appears
+  // dead until the component remounts, because tier/probeDone are closure state captured
+  // at mount. Switching back to 'auto' restarts the probe from scratch.
+  const stopQualityWatch = watch(
+    () => props.quality,
+    (q) => {
+      const setting = q ?? 'auto'
+      probeSamples.length = 0
+      probeDone = setting !== 'auto'
+      if (probeDone && setting !== tier) applyTier(setting as Tier)
+    },
+  )
+
   const ro = new ResizeObserver(() => {
     const w = el.clientWidth
     const h = el.clientHeight
@@ -565,6 +586,7 @@ onMounted(() => {
   cleanup = () => {
     stopLoop()
     stopDistanceWatch?.()
+    stopQualityWatch()
     document.removeEventListener('visibilitychange', onVisibility)
     renderer?.domElement.removeEventListener('webglcontextlost', onContextLost)
     renderer?.domElement.removeEventListener('webglcontextrestored', onContextRestored)

@@ -119,8 +119,18 @@ describe('skyBodies', () => {
     // the boundaries themselves must not jump
     expect(skyBodies(0.8199).starOpacity).toBeCloseTo(skyBodies(0.8201).starOpacity, 2)
     expect(skyBodies(0.0199).starOpacity).toBeCloseTo(skyBodies(0.0201).starOpacity, 2)
-    // dawn shoulder: falling away from the night band, gone by 0.07
-    expect(skyBodies(0.03).starOpacity).toBeGreaterThan(skyBodies(0.05).starOpacity)
-    expect(skyBodies(0.07).starOpacity).toBe(0)
+    // dawn shoulder now lives inside the night band's tail
+    expect(skyBodies(0.005).starOpacity).toBeGreaterThan(skyBodies(0.015).starOpacity)
+    expect(skyBodies(0.02).starOpacity).toBe(0)
+  })
+
+  it('the stars are gone by the time the sun is up', () => {
+    // a risen sun over a full star field is the specific thing this pins
+    for (let p = 0; p < 1; p += 0.005) {
+      const b = skyBodies(p)
+      if (b.sun.elevation > 0) {
+        expect(`${p.toFixed(3)}: ${b.starOpacity}`).toBe(`${p.toFixed(3)}: 0`)
+      }
+    }
   })
 })

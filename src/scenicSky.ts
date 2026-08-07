@@ -162,19 +162,25 @@ function sunElevation(p: number): number {
   return nightElevation(p)
 }
 
-const STAR_SHOULDER = 0.05 // phase width of the fade either side of the night band
-
-// Stars are fully out through the night band and fade across a shoulder on each side.
-// Both shoulders must meet the band's edges at 1, or the stars snap on/off at the
-// boundary instead of fading — the dawn edge in particular is easy to miss, because
-// the night band wraps through phase 0.
+// Stars are fully out through the dark middle of the night, and ramp in/out across a
+// shoulder on each side that stays INSIDE the sun's actual below-horizon window: the dusk
+// shoulder starts at SUN_SET_PHASE (not the old 0.77, which started fading stars in while
+// the sun was still above the horizon — the same defect Fix 3 targets, just on the other
+// edge) and the dawn shoulder ends at NIGHT_DAWN_EDGE, so stars are gone by the moment the
+// sun crosses the horizon there. Fading them any earlier/later than that leaves stars
+// visible over a sun that's still up (or already risen).
 function starFade(p: number): number {
-  if (isNight(p)) return 1
-  const clamp = (v: number) => Math.max(0, Math.min(1, v))
-  // dusk shoulder, ramping up to the 0.82 edge
-  if (p >= 0.82 - STAR_SHOULDER) return clamp((p - (0.82 - STAR_SHOULDER)) / STAR_SHOULDER)
-  // dawn shoulder, ramping down from the 0.02 edge
-  if (p < 0.02 + STAR_SHOULDER) return clamp((0.02 + STAR_SHOULDER - p) / STAR_SHOULDER)
+  // Below this, treat as exactly 0/1 — the ramps below are float subtractions/divisions
+  // of nearby phase values, which can leave a ~1e-14 dust value sitting on the wrong side
+  // of zero right at a shoulder boundary. That's invisible on screen but would otherwise
+  // break the "stars are exactly 0 once the sun is up" invariant at the boundary itself.
+  const EPS = 1e-9
+  const clamp = (v: number) => (v < EPS ? 0 : Math.min(1, v))
+  // dusk: rise from 0 at sunset (SUN_SET_PHASE) to 1 by the night band's edge (0.82),
+  // then clamp holds it at 1 for the rest of the (wrapping) night band
+  if (p >= SUN_SET_PHASE) return clamp((p - SUN_SET_PHASE) / (0.82 - SUN_SET_PHASE))
+  // dawn: fall from 1 at phase 0 to 0 by NIGHT_DAWN_EDGE, inside the night band's tail
+  if (p < NIGHT_DAWN_EDGE) return clamp(1 - p / NIGHT_DAWN_EDGE)
   return 0
 }
 

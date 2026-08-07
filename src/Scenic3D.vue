@@ -210,7 +210,10 @@ onMounted(() => {
   )
   const starMat = new THREE.PointsMaterial({
     color: 0xdfe6ff,
-    size: 1.6,
+    // raw framebuffer pixels: sizeAttenuation:false means three does NOT apply the
+    // renderer's pixel ratio, so without this a DPR-2 screen renders 0.8 CSS px stars —
+    // sub-pixel, shimmering/invisible on the phone-on-treadmill case this targets
+    size: 1.6 * renderer.getPixelRatio(),
     sizeAttenuation: false,
     transparent: true,
     opacity: 0,
@@ -257,6 +260,15 @@ onMounted(() => {
       domeColors.setXYZ(i, cMix.r, cMix.g, cMix.b)
     }
     domeColors.needsUpdate = true
+  }
+  // Hoisted out of update() (Fix 4): that function runs every rendered frame, so a
+  // closure declared inside it was a fresh allocation per frame.
+  const place = (o: THREE.Object3D, b: { azimuth: number; elevation: number }) => {
+    o.position.set(
+      camera.position.x + Math.cos(b.azimuth) * Math.cos(b.elevation) * SKY_R,
+      Math.sin(b.elevation) * SKY_R,
+      camera.position.z + Math.sin(b.azimuth) * Math.cos(b.elevation) * SKY_R,
+    )
   }
 
   // --- shared geometries/materials ---
@@ -661,13 +673,6 @@ onMounted(() => {
     sun.intensity = sky.sunIntensity
     sun.color.setHex(sky.sunColor)
     hemi.intensity = sky.ambient
-    const place = (o: THREE.Object3D, b: { azimuth: number; elevation: number }) => {
-      o.position.set(
-        camera.position.x + Math.cos(b.azimuth) * Math.cos(b.elevation) * SKY_R,
-        Math.sin(b.elevation) * SKY_R,
-        camera.position.z + Math.sin(b.azimuth) * Math.cos(b.elevation) * SKY_R,
-      )
-    }
     place(sunSprite, bodies.sun)
     place(moonSprite, bodies.moon)
     sunSprite.visible = bodies.sun.visible
@@ -712,7 +717,12 @@ onMounted(() => {
       sun.castShadow = false
     }
     if (blobMesh) blobMesh.visible = !budget.shadowMap
+    // addClouds() is idempotent, so this pair is safe on repeated toggles either way —
+    // without the visible=false half, a Quality->Performance downgrade left the drifting
+    // cloud shell on forever, contradicting "on Performance there are none" (same shape
+    // as the shadow-disable bug fixed previously: a tier path written one-way).
     if (budget.clouds) addClouds()
+    if (clouds) clouds.visible = budget.clouds
     starGeo.setAttribute(
       'position',
       new THREE.BufferAttribute(starPositions(budget.stars, SKY_R), 3),
@@ -812,7 +822,10 @@ onMounted(() => {
     // DPR can change under us (window dragged to another monitor, zoom) — re-check it
     // here rather than only at mount, or the canvas goes blurry/oversampled (#60)
     const dpr = Math.min(window.devicePixelRatio, 2)
-    if (renderer.getPixelRatio() !== dpr) renderer.setPixelRatio(dpr)
+    if (renderer.getPixelRatio() !== dpr) {
+      renderer.setPixelRatio(dpr)
+      starMat.size = 1.6 * dpr
+    }
     renderer.setSize(w, h)
     camera.aspect = w / h
     camera.updateProjectionMatrix()

@@ -12,6 +12,7 @@ import {
   strideLength,
   stepPhase,
   cadenceHz,
+  paceGap,
 } from './scenicLife'
 import { TRACK_IN, LANE_W } from './scenic'
 import { TIER_BUDGET } from './scenicQuality'
@@ -200,5 +201,24 @@ describe('cadenceHz', () => {
 
   it('is zero when stopped', () => {
     expect(cadenceHz(0, 0.72)).toBe(0)
+  })
+})
+
+describe('paceGap', () => {
+  it('is positive when the rabbit is ahead of you', () => {
+    expect(paceGap(100, 130)).toBe(30)
+  })
+
+  it('is negative when you are ahead of the rabbit', () => {
+    expect(paceGap(160, 130)).toBe(-30)
+  })
+
+  it('is zero when level', () => {
+    expect(paceGap(250, 250)).toBe(0)
+  })
+
+  it('does not wrap at the lap boundary — it is a total-distance gap, not a lap position', () => {
+    // you have run a full lap more than the rabbit; that is a 400 m lead, not level
+    expect(paceGap(800, 400)).toBe(-400)
   })
 })

@@ -121,3 +121,9 @@ export function stepPhase(distance: number, stride: number): number {
 export function cadenceHz(speedKmh: number, stride: number): number {
   return mps(speedKmh) / stride
 }
+
+// Signed metres between you and the rabbit, positive when it is ahead. Deliberately NOT
+// wrapped to the lap: lapping the rabbit is a 400 m lead, not a dead heat.
+export function paceGap(yourDistance: number, rabbitDistance: number): number {
+  return rabbitDistance - yourDistance
+}

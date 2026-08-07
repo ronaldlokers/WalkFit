@@ -398,7 +398,30 @@ Add materials next to the existing table:
 
 Note `fence` and `skylineMat` are `MeshBasicMaterial`, so they are unlit — correct for a distant silhouette and for thin mesh, both of which look wrong when shaded.
 
-- [ ] **Step 2: Build each part**
+- [ ] **Step 2: Hoist the part sizes into `scenicVenue.ts` first**
+
+Task 1's test carries a `sizes` table giving each infield part's `[widthAcrossTrack, lengthAlongTrack]`, and this task is about to build meshes to those same dimensions. Two literal copies in two files, agreeing only by convention, is exactly the drift the module's own `BACK_STRAIGHT_MID` comment warns about — if the renderer sizes the pitch differently, the footprint test keeps passing against stale numbers and says nothing.
+
+Export one source of truth from `src/scenicVenue.ts`:
+
+```ts
+// Footprint of each sized part, as [widthAcrossTrack, lengthAlongTrack] in metres. The
+// renderer builds meshes to these and scenicVenue.test.ts checks them against the kerb —
+// one table, so a resize cannot pass the test while changing what is drawn.
+export const PART_SIZES: Partial<Record<VenueType, [number, number]>> = {
+  pitch: [40, 64],
+  jumpRunway: [1.3, 30],
+  jumpPit: [3, 8],
+  highJump: [10, 8],
+  shotCircle: [2.14, 2.14],
+}
+```
+
+Update `src/scenicVenue.test.ts` to import `PART_SIZES` and delete its local copy — the test must keep passing unchanged otherwise. Then use it for every sized mesh below rather than repeating the numbers, e.g. `new THREE.PlaneGeometry(...PART_SIZES.pitch!)` with the plane's width argument taking the across-track figure.
+
+Note `PlaneGeometry(width, height)` lays width along x and height along y; after `rotation.x = -Math.PI / 2` the height ends up along z. So `PlaneGeometry(across, along)` is the correct argument order once the plane is laid flat — confirm that against what you see rather than trusting it.
+
+- [ ] **Step 3: Build each part**
 
 Add a `buildVenue(p: VenuePart)` function next to `buildProp`, and call it for every part BEFORE the bake block — right after the `surroundings()` loop:
 
@@ -530,7 +553,7 @@ tex.chainLink.repeat.set(1, 2 / 4) // v spans the 2 m height at 4 m per u repeat
 
 `LAP_M / 4 = 100`, a whole number, so the pattern meets itself at the seam.
 
-- [ ] **Step 3: Verify the bake still holds**
+- [ ] **Step 4: Verify the bake still holds**
 
 Run: `npm run typecheck && npm run lint && npm test`
 Expected: PASS, 261.
@@ -548,7 +571,7 @@ Then `npm run dev`, `http://localhost:5173/?demo`, 3D view. Expected:
 Save a screenshot of the grandstand from the home straight to:
 `.superpowers/sdd/2026-08-07-scenic-venue/task-3-stand.png`
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 npm run format

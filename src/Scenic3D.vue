@@ -24,8 +24,12 @@ import {
   relayZoneLines,
   hurdleTicks,
   waterfallPoints,
+  laneDistanceToS,
+  laneMeasurementO,
 } from './scenic'
 import type { Prop } from './scenic'
+import { pacers, stepPhase } from './scenicLife'
+import type { Pacer } from './scenicLife'
 import {
   ribbonArrays,
   stripArrays,
@@ -43,6 +47,7 @@ import {
   glowTexture,
   starPositions,
   cloudTexture,
+  runnerParts,
 } from './scenicMeshes'
 import {
   dayPhase,
@@ -649,8 +654,43 @@ onMounted(() => {
     }
   }
 
+  // --- pacers (live, never baked) ---
+  // scene.add here runs AFTER the bake block above, so these are never swept into
+  // staticRoots — pacers move every frame and must not be merged into the static world.
+  const { body: pacerBodyGeo, limb: pacerLimbGeo } = runnerParts()
+  const PACER_POOL = TIER_BUDGET.high.pacers
+  interface PacerRig {
+    group: THREE.Group
+    armL: THREE.Mesh
+    armR: THREE.Mesh
+    legL: THREE.Mesh
+    legR: THREE.Mesh
+    kit: THREE.MeshStandardMaterial
+  }
+  const pacerRigs: PacerRig[] = []
+  for (let i = 0; i < PACER_POOL; i++) {
+    const kit = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 })
+    const group = new THREE.Group()
+    const mk = (g: THREE.BufferGeometry, x: number, y: number) => {
+      const m = new THREE.Mesh(g, kit)
+      m.position.set(x, y, 0)
+      m.castShadow = true
+      group.add(m)
+      return m
+    }
+    mk(pacerBodyGeo, 0, 0)
+    const armL = mk(pacerLimbGeo, -0.22, 1.42)
+    const armR = mk(pacerLimbGeo, 0.22, 1.42)
+    const legL = mk(pacerLimbGeo, -0.09, 0.86)
+    const legR = mk(pacerLimbGeo, 0.09, 0.86)
+    group.visible = false
+    scene.add(group)
+    pacerRigs.push({ group, armL, armR, legL, legR, kit })
+  }
+
   // --- camera + sky per frame ---
   let display = props.distance // smoothed distance the camera actually sits at
+  let sessionSeconds = 0
   let lastDomeKey = -1 // repaint the ~350 dome vertex colors only when the sky changed (#62)
   function update(d: number) {
     const p = trackPoint(d)
@@ -694,6 +734,43 @@ onMounted(() => {
       // Tint from the sky, or a white shell doubles the night sky's luminance — the same
       // "weather brightens the night" mistake, arriving by a different route.
       ;(clouds.material as THREE.MeshBasicMaterial).color.setHex(sky.sky)
+    }
+    // Pacers: analytic positions, so no accumulated state to drift. Anything beyond the
+    // current weather's fog distance is hidden rather than drawn — with eight on a 400 m
+    // loop, typically three or four are actually visible.
+    const wanted = TIER_BUDGET[tier].pacers
+    const list = pacers(sessionSeconds, wanted)
+    for (let i = 0; i < pacerRigs.length; i++) {
+      const rig = pacerRigs[i]!
+      const p: Pacer | undefined = list[i]
+      if (!p) {
+        rig.group.visible = false
+        continue
+      }
+      // Arc distance is measured along the lane's own surveyed line, but the body is DRAWN at
+      // p.drawO — offset to one side of the lane centre, so when a faster pacer laps a slower
+      // one in the same lane (which happens within about a minute) it reads as an overtake
+      // rather than two meshes intersecting.
+      const at = trackPoint(laneDistanceToS(laneMeasurementO(p.lane), p.d), p.drawO)
+      const dx = at.x - camera.position.x
+      const dz = at.z - camera.position.z
+      const far = fogBand.far
+      if (dx * dx + dz * dz > far * far) {
+        rig.group.visible = false
+        continue
+      }
+      rig.group.visible = true
+      rig.group.position.set(at.x, 0, at.z)
+      // the tangent comes from trackPoint, not from the Pacer — a Pacer has no heading
+      rig.group.rotation.y = Math.atan2(-at.tx, -at.tz)
+      rig.kit.color.setHSL(p.seed, 0.55, 0.5)
+      // limbs swing in antiphase, arms opposite legs, at the pacer's own cadence
+      const ph = stepPhase(p.d, 0.9) * Math.PI * 2
+      const swing = Math.sin(ph) * 0.7
+      rig.legL.rotation.x = swing
+      rig.legR.rotation.x = -swing
+      rig.armL.rotation.x = -swing
+      rig.armR.rotation.x = swing
     }
     renderer!.render(scene, camera)
   }
@@ -751,6 +828,7 @@ onMounted(() => {
     if (disposed) return
     const dt = Math.min(0.1, (now - last) / 1000)
     last = now
+    sessionSeconds += dt
     if (!probeDone) {
       probeSamples.push(dt * 1000)
       if (probeSamples.length >= PROBE_FRAMES) {
@@ -894,6 +972,9 @@ onMounted(() => {
     Object.values(geo).forEach((g) => g.dispose())
     Object.values(mat).forEach((m) => m.dispose())
     Object.values(tex).forEach((t) => t.dispose())
+    pacerBodyGeo.dispose()
+    pacerLimbGeo.dispose()
+    pacerRigs.forEach((r) => r.kit.dispose())
     renderer?.dispose()
     // dispose() alone leaves the context slot occupied until GC — force-release it so
     // repeated 2D↔3D toggles can't exhaust the browser's context budget (#60)

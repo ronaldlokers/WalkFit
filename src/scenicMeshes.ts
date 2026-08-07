@@ -7,6 +7,7 @@
 // accept a mixed batch. Textured surfaces need the opposite, so every builder here emits
 // uv and the merge pass fills in zeros for anything still missing it.
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { trackPoint, LAP_M, worldHash } from './scenic'
 
 export interface MeshArrays {
@@ -292,6 +293,23 @@ export function cloudTexture(size: number): THREE.CanvasTexture {
   t.wrapT = THREE.RepeatWrapping
   t.colorSpace = THREE.SRGBColorSpace
   return t
+}
+
+// A pacer is five meshes — body+head merged, two arms, two legs — sharing three
+// materials. Deliberately low-poly: on the Quality tier eight of them are the scene's
+// dominant per-frame cost, which is why the count is tier-gated.
+export function runnerParts(): { body: THREE.BufferGeometry; limb: THREE.BufferGeometry } {
+  const torso = new THREE.CapsuleGeometry(0.16, 0.5, 3, 6)
+  torso.translate(0, 1.15, 0)
+  const head = new THREE.SphereGeometry(0.12, 8, 6)
+  head.translate(0, 1.58, 0)
+  const body = mergeGeometries([torso, head])!
+  torso.dispose()
+  head.dispose()
+  // Limb pivots at its top so a rotation about x swings it like a shoulder or hip.
+  const limb = new THREE.CapsuleGeometry(0.055, 0.42, 3, 5)
+  limb.translate(0, -0.24, 0)
+  return { body, limb }
 }
 
 // Always Standard: material class cannot change after the bake (materials are the merge

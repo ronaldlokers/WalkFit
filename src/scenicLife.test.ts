@@ -7,6 +7,8 @@ import {
   INTERVAL_FAST_KMH,
   INTERVAL_SLOW_KMH,
 } from './scenicLife'
+import { TRACK_IN, LANE_W } from './scenic'
+import { TIER_BUDGET } from './scenicQuality'
 
 const LAP = 400 // scenic.ts LAP_M, restated so the test does not depend on the module it checks
 
@@ -62,16 +64,16 @@ describe('pacers', () => {
     // within 8 m by about t = 65 s. Sampling only t = 0 hid this. What has to hold is that
     // when they do meet, they are laterally apart.
     for (let t = 0; t <= 400; t += 5) {
-      const byLane = new Map<number, { d: number; lateral: number }[]>()
+      const byLane = new Map<number, { d: number; drawO: number }[]>()
       for (const p of pacers(t, 8)) {
         const arr = byLane.get(p.lane) ?? []
-        arr.push({ d: p.d, lateral: p.lateral })
+        arr.push({ d: p.d, drawO: p.drawO })
         byLane.set(p.lane, arr)
       }
       for (const [lane, list] of byLane) {
         for (let a = 0; a < list.length; a++) {
           for (let b = a + 1; b < list.length; b++) {
-            const sep = Math.abs(list[a]!.lateral - list[b]!.lateral)
+            const sep = Math.abs(list[a]!.drawO - list[b]!.drawO)
             expect(`t=${t} lane ${lane} lateral ${sep.toFixed(2)}`).toBe(
               sep >= PACER_LATERAL_M
                 ? `t=${t} lane ${lane} lateral ${sep.toFixed(2)}`
@@ -81,6 +83,28 @@ describe('pacers', () => {
         }
       }
     }
+  })
+
+  it('every pacer is drawn inside its own lane markings', () => {
+    // laneMeasurementO is 0.2 m in from the lane's inner edge, NOT the centre — offsetting
+    // from it put row-0 pacers 0.1 m into the neighbouring lane.
+    for (const p of pacers(0, 8)) {
+      const inner = TRACK_IN + (p.lane - 1) * LANE_W
+      const outer = TRACK_IN + p.lane * LANE_W
+      expect(
+        `lane ${p.lane} drawO ${p.drawO.toFixed(3)} in [${inner.toFixed(3)}, ${outer.toFixed(3)}]`,
+      ).toBe(
+        p.drawO > inner && p.drawO < outer
+          ? `lane ${p.lane} drawO ${p.drawO.toFixed(3)} in [${inner.toFixed(3)}, ${outer.toFixed(3)}]`
+          : `lane ${p.lane} drawO inside its lane`,
+      )
+    }
+  })
+
+  it('the pacer budget never exceeds what the two-sided lane scheme can separate', () => {
+    // drawO alternates by row parity, so a third pacer in a lane lands back on row 0's side.
+    // If you raise this budget, give lateral offsets more than two positions first.
+    expect(TIER_BUDGET.high.pacers).toBeLessThanOrEqual(PACER_LANES.length * 2)
   })
 
   it('interval pacers hit exactly their fast and slow speeds within each cycle', () => {

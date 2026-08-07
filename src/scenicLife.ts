@@ -6,7 +6,7 @@
 // Pacer positions are ANALYTIC functions of elapsed time — no accumulated state — so the
 // same second always produces the same scene, across reloads and in tests, without having
 // to simulate time forward.
-import { worldHash, LAP_M } from './scenic'
+import { worldHash, LAP_M, TRACK_IN, LANE_W } from './scenic'
 
 export type PacerKind = 'walker' | 'jogger' | 'runner' | 'intervals'
 
@@ -16,18 +16,21 @@ export interface Pacer {
   speed: number // km/h, instantaneous
   kind: PacerKind
   seed: number // 0..1, stable per pacer — drives kit colour
-  lateral: number // metres offset from the lane's own line, so same-lane pacers pass beside each other rather than through
+  drawO: number // absolute lateral offset to DRAW at, in metres from the lane-1 line.
+  // Arc distance is still measured along laneMeasurementO(lane); this only moves the
+  // body sideways within its lane.
 }
 
 // Lane 1 is the walker's. Pacers use the outer lanes so a fast one overtaking cannot
 // clip through the camera.
 export const PACER_LANES = [2, 3, 4, 5, 6]
 
-// Two pacers share a lane once count exceeds PACER_LANES.length. They have different
-// speeds, so the faster WILL lap the slower — within about a minute for the closest pair.
-// Offsetting them to opposite sides of the lane turns that from two meshes intersecting
-// into an overtake, which is what real runners do anyway. A lane is 1.22 m wide, so
-// +/-0.3 m keeps both inside it.
+// Two pacers share a lane once count exceeds PACER_LANES.length, and their differing
+// speeds mean the faster laps the slower within about a minute. Putting them on opposite
+// sides of the lane CENTRE turns that from two meshes intersecting into an overtake.
+// Offsets are from the centre, not from laneMeasurementO — that line sits 0.2 m in from
+// the lane's inner edge, so measuring from it puts one side 0.1 m out of the lane.
+// A lane is LANE_W (1.22 m) wide, so +/-0.3 m from centre leaves 0.31 m clearance a side.
 export const PACER_LATERAL_M = 0.3
 
 // Interval pacers run a square cycle: INTERVAL_PERIOD_M / 2 fast, then the same distance
@@ -84,9 +87,11 @@ export function pacers(t: number, count: number): Pacer[] {
       k.kind === 'intervals' ? start + intervalDistance(t) : start + mps(k.speed + offset) * t
     // Same-lane pacers WILL lap each other eventually since their speeds differ — put
     // them on opposite sides of the lane so that reads as an overtake, not a collision.
+    const lane = PACER_LANES[i % PACER_LANES.length]!
     const row = Math.floor(i / PACER_LANES.length)
-    const lateral = row % 2 === 0 ? -PACER_LATERAL_M : PACER_LATERAL_M
-    out.push({ lane: PACER_LANES[i % PACER_LANES.length]!, d, speed, kind: k.kind, seed, lateral })
+    const centreO = TRACK_IN + (lane - 0.5) * LANE_W
+    const drawO = centreO + (row % 2 === 0 ? -PACER_LATERAL_M : PACER_LATERAL_M)
+    out.push({ lane, d, speed, kind: k.kind, seed, drawO })
   }
   return out
 }

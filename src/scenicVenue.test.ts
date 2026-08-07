@@ -36,7 +36,10 @@ describe('stadium', () => {
     const halfLen = STRAIGHT_M / 2
     for (const p of stadium()) {
       const size = PART_SIZES[p.type]
-      if (!size) continue
+      // PART_SIZES now also carries the grandstand's footprint (Task 3, for the
+      // fence-clearance test below) — the stand sits outside the track by design, so it
+      // is not "infield" and must not be checked against the kerb.
+      if (!size || p.o >= TRACK_IN) continue
       const at = trackPoint(p.s, p.o)
       const [w, l] = size
       const across = Math.abs(at.x) + w / 2
@@ -67,8 +70,24 @@ describe('stadium', () => {
     )
   })
 
-  it('puts the skyline beyond everything else', () => {
-    for (const p of stadium()) expect(SKYLINE_R).toBeGreaterThan(p.o)
+  it('puts the skyline beyond every other part', () => {
+    for (const p of stadium()) {
+      if (p.type === 'skyline') continue
+      expect(SKYLINE_R).toBeGreaterThan(p.o)
+    }
+  })
+
+  it('the grandstand clears the fence line, roof included', () => {
+    // The stand's depth is a renderer-side dimension no other test could see, and it
+    // overhung the fence by 1.2 m — the netting ran underneath the terracing.
+    const [depth] = PART_SIZES.stand!
+    const ROOF_OVERHANG = 1.0 // the roof reaches a little past the back wall
+    const standOuter = STAND_O + depth + ROOF_OVERHANG
+    expect(`stand reaches ${standOuter.toFixed(2)}, fence at ${FENCE_O.toFixed(2)}`).toBe(
+      standOuter < FENCE_O
+        ? `stand reaches ${standOuter.toFixed(2)}, fence at ${FENCE_O.toFixed(2)}`
+        : 'stand must sit inside the fence',
+    )
   })
 
   it('gives every swept part a positive span that fits inside the lap', () => {

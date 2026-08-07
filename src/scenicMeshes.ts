@@ -393,8 +393,10 @@ export function pitchLinesTexture(size: number): THREE.CanvasTexture {
   ctx.moveTo(m, size / 2)
   ctx.lineTo(size - m, size / 2)
   ctx.stroke()
+  // The pitch plane is 40 m across by 64 m along, so v stretches 1.6x relative to u.
+  // Pre-squash the circle by 40/64 so it renders round on the ground.
   ctx.beginPath()
-  ctx.arc(size / 2, size / 2, size * 0.12, 0, Math.PI * 2)
+  ctx.ellipse(size / 2, size / 2, size * 0.12, size * 0.12 * (40 / 64), 0, 0, Math.PI * 2)
   ctx.stroke()
   const bw = size * 0.34
   const bh = size * 0.14

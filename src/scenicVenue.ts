@@ -43,6 +43,8 @@ export const PART_SIZES: Partial<Record<VenueType, [number, number]>> = {
   jumpPit: [3, 8],
   highJump: [10, 8],
   shotCircle: [2.14, 2.14],
+  // across-track depth x along-track span. The depth is what must clear the fence line.
+  stand: [9.2, 76.39],
 }
 
 // The midpoint of the back straight, directly opposite the stand. Derived from the track
@@ -55,14 +57,14 @@ export const STAND_S0 = 4
 export const STAND_S1 = STRAIGHT_M - 4
 export const STAND_O = TRACK_OUT + 6
 // Fence sits outside the stand, with a gate cut on the far side of the loop.
-export const FENCE_O = TRACK_OUT + 14
+export const FENCE_O = TRACK_OUT + 18 // 2.8 m clear of the stand's roof edge at 22.22
 export const GATE_S0 = BACK_STRAIGHT_MID + 10
 export const GATE_S1 = BACK_STRAIGHT_MID + 26
-// Distant silhouette ring. Beyond the fog in mist, which is correct — it should fade.
-export const SKYLINE_R = 400
-// The ring itself sits just inside SKYLINE_R, so the constant stays a true "beyond
-// everything else" boundary rather than exactly matching the ring's own placement.
-const SKYLINE_INSET = 20
+// Radius of the skyline backdrop. It FOLLOWS THE CAMERA rather than sitting at the world
+// origin, so this is its distance from the walker, not from the infield: the camera wanders
+// up to 56 m off-centre, and any world-anchored radius that clears the sky dome on one side
+// pokes through it on the other. Must stay inside the dome (260) and the far plane (290).
+export const SKYLINE_R = 240
 
 export function stadium(): VenuePart[] {
   const out: VenuePart[] = []
@@ -72,17 +74,21 @@ export function stadium(): VenuePart[] {
 
   // --- outside the track ---
   part('stand', STAND_S0, STAND_O, 0, STAND_S1 - STAND_S0)
-  part('clubhouse', STAND_S0 + 20, STAND_O + 12)
-  for (let i = 0; i < 3; i++) {
-    part('flagpole', STAND_S0 + 14 + i * 3, STAND_O + 9, worldHash(i * 13 + 5))
-  }
   part('fence', 0, FENCE_O, 0, LAP_M)
+  // clubhouse and flagpoles sit beyond the fence (a clubhouse on the car-park side of the
+  // perimeter is right for a club track anyway), separated in `s` so they do not
+  // interpenetrate — the clubhouse used to swallow the stand's back wall and one
+  // flagpole used to pass through its roof.
+  part('clubhouse', 24, FENCE_O + 9)
+  for (let i = 0; i < 3; i++) {
+    part('flagpole', 40 + i * 3, FENCE_O + 5, worldHash(i * 13 + 5))
+  }
   // posts every 4 m, skipping the gate
   for (let s = 0; s < LAP_M; s += 4) {
     if (s >= GATE_S0 && s <= GATE_S1) continue
     part('fencePost', s, FENCE_O, worldHash(s))
   }
-  part('skyline', 0, SKYLINE_R - SKYLINE_INSET)
+  part('skyline', 0, SKYLINE_R)
 
   // --- infield furniture, all inside the kerb ---
   // Centred on the infield's true middle: trackPoint(STRAIGHT_M / 2, TRACK_IN - 36.5)

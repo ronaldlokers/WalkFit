@@ -30,7 +30,7 @@ import {
 import type { Prop } from './scenic'
 import { pacers, stepPhase, strideLength, gaitCycleM } from './scenicLife'
 import type { Pacer } from './scenicLife'
-import { stadium, PART_SIZES } from './scenicVenue'
+import { stadium, PART_SIZES, SKYLINE_R, GATE_S0, GATE_S1 } from './scenicVenue'
 import type { VenuePart } from './scenicVenue'
 import {
   ribbonArrays,
@@ -84,6 +84,9 @@ const host = ref<HTMLDivElement | null>(null)
 
 const EYE_HEIGHT = 1.6
 const FOG_FAR = 230
+// The perimeter fence's height. Used in three places (ribbon vertex, chain-link texture
+// v-repeat, post length) — a single source so changing it can't silently smear the uv.
+const FENCE_H = 2
 
 let renderer: THREE.WebGLRenderer | null = null
 let raf = 0
@@ -342,10 +345,11 @@ onMounted(() => {
     t.infield.repeat.set(1, 30 / REPEAT.infield) // infield ribbon spans 30 m inward
     t.concrete.repeat.set(1, 0.18 / REPEAT.kerb) // kerb: TRACK_IN-0.2 .. TRACK_IN-0.02
     t.grass.repeat.set(60, 60) // one big 700 m plane, so tile it hard
-    // v spans the 2 m fence height at 4 m per u repeat; LAP_M / 4 = 100, a whole number,
-    // so the chain-link meets itself at the seam. Set here (not once at buildVenue time)
-    // so a tier change, which swaps in a fresh chainLink texture instance, keeps it.
-    t.chainLink.repeat.set(1, 2 / 4)
+    // v spans the FENCE_H fence height at 4 m per u repeat; LAP_M / 4 = 100, a whole
+    // number, so the chain-link meets itself at the seam. Set here (not once at
+    // buildVenue time) so a tier change, which swaps in a fresh chainLink texture
+    // instance, keeps it.
+    t.chainLink.repeat.set(1, FENCE_H / 4)
     return t
   }
   // Task 6 deliberately left this out because nothing read it yet; it has a reader now.
@@ -402,17 +406,26 @@ onMounted(() => {
     pitch: surface({ color: 0xffffff, map: tex.pitchLines, roughness: 1, side: THREE.DoubleSide }),
     sand: surface({ color: 0xffffff, map: tex.sand, roughness: 1, side: THREE.DoubleSide }),
     mat: surface({ color: 0x2f5fa8, roughness: 0.9, side: THREE.DoubleSide }),
-    skylineMat: new THREE.MeshBasicMaterial({
-      map: tex.skyline,
-      transparent: true,
-      side: THREE.BackSide,
-      depthWrite: false,
-      fog: true, // it SHOULD fade into the distance — that is the depth cue
-    }),
   }
   // assertSameAttributes/mergeGeometries errors prefer material.name — without this every
   // merge batch reports as generic "MeshStandardMaterial", useless for diagnosing which one.
   Object.entries(mat).forEach(([k, m]) => (m.name = k))
+
+  // A backdrop, not scenery: follows the camera like the dome, so it is always exactly
+  // SKYLINE_R away and always inside the dome (260) and the far plane (290). fog:false
+  // because at this distance linear fog would saturate and erase it — the tint applied in
+  // update() carries the depth cue instead, without the all-or-nothing.
+  const skylineGeo = new THREE.CylinderGeometry(SKYLINE_R, SKYLINE_R, 55, 48, 1, true)
+  const skylineMat = new THREE.MeshBasicMaterial({
+    map: tex.skyline,
+    transparent: true,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+  })
+  const skylineMesh = new THREE.Mesh(skylineGeo, skylineMat)
+  scene.add(skylineMesh)
+  disposables.push(skylineGeo)
 
   function buildProp(p: Prop): THREE.Object3D {
     const g = new THREE.Group()
@@ -482,6 +495,12 @@ onMounted(() => {
   function buildVenue(p: VenuePart): THREE.Object3D {
     const g = new THREE.Group()
     const at = trackPoint(p.s, p.o)
+    // Same invariant the rest of the file keeps: anything allocated gets disposed, even
+    // though the bake currently frees these before they ever reach the GPU.
+    const keep = (m: THREE.Mesh): THREE.Mesh => {
+      disposables.push(m.geometry as THREE.BufferGeometry)
+      return m
+    }
 
     if (p.type === 'stand') {
       // Eight stepped rows swept along the home straight. Built as a box per row rather
@@ -490,20 +509,22 @@ onMounted(() => {
       const len = p.span!
       const rows = 8
       for (let r = 0; r < rows; r++) {
-        const step = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.45, len), mat.seating)
+        const step = keep(new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.45, len), mat.seating))
         // set x directly rather than translateX — translate is applied in the object's
         // own rotated frame, and this group gets rotated to face the track below
         step.position.set(r * 1.1, 0.22 + r * 0.45, 0)
         g.add(step)
       }
-      const backWall = new THREE.Mesh(new THREE.BoxGeometry(0.4, 4.2, len), mat.clubhouse)
+      const backWall = keep(new THREE.Mesh(new THREE.BoxGeometry(0.4, 4.2, len), mat.clubhouse))
       backWall.position.set(rows * 1.1, 2.1, 0)
       g.add(backWall)
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(rows * 1.2, 0.25, len), mat.roof)
+      const roof = keep(new THREE.Mesh(new THREE.BoxGeometry(rows * 1.2, 0.25, len), mat.roof))
       roof.position.set(rows * 0.55, 5.4, 0)
       g.add(roof)
       for (let i = 0; i < 4; i++) {
-        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 5.3, 6), mat.clubhouse)
+        const col = keep(
+          new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 5.3, 6), mat.clubhouse),
+        )
         col.position.set(0, 2.65, -len / 2 + (len * (i + 0.5)) / 4)
         g.add(col)
       }
@@ -524,73 +545,77 @@ onMounted(() => {
       for (let i = 0; i <= n; i++) {
         const s = (i / n) * LAP_M
         const a = trackPoint(s, p.o)
-        pts.push(a.x, 0, a.z, a.x, 2, a.z)
+        pts.push(a.x, 0, a.z, a.x, FENCE_H, a.z)
         const u = s / 4
         uv.push(u, 0, u, 1)
-        if (i > 0) {
+        // Skip index emission for quads inside the gate span, leaving the vertices in
+        // place so u continuity across the seam is untouched — only the posts stopping
+        // at the gate left an unbroken mesh, which read as a fence someone stole the
+        // posts from rather than an actual gate.
+        if (i > 0 && !(s > GATE_S0 && s - step < GATE_S1)) {
           const k = (i - 1) * 2
           idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3)
         }
       }
-      g.add(new THREE.Mesh(geometryFrom({ position: pts, uv, index: idx }), mat.fence))
+      g.add(keep(new THREE.Mesh(geometryFrom({ position: pts, uv, index: idx }), mat.fence)))
     } else if (p.type === 'fencePost') {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.1, 5), mat.pole)
-      post.position.set(at.x, 1.05, at.z)
+      const post = keep(
+        new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, FENCE_H + 0.1, 5), mat.pole),
+      )
+      post.position.set(at.x, (FENCE_H + 0.1) / 2, at.z)
       g.add(post)
     } else if (p.type === 'clubhouse') {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(9, 3.4, 6), mat.clubhouse)
+      const body = keep(new THREE.Mesh(new THREE.BoxGeometry(9, 3.4, 6), mat.clubhouse))
       body.position.set(at.x, 1.7, at.z)
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(7, 2, 4), mat.roof)
+      const roof = keep(new THREE.Mesh(new THREE.ConeGeometry(7, 2, 4), mat.roof))
       roof.position.set(at.x, 4.4, at.z)
       roof.rotation.y = Math.PI / 4
       g.add(body, roof)
     } else if (p.type === 'flagpole') {
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 7, 5), mat.pole)
+      const pole = keep(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 7, 5), mat.pole))
       pole.position.set(at.x, 3.5, at.z)
       g.add(pole)
     } else if (p.type === 'pitch') {
-      const plane = new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.pitch!), mat.pitch)
+      const plane = keep(new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.pitch!), mat.pitch))
       plane.rotation.x = -Math.PI / 2
       plane.position.set(at.x, 0.01, at.z)
       g.add(plane)
     } else if (p.type === 'jumpRunway') {
-      const run = new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.jumpRunway!), mat.track)
+      const run = keep(
+        new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.jumpRunway!), mat.track),
+      )
       run.rotation.x = -Math.PI / 2
       run.position.set(at.x, 0.012, at.z)
       run.rotation.z = Math.atan2(-at.tx, -at.tz)
       g.add(run)
     } else if (p.type === 'jumpPit') {
-      const pit = new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.jumpPit!), mat.sand)
+      const pit = keep(new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.jumpPit!), mat.sand))
       pit.rotation.x = -Math.PI / 2
       pit.position.set(at.x, 0.012, at.z)
       pit.rotation.z = Math.atan2(-at.tx, -at.tz)
       g.add(pit)
     } else if (p.type === 'highJump') {
-      const apron = new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.highJump!), mat.track)
+      const apron = keep(
+        new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.highJump!), mat.track),
+      )
       apron.rotation.x = -Math.PI / 2
       apron.position.set(at.x, 0.012, at.z)
-      const bed = new THREE.Mesh(new THREE.BoxGeometry(5, 0.6, 3), mat.mat)
+      const bed = keep(new THREE.Mesh(new THREE.BoxGeometry(5, 0.6, 3), mat.mat))
       bed.position.set(at.x, 0.3, at.z)
       g.add(apron, bed)
     } else if (p.type === 'shotCircle') {
       // PART_SIZES.shotCircle is a [diameter, diameter] footprint; CircleGeometry wants a
       // radius.
-      const ring = new THREE.Mesh(
-        new THREE.CircleGeometry(PART_SIZES.shotCircle![0] / 2, 20),
-        mat.kerb,
+      const ring = keep(
+        new THREE.Mesh(new THREE.CircleGeometry(PART_SIZES.shotCircle![0] / 2, 20), mat.kerb),
       )
       ring.rotation.x = -Math.PI / 2
       ring.position.set(at.x, 0.013, at.z)
       g.add(ring)
-    } else {
-      // skyline: one cylinder shell at the horizon, alpha-cut to a rooftop profile
-      const shell = new THREE.Mesh(
-        new THREE.CylinderGeometry(p.o, p.o, 55, 48, 1, true),
-        mat.skylineMat,
-      )
-      shell.position.set(0, 20, 0)
-      g.add(shell)
     }
+    // 'skyline' is deliberately unhandled here: it is built as a camera-following
+    // backdrop above, not baked venue furniture — see the `stadium()` loop below, which
+    // skips it before ever calling this function.
     return g
   }
 
@@ -756,7 +781,12 @@ onMounted(() => {
   }
 
   for (const p of surroundings()) scene.add(buildProp(p))
-  for (const p of stadium()) scene.add(buildVenue(p))
+  for (const p of stadium()) {
+    // the skyline is built above as a camera-following backdrop, not baked venue
+    // furniture — baking it here would double it up in the static merge.
+    if (p.type === 'skyline') continue
+    scene.add(buildVenue(p))
+  }
 
   // Bake the static world into one mesh per material (#62): the loop ribbons, cross
   // strips, and ~50 scenery groups otherwise cost ~350 draw calls per frame on a scene
@@ -769,7 +799,7 @@ onMounted(() => {
     // light aims at the origin instead of following the walker. The sun/moon sprites,
     // star points and cloud shell are all live-updated per frame too (see update() below)
     // — left in staticRoots they would get merged into a mesh and silently vanish.
-    const skyObjects: THREE.Object3D[] = [dome, sunSprite, moonSprite, stars]
+    const skyObjects: THREE.Object3D[] = [dome, sunSprite, moonSprite, stars, skylineMesh]
     if (clouds) skyObjects.push(clouds)
     const staticRoots = scene.children.filter(
       (c) => !skyObjects.includes(c) && !(c as THREE.Light).isLight && c !== sunTarget,
@@ -984,6 +1014,9 @@ onMounted(() => {
       paintDome(sky.sky, sky.fog)
     }
     dome.position.set(camera.position.x, 0, camera.position.z)
+    skylineMesh.position.set(camera.position.x, 18, camera.position.z)
+    // pull it toward the horizon colour so it recedes in fog and darkens at night
+    skylineMat.color.setHex(sky.fog)
     sun.intensity = sky.sunIntensity
     sun.color.setHex(sky.sunColor)
     hemi.intensity = sky.ambient
@@ -1119,7 +1152,7 @@ onMounted(() => {
       [mat.track, tex.tartan],
       [mat.seating, tex.seating],
       [mat.fence, tex.chainLink],
-      [mat.skylineMat, tex.skyline],
+      [skylineMat, tex.skyline],
       [mat.sand, tex.sand],
       // pitchLines is intentionally NOT here: it never changes resolution (always 1024),
       // and makeTextures() hands back the same memoized texture object every call, so
@@ -1316,6 +1349,7 @@ onMounted(() => {
     blobTex.dispose()
     blobGeo.dispose()
     blobMat.dispose()
+    skylineMat.dispose()
     Object.values(geo).forEach((g) => g.dispose())
     Object.values(mat).forEach((m) => m.dispose())
     Object.values(tex).forEach((t) => t.dispose())

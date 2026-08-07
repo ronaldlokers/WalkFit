@@ -700,7 +700,14 @@ onMounted(() => {
   // cannot reach the ground from the hip, hence separate pacerArmGeo/pacerLegGeo rather
   // than one shared geometry. Runs lane 2 so it is beside the walker rather than under
   // the camera.
-  const rabbitKit = new THREE.MeshStandardMaterial({ color: 0x3ba55d, roughness: 0.7 })
+  // It's an instrument, not scenery — the pacers may sink into the dusk, but this is
+  // the app's only ahead/behind readout (paceGap has no caller, the 2D view draws no
+  // rabbit), so it needs its own emissive term to stay legible after dark.
+  const rabbitKit = new THREE.MeshStandardMaterial({
+    color: 0x3ba55d,
+    roughness: 0.7,
+    emissive: 0x3ba55d,
+  })
   const rabbitGroup = new THREE.Group()
   const mkRabbitLimb = (g: THREE.BufferGeometry, x: number, y: number) => {
     const m = new THREE.Mesh(g, rabbitKit)
@@ -858,8 +865,13 @@ onMounted(() => {
       rabbitGroup.visible = false
     } else {
       rabbitGroup.visible = true
+      // The rabbit is an instrument, not scenery — it has to stay readable after dark.
+      rabbitKit.emissiveIntensity = isNight(phase) ? 0.75 : 0.2
       const o = laneMeasurementO(2)
-      const at = trackPoint(laneDistanceToS(o, rd), o)
+      // Draw at the lane centre like the pacers, or a lane-2 pacer overtaking the rabbit
+      // intersects it — their draw slots are only 0.11 m apart, inside the torso radius.
+      const rabbitDrawO = TRACK_IN + 1.5 * LANE_W
+      const at = trackPoint(laneDistanceToS(o, rd % (LAP_M + 2 * Math.PI * o)), rabbitDrawO)
       rabbitGroup.position.set(at.x, 0, at.z)
       rabbitGroup.rotation.y = Math.atan2(-at.tx, -at.tz)
       const ph = stepPhase(rd, 0.9) * Math.PI * 2
@@ -1004,12 +1016,12 @@ onMounted(() => {
   if (reducedMotion) {
     const t0 = performance.now()
     stopDistanceWatch = watch(
-      () => props.distance,
-      (d) => {
+      () => [props.distance, props.rabbitDistance],
+      () => {
         // no rAF loop here, so sessionSeconds has no other way to advance
         sessionSeconds = (performance.now() - t0) / 1000
-        display = d
-        update(d)
+        display = props.distance
+        update(props.distance)
       },
     )
   }

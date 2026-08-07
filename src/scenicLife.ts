@@ -106,7 +106,11 @@ export const MIN_STRIDE_M = 0.4
 export const MAX_STRIDE_M = 1.0
 
 export function strideLength(distance: number, steps: number): number {
-  if (steps <= 0 || distance <= 0) return DEFAULT_STRIDE_M
+  // Number.isFinite, not a comparison: every comparison with NaN is false, so `steps <= 0`
+  // lets NaN straight through and the caller ends up putting NaN into a rotation.
+  if (!Number.isFinite(distance) || !Number.isFinite(steps) || steps <= 0 || distance <= 0) {
+    return DEFAULT_STRIDE_M
+  }
   const raw = distance / steps
   return Math.min(MAX_STRIDE_M, Math.max(MIN_STRIDE_M, raw))
 }

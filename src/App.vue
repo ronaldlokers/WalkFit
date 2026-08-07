@@ -993,16 +993,22 @@ const timeToNext = computed(() =>
 // that already knows the workout's target speed. Weight-loss plans only — an HR target
 // defines a heart rate, not a pace, so there is no pace to chase.
 const rabbitDistance = ref<number | null>(null)
+// The rabbit's own elapsed clock, tracked separately from the watcher's (now, prev)
+// diff — skipSegment() jumps state.elapsed by whole minutes in one tick, and diffing
+// watcher args would credit the rabbit with the entire skipped span as real distance.
+let rabbitElapsed = 0
 watch(active, (a) => {
   rabbitDistance.value = a ? state.distance : null
+  rabbitElapsed = state.elapsed
 })
 watch(
   () => state.elapsed,
-  (now, prev) => {
+  (now) => {
     if (rabbitDistance.value === null || !state.running) return
+    const dt = Math.max(0, now - rabbitElapsed)
+    rabbitElapsed = now
     const seg = curSeg.value
     if (!seg) return
-    const dt = Math.max(0, now - (prev ?? now))
     rabbitDistance.value += ((seg.speed * 1000) / 3600) * dt
   },
 )
@@ -1096,6 +1102,10 @@ async function startWorkout(t: Workout) {
   active.value = t
   hrTarget.value = null // mutually exclusive with an HR workout
   resetStats()
+  // watch(active) fires on identity, so re-picking the SAME plan object misses it while
+  // resetStats() has just zeroed the walker's distance.
+  rabbitDistance.value = state.distance
+  rabbitElapsed = state.elapsed
   if (state.running) beginSession() // belt already moving — the new session starts now
   menuOpen.value = false
   setSpeed(t.segments[0].speed) // sets target for the start sequence
@@ -1112,6 +1122,9 @@ function endWorkout() {
 // or calls finishWorkout() when this was the last segment (its `.end === tl.total`).
 function skipSegment() {
   if (!activeTl.value || !curSeg.value) return
+  // The rabbit must not bank the skipped seconds either — Skip means "these seconds never
+  // happened", exactly like a pause, and a 200 m jump wraps the loop into nonsense.
+  rabbitElapsed = curSeg.value.end
   state.elapsed = curSeg.value.end
 }
 function finishWorkout() {

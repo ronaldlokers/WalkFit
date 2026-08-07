@@ -384,6 +384,19 @@ describe('HR workout', () => {
       await nextTick()
     }
     expect(rabbit()!).toBeGreaterThan(before)
+
+    // switching to an HR target clears the weight-loss plan (mutually exclusive) — the
+    // rabbit has no pace to chase for an HR target, so it must go back to null, not stay
+    // stranded wherever the plan left it
+    await w
+      .findAll('button')
+      .find((b) => b.attributes('title')?.includes('tap for HR workout'))!
+      .trigger('click')
+    await w
+      .findAll('.hr-zone-opt')
+      .find((b) => b.text().includes('Cardio'))!
+      .trigger('click')
+    expect(rabbit()).toBe(null)
   })
 })
 

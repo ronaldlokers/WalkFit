@@ -160,6 +160,13 @@ describe('strideLength', () => {
     expect(strideLength(1000, 2)).toBe(MAX_STRIDE_M) // 500 m per step
     expect(strideLength(1, 1000)).toBe(MIN_STRIDE_M) // 1 mm per step
   })
+
+  it('returns the default for NaN rather than poisoning the animation', () => {
+    // `steps <= 0` cannot catch NaN — every comparison with NaN is false
+    expect(strideLength(NaN, 1400)).toBe(DEFAULT_STRIDE_M)
+    expect(strideLength(1000, NaN)).toBe(DEFAULT_STRIDE_M)
+    expect(strideLength(Infinity, NaN)).toBe(DEFAULT_STRIDE_M)
+  })
 })
 
 describe('stepPhase', () => {

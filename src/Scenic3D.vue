@@ -24,8 +24,12 @@ import {
   relayZoneLines,
   hurdleTicks,
   waterfallPoints,
+  laneDistanceToS,
+  laneMeasurementO,
 } from './scenic'
 import type { Prop } from './scenic'
+import { pacers, stepPhase, strideLength, gaitCycleM } from './scenicLife'
+import type { Pacer } from './scenicLife'
 import {
   ribbonArrays,
   stripArrays,
@@ -43,6 +47,7 @@ import {
   glowTexture,
   starPositions,
   cloudTexture,
+  runnerParts,
 } from './scenicMeshes'
 import {
   dayPhase,
@@ -63,6 +68,8 @@ const props = defineProps<{
   weatherSeed?: number // per-walk weather pick (#72); omitted = clear
   timeOfDay?: TimeOfDay // Settings override; 'auto' follows walked distance
   quality?: QualitySetting
+  steps?: number
+  rabbitDistance?: number | null // target-pace rabbit (#realism slice 3); null/omitted = none
 }>()
 const emit = defineEmits<{ unsupported: [] }>()
 
@@ -649,14 +656,153 @@ onMounted(() => {
     }
   }
 
+  // --- pacers (live, never baked) ---
+  // scene.add here runs AFTER the bake block above, so these are never swept into
+  // staticRoots — pacers move every frame and must not be merged into the static world.
+  const { body: pacerBodyGeo, arm: pacerArmGeo, leg: pacerLegGeo } = runnerParts()
+  // The real maximum across every tier, not just 'high' — the per-frame loop below iterates
+  // pacerRigs.length, so any future tier with a higher pacer count would silently never
+  // render its extras if this only tracked one tier.
+  const PACER_POOL = Math.max(...Object.values(TIER_BUDGET).map((b) => b.pacers))
+  // Seeds come from the source of truth pacers() itself derives them from, not a second copy
+  // of the formula — two copies agreeing by coincidence means changing one silently shows
+  // every rig the wrong colour with no test failing.
+  const seedSource = pacers(0, PACER_POOL)
+  interface PacerRig {
+    group: THREE.Group
+    armL: THREE.Mesh
+    armR: THREE.Mesh
+    legL: THREE.Mesh
+    legR: THREE.Mesh
+    kit: THREE.MeshStandardMaterial
+  }
+  const pacerRigs: PacerRig[] = []
+  for (let i = 0; i < PACER_POOL; i++) {
+    const kit = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 })
+    // Fixed per rig at construction, taken from pacers()'s own seed for index i, so the
+    // colour a rig shows is the one its pacer would have asked for — no need to touch it
+    // again every frame.
+    kit.color.setHSL(seedSource[i]!.seed, 0.55, 0.5)
+    const group = new THREE.Group()
+    const mk = (g: THREE.BufferGeometry, x: number, y: number) => {
+      const m = new THREE.Mesh(g, kit)
+      m.position.set(x, y, 0)
+      m.castShadow = true
+      group.add(m)
+      return m
+    }
+    mk(pacerBodyGeo, 0, 0)
+    const armL = mk(pacerArmGeo, -0.22, 1.42)
+    const armR = mk(pacerArmGeo, 0.22, 1.42)
+    const legL = mk(pacerLegGeo, -0.09, 0.86)
+    const legR = mk(pacerLegGeo, 0.09, 0.86)
+    group.visible = false
+    scene.add(group)
+    pacerRigs.push({ group, armL, armR, legL, legR, kit })
+  }
+
+  // --- target-pace rabbit (live, never baked) ---
+  // Same split-limb rig as the pacers above — a limb short enough to read as an arm
+  // cannot reach the ground from the hip, hence separate pacerArmGeo/pacerLegGeo rather
+  // than one shared geometry. Runs lane 2 so it is beside the walker rather than under
+  // the camera.
+  // It's an instrument, not scenery — the pacers may sink into the dusk, but this is
+  // the app's only ahead/behind readout (paceGap has no caller, the 2D view draws no
+  // rabbit), so it needs its own emissive term to stay legible after dark.
+  const rabbitKit = new THREE.MeshStandardMaterial({
+    color: 0x3ba55d,
+    roughness: 0.7,
+    emissive: 0x3ba55d,
+  })
+  const rabbitGroup = new THREE.Group()
+  const mkRabbitLimb = (g: THREE.BufferGeometry, x: number, y: number) => {
+    const m = new THREE.Mesh(g, rabbitKit)
+    m.position.set(x, y, 0)
+    m.castShadow = true
+    rabbitGroup.add(m)
+    return m
+  }
+  mkRabbitLimb(pacerBodyGeo, 0, 0)
+  const rabbitArmL = mkRabbitLimb(pacerArmGeo, -0.22, 1.42)
+  const rabbitArmR = mkRabbitLimb(pacerArmGeo, 0.22, 1.42)
+  const rabbitLegL = mkRabbitLimb(pacerLegGeo, -0.09, 0.86)
+  const rabbitLegR = mkRabbitLimb(pacerLegGeo, 0.09, 0.86)
+  rabbitGroup.visible = false
+  scene.add(rabbitGroup)
+
+  // --- your own body (live, never baked) ---
+  // The body exists only to cast your shadow — its geometry sits inside the camera's
+  // 0.3 m near plane, so it is clipped away and never itself visible.
+  const avatarKit = new THREE.MeshStandardMaterial({ color: 0x9fb4d0, roughness: 0.8 })
+  const avatarBody = new THREE.Mesh(pacerBodyGeo, avatarKit)
+  avatarBody.castShadow = true
+  scene.add(avatarBody)
+
+  // Forearms, parented to the camera at the bottom corners of the frustum — the standard
+  // first-person viewmodel. Same stepPhase as the shadow, so they cannot drift apart.
+  const armGeo = new THREE.CapsuleGeometry(0.05, 0.34, 3, 5)
+  armGeo.translate(0, -0.17, 0)
+  const armL = new THREE.Mesh(armGeo, avatarKit)
+  const armR = new THREE.Mesh(armGeo, avatarKit)
+  armL.position.set(-0.26, -0.32, -0.55)
+  armR.position.set(0.26, -0.32, -0.55)
+  camera.add(armL, armR)
+  scene.add(camera) // a camera must be in the scene graph for its children to render
+
+  // No ground blob for the walker on the low tier. Your feet sit outside the frustum by
+  // construction (visible ground starts about 2.65 m out at eye height 1.6 m with a 60
+  // degree FOV), so a disc under you renders nothing, and one far enough forward to be
+  // visible reads as a mark on the track rather than as your shadow. The high tier's real
+  // cast shadow works because shadows stretch AWAY from you into view when the sun is low.
+
+  // One label, reused for whichever pacer is nearest AHEAD of the walker — Zwift shows
+  // who you are about to catch, not a name tag on every body in the scene.
+  const labelCanvas = document.createElement('canvas')
+  labelCanvas.width = 256
+  labelCanvas.height = 64
+  const labelTex = new THREE.CanvasTexture(labelCanvas)
+  labelTex.colorSpace = THREE.SRGBColorSpace
+  const labelSprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: labelTex, depthWrite: false, transparent: true }),
+  )
+  labelSprite.scale.set(2.2, 0.55, 1)
+  labelSprite.visible = false
+  scene.add(labelSprite)
+  let lastLabel = ''
+  function drawLabel(text: string) {
+    if (text === lastLabel) return // repainting a canvas every frame is a wasted upload
+    lastLabel = text
+    const ctx = labelCanvas.getContext('2d')!
+    ctx.clearRect(0, 0, 256, 64)
+    ctx.fillStyle = 'rgba(12, 15, 20, 0.72)'
+    ctx.roundRect(4, 8, 248, 48, 12)
+    ctx.fill()
+    ctx.fillStyle = '#eaf2ff'
+    ctx.font = 'bold 28px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, 128, 33)
+    labelTex.needsUpdate = true
+  }
+
   // --- camera + sky per frame ---
   let display = props.distance // smoothed distance the camera actually sits at
+  let sessionSeconds = 0
   let lastDomeKey = -1 // repaint the ~350 dome vertex colors only when the sky changed (#62)
   function update(d: number) {
     const p = trackPoint(d)
     camera.position.set(p.x, EYE_HEIGHT, p.z)
     const ahead = trackPoint(d + 10)
     camera.lookAt(ahead.x, EYE_HEIGHT - 0.2, ahead.z)
+    // Measured, not modelled: state.steps is the belt's own pedometer, so the arms swing
+    // at your real cadence rather than an assumed one.
+    const stride = strideLength(props.distance, props.steps ?? 0)
+    const bodyPhase = stepPhase(d, gaitCycleM(stride)) * Math.PI * 2
+    const bodySwing = Math.sin(bodyPhase) * 0.55
+    avatarBody.position.set(camera.position.x, 0, camera.position.z)
+    avatarBody.rotation.y = camera.rotation.y
+    armL.rotation.x = bodySwing
+    armR.rotation.x = -bodySwing
     // Settings can pin the time of day; 'auto' follows walked distance (#72)
     const tod = props.timeOfDay ?? 'auto'
     const phase = tod === 'auto' ? dayPhase(d) : TIME_PHASES[tod]
@@ -694,6 +840,103 @@ onMounted(() => {
       // Tint from the sky, or a white shell doubles the night sky's luminance — the same
       // "weather brightens the night" mistake, arriving by a different route.
       ;(clouds.material as THREE.MeshBasicMaterial).color.setHex(sky.sky)
+    }
+    // Pacers: analytic positions, so no accumulated state to drift. Anything beyond the
+    // current weather's fog distance is hidden rather than drawn — with eight on a 400 m
+    // loop, typically three or four are actually visible.
+    const wanted = TIER_BUDGET[tier].pacers
+    const list = pacers(sessionSeconds, wanted)
+    // Forward direction in the xz plane, from the same point the camera is looking at.
+    // Used to reject pacers behind the walker — labelling someone you have already
+    // overtaken puts a name tag on empty screen.
+    const fwdX = ahead.x - camera.position.x
+    const fwdZ = ahead.z - camera.position.z
+    const fwdLen = Math.hypot(fwdX, fwdZ) || 1
+    let nearestIdx = -1
+    let nearestDist = Infinity
+    for (let i = 0; i < pacerRigs.length; i++) {
+      const rig = pacerRigs[i]!
+      const p: Pacer | undefined = list[i]
+      if (!p) {
+        rig.group.visible = false
+        continue
+      }
+      // Arc distance is measured along the lane's own surveyed line, but the body is DRAWN at
+      // p.drawO — offset to one side of the lane centre, so when a faster pacer laps a slower
+      // one in the same lane (which happens within about a minute) it reads as an overtake
+      // rather than two meshes intersecting.
+      const laneO = laneMeasurementO(p.lane)
+      // p.d grows for the whole session and laneDistanceToS costs O(d) — wrap to one lap of
+      // this lane first, which is equivalent because the track is a loop.
+      const laneLap = LAP_M + 2 * Math.PI * laneO
+      const at = trackPoint(laneDistanceToS(laneO, p.d % laneLap), p.drawO)
+      const dx = at.x - camera.position.x
+      const dz = at.z - camera.position.z
+      const far = fogBand.far
+      if (dx * dx + dz * dz > far * far) {
+        rig.group.visible = false
+        continue
+      }
+      rig.group.visible = true
+      const dist = Math.hypot(dx, dz)
+      // positive dot product = in front of the walker
+      const forwardness = (dx * fwdX + dz * fwdZ) / fwdLen
+      if (dist < 30 && forwardness > 0 && dist < nearestDist) {
+        nearestDist = dist
+        nearestIdx = i
+      }
+      rig.group.position.set(at.x, 0, at.z)
+      // the tangent comes from trackPoint, not from the Pacer — a Pacer has no heading
+      rig.group.rotation.y = Math.atan2(-at.tx, -at.tz)
+      // limbs swing in antiphase, arms opposite legs, at the pacer's own cadence.
+      // Arms swing LESS than legs, not more. From behind — the only angle a walker sees a
+      // pacer from — a wide arm swing foreshortens into a splayed "cactus" pose instead of
+      // reading as a pump alongside the torso.
+      // Faster runners take LONGER steps, not just quicker ones — a fixed step length makes
+      // the quick ones look like they are sprinting on the spot.
+      const ph = stepPhase(p.d, gaitCycleM(0.6 + 0.045 * p.speed)) * Math.PI * 2
+      const swing = Math.sin(ph)
+      rig.legL.rotation.x = swing * 0.55
+      rig.legR.rotation.x = -swing * 0.55
+      rig.armL.rotation.x = -swing * 0.4
+      rig.armR.rotation.x = swing * 0.4
+    }
+    // Target-pace rabbit: same split-limb rig and swing amplitudes as the pacers above.
+    const rd = props.rabbitDistance
+    if (rd == null) {
+      rabbitGroup.visible = false
+    } else {
+      rabbitGroup.visible = true
+      // The rabbit is an instrument, not scenery — it has to stay readable after dark.
+      rabbitKit.emissiveIntensity = isNight(phase) ? 0.75 : 0.2
+      const o = laneMeasurementO(2)
+      // Draw at the lane centre like the pacers, or a lane-2 pacer overtaking the rabbit
+      // intersects it — their draw slots are only 0.11 m apart, inside the torso radius.
+      const rabbitDrawO = TRACK_IN + 1.5 * LANE_W
+      const at = trackPoint(laneDistanceToS(o, rd % (LAP_M + 2 * Math.PI * o)), rabbitDrawO)
+      rabbitGroup.position.set(at.x, 0, at.z)
+      rabbitGroup.rotation.y = Math.atan2(-at.tx, -at.tz)
+      // No target-speed prop reaches the rabbit here (only its distance does), so it swings
+      // at the default walking gait cycle rather than a speed-scaled one like the pacers.
+      const ph = stepPhase(rd, gaitCycleM(0.72)) * Math.PI * 2
+      const rabbitSwing = Math.sin(ph)
+      rabbitLegL.rotation.x = rabbitSwing * 0.55
+      rabbitLegR.rotation.x = -rabbitSwing * 0.55
+      rabbitArmL.rotation.x = -rabbitSwing * 0.4
+      rabbitArmR.rotation.x = rabbitSwing * 0.4
+    }
+    if (nearestIdx >= 0) {
+      const p = list[nearestIdx]!
+      const rig = pacerRigs[nearestIdx]!
+      drawLabel(`${p.kind} · ${p.speed.toFixed(1)} km/h`)
+      labelSprite.position.set(rig.group.position.x, 2.1, rig.group.position.z)
+      // A Sprite shrinks with distance, so a fixed world size is unreadable at 30 m and
+      // overwhelming at 2 m. Grow it with range, clamped at both ends.
+      const s = Math.min(2.5, Math.max(0.6, nearestDist / 8))
+      labelSprite.scale.set(2.2 * s, 0.55 * s, 1)
+      labelSprite.visible = true
+    } else {
+      labelSprite.visible = false
     }
     renderer!.render(scene, camera)
   }
@@ -747,10 +990,12 @@ onMounted(() => {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   let last = performance.now()
   let lastRendered = Infinity // skip GPU work while the belt is stopped and nothing moved (#62)
+  let lastPacerRender = 0
   function frame(now: number) {
     if (disposed) return
     const dt = Math.min(0.1, (now - last) / 1000)
     last = now
+    sessionSeconds += dt
     if (!probeDone) {
       probeSamples.push(dt * 1000)
       if (probeSamples.length >= PROBE_FRAMES) {
@@ -763,7 +1008,12 @@ onMounted(() => {
     if (Math.abs(target - display) > LAP_M / 4) display = target // view (re)opened — snap
     // advance at belt speed, gently corrected toward the true integrated distance
     display += ((props.speed * 1000) / 3600) * dt + (target - display) * dt * 1.5
-    if (Math.abs(display - lastRendered) > 0.003) {
+    // The distance gate assumes a static scene when the belt is stopped — true before pacers
+    // existed. They keep moving while you stand still, so force a redraw at ~30 Hz even when
+    // the walked distance has not changed.
+    const moved = Math.abs(display - lastRendered) > 0.003
+    if (moved || sessionSeconds - lastPacerRender > 1 / 30) {
+      lastPacerRender = sessionSeconds
       lastRendered = display
       update(display)
     }
@@ -808,11 +1058,14 @@ onMounted(() => {
   // watch() outside setup isn't auto-disposed, so keep the stop handle for cleanup.
   let stopDistanceWatch: (() => void) | null = null
   if (reducedMotion) {
+    const t0 = performance.now()
     stopDistanceWatch = watch(
-      () => props.distance,
-      (d) => {
-        display = d
-        update(d)
+      () => [props.distance, props.rabbitDistance],
+      () => {
+        // no rAF loop here, so sessionSeconds has no other way to advance
+        sessionSeconds = (performance.now() - t0) / 1000
+        display = props.distance
+        update(props.distance)
       },
     )
   }
@@ -894,6 +1147,15 @@ onMounted(() => {
     Object.values(geo).forEach((g) => g.dispose())
     Object.values(mat).forEach((m) => m.dispose())
     Object.values(tex).forEach((t) => t.dispose())
+    pacerBodyGeo.dispose()
+    pacerArmGeo.dispose()
+    pacerLegGeo.dispose()
+    pacerRigs.forEach((r) => r.kit.dispose())
+    rabbitKit.dispose()
+    avatarKit.dispose()
+    armGeo.dispose()
+    labelTex.dispose()
+    labelSprite.material.dispose()
     renderer?.dispose()
     // dispose() alone leaves the context slot occupied until GC — force-release it so
     // repeated 2D↔3D toggles can't exhaust the browser's context budget (#60)

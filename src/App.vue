@@ -989,6 +989,30 @@ const timeToNext = computed(() =>
   curSeg.value ? Math.max(0, curSeg.value.end - state.elapsed) : 0,
 )
 
+// Target-pace rabbit (#realism slice 3): integrated here because this is the one place
+// that already knows the workout's target speed. Weight-loss plans only — an HR target
+// defines a heart rate, not a pace, so there is no pace to chase.
+const rabbitDistance = ref<number | null>(null)
+// The rabbit's own elapsed clock, tracked separately from the watcher's (now, prev)
+// diff — skipSegment() jumps state.elapsed by whole minutes in one tick, and diffing
+// watcher args would credit the rabbit with the entire skipped span as real distance.
+let rabbitElapsed = 0
+watch(active, (a) => {
+  rabbitDistance.value = a ? state.distance : null
+  rabbitElapsed = state.elapsed
+})
+watch(
+  () => state.elapsed,
+  (now) => {
+    if (rabbitDistance.value === null || !state.running) return
+    const dt = Math.max(0, now - rabbitElapsed)
+    rabbitElapsed = now
+    const seg = curSeg.value
+    if (!seg) return
+    rabbitDistance.value += ((seg.speed * 1000) / 3600) * dt
+  },
+)
+
 // Countdown beeps in the last 3 s of a segment, then announce the new speed at the
 // switch. Elapsed ticks at ~1 Hz, so track the last-beeped second to fire each once.
 // At 5 s a spoken heads-up names the upcoming change (#110) so a jump never surprises.
@@ -1047,7 +1071,17 @@ async function startWalk() {
   if (!state.running && !pausedWalk.value) {
     finalizeSession()
     resetStats()
+    // Stop leaves `active` set, so a Stop -> Start mid-plan resets the walker without going
+    // through startWorkout. Without this the rabbit is stranded where it was AND frozen until
+    // state.elapsed climbs back past rabbitElapsed.
+    if (rabbitDistance.value !== null) {
+      rabbitDistance.value = state.distance
+      rabbitElapsed = state.elapsed
+    }
   }
+  // The pause/resume path needs none of this: state.elapsed only advances while
+  // state.running && state.speed > 0 (treadmill.ts), so rabbitElapsed never goes stale
+  // across a pause and this branch is skipped entirely on resume.
   pausedWalk.value = false
   await start()
 }
@@ -1078,6 +1112,10 @@ async function startWorkout(t: Workout) {
   active.value = t
   hrTarget.value = null // mutually exclusive with an HR workout
   resetStats()
+  // watch(active) fires on identity, so re-picking the SAME plan object misses it while
+  // resetStats() has just zeroed the walker's distance.
+  rabbitDistance.value = state.distance
+  rabbitElapsed = state.elapsed
   if (state.running) beginSession() // belt already moving — the new session starts now
   menuOpen.value = false
   setSpeed(t.segments[0].speed) // sets target for the start sequence
@@ -1094,6 +1132,9 @@ function endWorkout() {
 // or calls finishWorkout() when this was the last segment (its `.end === tl.total`).
 function skipSegment() {
   if (!activeTl.value || !curSeg.value) return
+  // The rabbit must not bank the skipped seconds either — Skip means "these seconds never
+  // happened", exactly like a pause, and a 200 m jump wraps the loop into nonsense.
+  rabbitElapsed = curSeg.value.end
   state.elapsed = curSeg.value.end
 }
 function finishWorkout() {
@@ -1371,6 +1412,8 @@ const pace = computed(() => {
           :weather-seed="weatherSeed"
           :time-of-day="scenicTime as never"
           :quality="scenicQuality as never"
+          :steps="state.steps"
+          :rabbit-distance="rabbitDistance"
           @unsupported="scenicUnsupported"
         />
       </div>
@@ -1391,7 +1434,7 @@ const pace = computed(() => {
       <button class="btn halt" :disabled="!state.connected" @click="stopWalk">
         {{ t('actions.stop') }}
       </button>
-      <button class="btn ghost" @click="resetStats">{{ t('actions.reset') }}</button>
+      <button class="btn ghost reset" @click="resetStats">{{ t('actions.reset') }}</button>
     </section>
 
     <section v-if="!active && !hrTarget" class="controls" :class="{ disabled: !state.connected }">
@@ -2800,8 +2843,9 @@ input[type='range']::-webkit-slider-thumb {
   flex: 1.6;
   font-size: 16px;
 }
-/* the mock's dock: Start + Stop only (no pause/reset) */
-.app.layout-immersive > .action-row .btn.ghost {
+/* The dock is Start + Pause + Stop. Reset stays out: Stop then Start already clears the
+   session, and a destructive control in the walking dock is easy to hit by accident. */
+.app.layout-immersive > .action-row .btn.ghost.reset {
   display: none;
 }
 /* workouts hide the speed card — the action row then stands alone, fully rounded */

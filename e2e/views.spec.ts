@@ -69,11 +69,14 @@ test.describe('main view', () => {
     await expect(page.locator('.app')).toHaveClass(/layout-immersive/)
     await expect(page.locator('.stat-strip.idle')).toBeVisible()
     await expect(page.locator('.stat-strip')).toContainText('min/km')
-    // the Morning Glass dock is Start + Stop only; Pause/Reset and the goal chips
-    // are parked (deliberately display:none) until they earn a spot in the design
+    // the Morning Glass dock shows Start + Stop while idle; Pause only appears once a
+    // walk is running (v-if="state.running" — covered in App.hrWorkout.test.ts, which
+    // can drive state.running directly without a live GATT flow), and Reset/the goal
+    // chips stay parked (deliberately display:none) until they earn a spot in the design
     for (const label of ['Start', 'Stop']) {
       await expect(page.getByRole('button', { name: label })).toBeVisible()
     }
+    await expect(page.getByRole('button', { name: 'Pause' })).toBeHidden()
     await expect(page.getByRole('button', { name: 'Reset' })).toBeHidden()
     await expect(page.locator('.goal-row')).toBeHidden()
     await expect(page.locator('.view-flip')).toBeVisible()

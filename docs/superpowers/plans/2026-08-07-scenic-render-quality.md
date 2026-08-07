@@ -1143,7 +1143,15 @@ function makeTextures(size: number) {
     concrete: concreteTexture(size),
   }
   for (const tex of Object.values(t)) tex.anisotropy = aniso
-  t.tartan.repeat.set(1, 1)
+  // `ribbonArrays` spans v from 0 to 1 across the ribbon's width however wide it is,
+  // while REPEAT scales u only. Left alone, the 7.32 m track band and the 0.18 m kerb
+  // would get wildly different u:v aspect ratios and the kerb would smear into streaks.
+  // Scale v by the ribbon's real width so both axes tile at the same metres-per-repeat.
+  // A fractional v repeat is fine: unlike u, v does not wrap around a closed loop, so
+  // there is no seam for it to misalign at.
+  t.tartan.repeat.set(1, (TRACK_OUT - TRACK_IN) / REPEAT.track)
+  t.infield.repeat.set(1, 30 / REPEAT.infield) // infield ribbon spans 30 m inward
+  t.concrete.repeat.set(1, 0.18 / REPEAT.kerb) // kerb: TRACK_IN-0.2 .. TRACK_IN-0.02
   t.grass.repeat.set(60, 60) // one big 700 m plane, so tile it hard
   return t
 }
@@ -1215,7 +1223,40 @@ import {
 } from './scenicMeshes'
 ```
 
-- [ ] **Step 3: Re-generate textures on tier upgrade**
+- [ ] **Step 3: Remove the bake pass's `material.map` bail-out**
+
+This step is why Task 4's UV work pays off, and skipping it silently undoes it.
+
+The bake currently diverts any mesh whose material carries a `map` into `keepTextured` and never merges it (`src/Scenic3D.vue:383-387`, plus the `scene.attach` / `keepTextured.includes` handling at `:397-399`). That branch exists **only** because the old bake deleted `uv` — a textured mesh could not survive it. Task 4 replaced deletion with `ensureUv`, so the reason is gone, but the branch is not.
+
+Left in place it actively sabotages this task: Step 2 attaches maps to `mat.track`, `mat.infield`, `mat.kerb`, `mat.grass`, `mat.trunk`, `mat.crown1`, `mat.crown2` and `mat.pine`, so every one of those surfaces would drop out of the bake. Draw calls regress toward the pre-#62 numbers and `ensureUv`'s zero-fill path never executes at all.
+
+Delete the branch and the `keepTextured` array entirely, so the loop becomes:
+
+```ts
+for (const root of staticRoots) {
+  root.traverse((o) => {
+    const m = o as THREE.Mesh
+    if (!m.isMesh) return
+    const material = m.material as THREE.Material
+    const g = (m.geometry as THREE.BufferGeometry).clone()
+    g.applyMatrix4(m.matrixWorld)
+    ensureUv(g)
+    const arr = byMat.get(material) ?? []
+    arr.push(g)
+    byMat.set(material, arr)
+  })
+}
+for (const root of staticRoots) scene.remove(root)
+```
+
+The `scene.attach(m)` call goes with it: attach existed to preserve the world transform of meshes that stayed live, and merged geometry has its `matrixWorld` baked in by `applyMatrix4` instead.
+
+This is safe for the per-instance textured meshes because they do not share materials. Each signpost gets its own `MeshBasicMaterial` (`signMats.push(boardMat)`) and each lane number gets its own (`numberMats.push(m)`), so each forms a single-geometry batch that merges into itself — no benefit, no harm, and `assertSameAttributes` returns early on a batch of one. Their existing disposal through `signMats` / `numberMats` is unaffected.
+
+Update the stale comment above the block too: "Textured meshes (signposts, lane numbers) keep their own uv-specific draws" is no longer true.
+
+- [ ] **Step 4: Re-generate textures on tier upgrade**
 
 Extend `applyTier`:
 
@@ -1248,7 +1289,7 @@ function applyTier(next: Tier) {
 
 `budget` is now read, so the lint warning from Task 6 resolves.
 
-- [ ] **Step 4: Dispose the textures**
+- [ ] **Step 5: Dispose the textures**
 
 In `cleanup`, alongside the existing disposals:
 
@@ -1256,14 +1297,22 @@ In `cleanup`, alongside the existing disposals:
 Object.values(tex).forEach((t) => t.dispose())
 ```
 
-- [ ] **Step 5: Verify**
+- [ ] **Step 6: Verify**
 
 Run: `npm run typecheck && npm test && npm run lint && npm run build`
 Expected: PASS.
 
 `npm run dev`, `?demo`, 3D view. Expected: the track reads as rubber granules rather than flat red, the grass has variation, trunks are striated. Check both Settings → 3D quality → Performance and → Quality: both render, Quality is visibly sharper up close.
 
-- [ ] **Step 6: Commit**
+Three things Step 3 makes worth checking explicitly, since a mistake there is quiet rather than loud:
+
+1. **The signposts and painted lane numbers are still readable.** They now go through the merge for the first time. If a distance sign renders blank, untextured, or in the wrong place, the bake's transform handling is wrong — `applyMatrix4` is meant to have baked in the `lookAt` rotation that `scene.attach` used to preserve.
+2. **The kerb texture is not smeared into streaks.** That is the symptom the per-surface `v` scaling in Step 1 exists to prevent, and the kerb is the narrowest ribbon, so it fails first.
+3. **Draw calls did not regress.** In the browser console, `renderer.info.render.calls` should still be in the low tens, not the hundreds. If it jumped, textured surfaces are falling out of the bake and Step 3 was not applied correctly. Getting the count is easiest by temporarily logging it from the render loop; do not leave the logging in.
+
+A comparison baseline for the pre-texture scene is saved at `.superpowers/sdd/2026-08-07-scenic-render-quality/task-4-breakline.png` — the same 200 m viewpoint before any of this task's textures existed.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 npm run format

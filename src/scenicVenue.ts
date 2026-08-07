@@ -5,6 +5,11 @@
 // Scale is deliberately a club track, not a stadium bowl: one covered stand on the home
 // straight, and open horizon on the other three sides so the day/night sky and the
 // existing scenery ring stay visible.
+//
+// Convention for elongated parts (pitch, jumpRunway, jumpPit, highJump, ...): `s` is the
+// CENTRE of the part, and its long axis follows the track's local tangent at that point
+// (i.e. runs along the straight, not across it). Task 3's renderer relies on this — a
+// part laid across the track instead of along it pokes through the kerb onto the track.
 import { TRACK_IN, TRACK_OUT, STRAIGHT_M, LAP_M, BEND_R, worldHash } from './scenic'
 
 export type VenueType =
@@ -69,9 +74,15 @@ export function stadium(): VenuePart[] {
   part('skyline', 0, SKYLINE_R - SKYLINE_INSET)
 
   // --- infield furniture, all inside the kerb ---
-  part('pitch', 0, TRACK_IN - 22)
-  part('jumpRunway', STAND_S0 + 30, TRACK_IN - 4)
-  part('jumpPit', STAND_S0 + 30, TRACK_IN - 12)
+  // Centred on the infield's true middle: trackPoint(STRAIGHT_M / 2, TRACK_IN - 36.5)
+  // lands at world (0, 0). A 64 x 40 m pitch then spans +/-32 in z against a 42.2 m
+  // straight half-length, and +/-20 in x against a 36.5 m kerb half-width — fits with
+  // margin. Placed anywhere near a bend it pokes through the kerb onto the track.
+  part('pitch', STRAIGHT_M / 2, TRACK_IN - 36.5)
+  // Runway and pit run ALONG the straight, pit at the far end — a 30 m run-up laid
+  // radially would cross the running lanes. Both at the same depth into the infield.
+  part('jumpRunway', 20, TRACK_IN - 6)
+  part('jumpPit', 39, TRACK_IN - 6)
   part('highJump', BACK_STRAIGHT_MID - 20, TRACK_IN - 8)
   part('shotCircle', BACK_STRAIGHT_MID + 6, TRACK_IN - 6)
 

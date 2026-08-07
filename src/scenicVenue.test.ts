@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { stadium, STAND_O, FENCE_O, GATE_S0, GATE_S1, SKYLINE_R } from './scenicVenue'
-import { TRACK_IN, TRACK_OUT, LAP_M } from './scenic'
+import {
+  stadium,
+  STAND_O,
+  FENCE_O,
+  GATE_S0,
+  GATE_S1,
+  SKYLINE_R,
+  type VenueType,
+} from './scenicVenue'
+import { TRACK_IN, TRACK_OUT, LAP_M, BEND_R, STRAIGHT_M, trackPoint } from './scenic'
 
 describe('stadium', () => {
   it('is deterministic', () => {
@@ -24,12 +32,39 @@ describe('stadium', () => {
     expect(STAND_O).toBeLessThan(FENCE_O)
   })
 
-  it('puts every infield part inside the inner kerb', () => {
-    const infield = stadium().filter((p) => p.o < TRACK_IN)
-    expect(infield.length).toBeGreaterThan(0)
-    for (const p of infield) {
-      expect(`${p.type} at o=${p.o.toFixed(2)}`).toBe(
-        p.o < TRACK_IN ? `${p.type} at o=${p.o.toFixed(2)}` : `${p.type} must be inside the kerb`,
+  it('every infield part fits inside the kerb, footprint included', () => {
+    // The centre-only check this replaces was tautological. Infield parts are axis-aligned
+    // — long axis along the track, width across it — so check those two extents directly.
+    // A rotation-agnostic circular reach would be wrong here: the pitch's 37.7 m diagonal
+    // exceeds the 36.5 m kerb half-width even though its 20 m half-width fits easily.
+    //
+    // `sizes` convention: [widthAcrossTrack, lengthAlongTrack] — Task 3's renderer must
+    // build each mesh to match, e.g. the pitch as a 40 (x, across) x 64 (z, along) plane.
+    const kerbR = BEND_R + TRACK_IN // 36.5 m — the inner boundary's half-width on a straight
+    const halfLen = STRAIGHT_M / 2
+    const sizes: Partial<Record<VenueType, [number, number]>> = {
+      pitch: [40, 64],
+      jumpRunway: [1.3, 30],
+      jumpPit: [3, 8],
+      highJump: [10, 8],
+      shotCircle: [2.14, 2.14],
+    }
+    for (const p of stadium()) {
+      const size = sizes[p.type]
+      if (!size) continue
+      const at = trackPoint(p.s, p.o)
+      const [w, l] = size
+      const across = Math.abs(at.x) + w / 2
+      const along = Math.abs(at.z) + l / 2
+      // `along <= halfLen` also keeps the part clear of the curved caps, which is what
+      // makes the axis-aligned test valid in the first place.
+      const fits = across <= kerbR && along <= halfLen
+      expect(
+        `${p.type}: across ${across.toFixed(1)}/${kerbR.toFixed(1)}, along ${along.toFixed(1)}/${halfLen.toFixed(1)}`,
+      ).toBe(
+        fits
+          ? `${p.type}: across ${across.toFixed(1)}/${kerbR.toFixed(1)}, along ${along.toFixed(1)}/${halfLen.toFixed(1)}`
+          : `${p.type}: must fit inside the kerb`,
       )
     }
   })

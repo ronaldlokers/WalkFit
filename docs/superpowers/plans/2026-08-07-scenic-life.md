@@ -67,6 +67,8 @@ import {
   INTERVAL_SLOW_KMH,
 } from './scenicLife'
 
+const LAP = 400 // scenic.ts LAP_M, restated so the test does not depend on the module it checks
+
 describe('pacers', () => {
   it('is deterministic: same inputs give deep-equal results', () => {
     expect(pacers(37.5, 8)).toEqual(pacers(37.5, 8))
@@ -144,8 +146,6 @@ describe('pacers', () => {
     expect(p1.d - p0.d).toBeCloseTo(INTERVAL_PERIOD_M, 3)
   })
 })
-
-const LAP = 400
 ```
 
 - [ ] **Step 2: Run it to make sure it fails**

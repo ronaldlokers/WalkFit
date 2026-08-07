@@ -230,7 +230,10 @@ onMounted(() => {
     if (clouds) return
     cloudTex = cloudTexture(512)
     cloudTex.repeat.set(3, 2)
-    const g = new THREE.SphereGeometry(248, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2.2)
+    // thetaLength must reach past 90deg: at 81.8deg the shell's lower rim floated 8.2deg
+    // above the horizon as a hard edge across the sky. Past vertical it tucks behind the
+    // ground plane, which is opaque and depth-writing, so the seam is simply occluded.
+    const g = new THREE.SphereGeometry(248, 24, 10, 0, Math.PI * 2, 0, Math.PI * 0.6)
     clouds = new THREE.Mesh(
       g,
       new THREE.MeshBasicMaterial({

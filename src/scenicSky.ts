@@ -35,8 +35,9 @@ export const TIME_PHASES: Record<Exclude<TimeOfDay, 'auto'>, number> = {
 }
 
 // --- day/night from walked distance ---
-// Every walk gets its own sky: phase 0 (session start) is dawn; a full cycle takes
-// DAY_LENGTH_M, so a typical 2–3 km walk sees dawn → noon → golden hour → dusk.
+// Every walk gets its own sky: a full cycle takes DAY_LENGTH_M, so a typical 2–3 km walk
+// sees dawn → noon → golden hour → dusk. Every walk starts just before dawn — the sun
+// clears the horizon about 64 m in.
 export const DAY_LENGTH_M = 3200
 
 export function dayPhase(z: number): number {
@@ -60,13 +61,13 @@ interface SkyKey extends SkyState {
 // clash is now handled where it belongs — the HUD pills carry their own scrim and the
 // canvas has a vignette (App.vue) — instead of by dimming the world.
 const SKY_KEYS: SkyKey[] = [
-  { at: 0.0, sky: 0x54486a, fog: 0xa8788a, sunIntensity: 3.2, sunColor: 0xffb08a, ambient: 0.4 }, // dawn
+  { at: 0.0, sky: 0x54486a, fog: 0xa8788a, sunIntensity: 3.2, sunColor: 0xffb08a, ambient: 0.4 }, // pre-dawn: sun is still below the horizon until phase 0.02
   { at: 0.18, sky: 0x5f95d6, fog: 0xa8c4e0, sunIntensity: 2.3, sunColor: 0xfff2dd, ambient: 1.1 }, // morning
   { at: 0.45, sky: 0x6ba8e8, fog: 0xb9d4ee, sunIntensity: 2.6, sunColor: 0xffffff, ambient: 1.2 }, // day
   { at: 0.62, sky: 0x6b8fc4, fog: 0xc0a9a8, sunIntensity: 2.1, sunColor: 0xffe0b0, ambient: 1.0 }, // late
   { at: 0.75, sky: 0x6d4270, fog: 0xc4707a, sunIntensity: 2.6, sunColor: 0xff9a5c, ambient: 0.55 }, // sunset
   { at: 0.87, sky: 0x161a2e, fog: 0x24283c, sunIntensity: 0.2, sunColor: 0x9ab0ff, ambient: 0.3 }, // night
-  { at: 1.0, sky: 0x54486a, fog: 0xa8788a, sunIntensity: 3.2, sunColor: 0xffb08a, ambient: 0.4 }, // wraps to dawn
+  { at: 1.0, sky: 0x54486a, fog: 0xa8788a, sunIntensity: 3.2, sunColor: 0xffb08a, ambient: 0.4 }, // wraps to pre-dawn
 ]
 
 function lerp(a: number, b: number, t: number): number {

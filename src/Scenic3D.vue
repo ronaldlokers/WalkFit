@@ -693,6 +693,36 @@ onMounted(() => {
     pacerRigs.push({ group, armL, armR, legL, legR, kit })
   }
 
+  // One label, reused for whichever pacer is nearest AHEAD of the walker — Zwift shows
+  // who you are about to catch, not a name tag on every body in the scene.
+  const labelCanvas = document.createElement('canvas')
+  labelCanvas.width = 256
+  labelCanvas.height = 64
+  const labelTex = new THREE.CanvasTexture(labelCanvas)
+  labelTex.colorSpace = THREE.SRGBColorSpace
+  const labelSprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: labelTex, depthWrite: false, transparent: true }),
+  )
+  labelSprite.scale.set(2.2, 0.55, 1)
+  labelSprite.visible = false
+  scene.add(labelSprite)
+  let lastLabel = ''
+  function drawLabel(text: string) {
+    if (text === lastLabel) return // repainting a canvas every frame is a wasted upload
+    lastLabel = text
+    const ctx = labelCanvas.getContext('2d')!
+    ctx.clearRect(0, 0, 256, 64)
+    ctx.fillStyle = 'rgba(12, 15, 20, 0.72)'
+    ctx.roundRect(4, 8, 248, 48, 12)
+    ctx.fill()
+    ctx.fillStyle = '#eaf2ff'
+    ctx.font = 'bold 28px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, 128, 33)
+    labelTex.needsUpdate = true
+  }
+
   // --- camera + sky per frame ---
   let display = props.distance // smoothed distance the camera actually sits at
   let sessionSeconds = 0
@@ -745,6 +775,7 @@ onMounted(() => {
     // loop, typically three or four are actually visible.
     const wanted = TIER_BUDGET[tier].pacers
     const list = pacers(sessionSeconds, wanted)
+    let nearest: { rig: PacerRig; p: Pacer; dist: number } | null = null
     for (let i = 0; i < pacerRigs.length; i++) {
       const rig = pacerRigs[i]!
       const p: Pacer | undefined = list[i]
@@ -769,6 +800,8 @@ onMounted(() => {
         continue
       }
       rig.group.visible = true
+      const dist = Math.sqrt(dx * dx + dz * dz)
+      if (dist < 30 && (!nearest || dist < nearest.dist)) nearest = { rig, p, dist }
       rig.group.position.set(at.x, 0, at.z)
       // the tangent comes from trackPoint, not from the Pacer — a Pacer has no heading
       rig.group.rotation.y = Math.atan2(-at.tx, -at.tz)
@@ -782,6 +815,13 @@ onMounted(() => {
       rig.legR.rotation.x = -swing * 0.55
       rig.armL.rotation.x = -swing * 0.4
       rig.armR.rotation.x = swing * 0.4
+    }
+    if (nearest) {
+      drawLabel(`${nearest.p.kind} · ${nearest.p.speed.toFixed(1)} km/h`)
+      labelSprite.position.set(nearest.rig.group.position.x, 2.1, nearest.rig.group.position.z)
+      labelSprite.visible = true
+    } else {
+      labelSprite.visible = false
     }
     renderer!.render(scene, camera)
   }
@@ -996,6 +1036,8 @@ onMounted(() => {
     pacerArmGeo.dispose()
     pacerLegGeo.dispose()
     pacerRigs.forEach((r) => r.kit.dispose())
+    labelTex.dispose()
+    labelSprite.material.dispose()
     renderer?.dispose()
     // dispose() alone leaves the context slot occupied until GC — force-release it so
     // repeated 2D↔3D toggles can't exhaust the browser's context budget (#60)

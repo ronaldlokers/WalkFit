@@ -140,6 +140,11 @@ Keep pinned Playwright version and image tag in sync.
 - `src/scenicMeshes.ts` — pure vertex/uv/index array builders plus the three.js mesh and
   procedural `CanvasTexture` factories, extracted from `Scenic3D.vue`. Every `REPEAT` value
   must divide `LAP_M` exactly, or the texture misaligns with itself at the start/finish seam.
+- `src/scenicLife.ts` — **pure, three.js-free** (App.vue imports it directly, so a three
+  import would drag three.js into the main chunk): ambient `pacers(t, count)` whose
+  positions are analytic in elapsed time rather than accumulated, `strideLength`/
+  `stepPhase`/`cadenceHz` (cadence is MEASURED from the belt's own pedometer via
+  `state.steps`, not modelled), and `paceGap`. Unit-tested in `src/scenicLife.test.ts`.
 - `src/App.vue` — the rest of the UI: loop, chart, controls,
   header live-stat strip (time/distance/kcal/speed/pace — real zeros faded while idle),
   header overflow menu, onboarding wizard; the statistics and settings sheets live in
@@ -297,6 +302,38 @@ as corruption rather than an error. Anything that must survive the bake has to b
 from the `staticRoots` filter — including `sunTarget`, since a `DirectionalLight` whose
 target has been removed from the scene aims at the world origin and every shadow in the
 scene is then quietly wrong.
+
+**Life on the track** — pacers, the rabbit and your own body (`src/scenicLife.ts` plus the
+corresponding block in `Scenic3D.vue`) are the only live meshes in the scene; everything
+else is baked, and all three are added to the scene **after** the bake block above or they
+get merged into the static world and freeze in place. The render loop only calls
+`update()` when walked distance changes (an optimisation from when nothing in the scene
+moved on its own) — anything that animates while the belt is stopped needs the wall-clock
+escape now in `frame()` (pacers force a redraw at ~30 Hz via `sessionSeconds` even when
+distance hasn't moved), and the `prefers-reduced-motion` path has no rAF loop at all, so
+it advances `sessionSeconds` from `performance.now()` instead. Pacers run lanes 2-6 so a
+fast one overtaking cannot clip through the camera; once the pacer count exceeds the lane
+count, two share a lane, and since their speeds differ the faster laps the slower within
+about a minute — `pacers()` draws each at `Pacer.drawO`, an ABSOLUTE lateral offset from
+the lane-1 line (not a delta), alternating `PACER_LATERAL_M` to either side of the lane
+centre so that lap reads as an overtake rather than two meshes intersecting. Arc distance
+is still measured along `laneMeasurementO(lane)` — conflating the two with `drawO` would
+make a pacer cover subtly wrong distance on the bends. The rabbit runs for **weight-loss
+plans only** (an HR target defines a heart rate, not a pace, so there is no pace to chase)
+and carries its own emissive term because it's the app's only ahead/behind readout and has
+to stay legible after dark even as pacers sink into the dusk. `App.vue` integrates its
+distance — the one place that already knows the segment's target speed — tracking its own
+`rabbitElapsed` separately from the workout watcher's so Skip doesn't bank the skipped
+seconds as rabbit progress (Skip means "these seconds never happened", like a pause; a
+200 m jump wraps the loop and would otherwise put the rabbit behind you). Your own body is
+a shadow-caster only, its geometry inside the camera's 0.3 m near plane so it's clipped
+away — and unlike the scenery props, it gets **no** blob-shadow fallback on the low tier:
+visible ground starts about 2.65 m out at eye height 1.6 m with a 60 degree FOV, so a disc
+under you renders nothing, and one far enough forward to be visible would read as a mark
+on the track rather than as your shadow. Props keep their blob shadows on the low tier —
+they're at a distance and fully in frame, so it works — and the high/Quality tier's real
+cast shadow works for the walker because shadows stretch away from you into view when the
+sun is low.
 
 The 2D track view is **generated from the same scenic.ts model** the 3D view walks —
 not hand-drawn SVG: `track2d` in App.vue maps 3D `(x, z)` → SVG `(cx + z·k, cy + x·k)`

@@ -29,7 +29,7 @@ import {
   worldHash,
 } from './scenic'
 import type { Prop } from './scenic'
-import { pacers, stepPhase } from './scenicLife'
+import { pacers, stepPhase, strideLength } from './scenicLife'
 import type { Pacer } from './scenicLife'
 import {
   ribbonArrays,
@@ -724,6 +724,33 @@ onMounted(() => {
   rabbitGroup.visible = false
   scene.add(rabbitGroup)
 
+  // --- your own body (live, never baked) ---
+  // The body exists only to cast your shadow — its geometry sits inside the camera's
+  // 0.3 m near plane, so it is clipped away and never itself visible.
+  const avatarKit = new THREE.MeshStandardMaterial({ color: 0x9fb4d0, roughness: 0.8 })
+  const avatarBody = new THREE.Mesh(pacerBodyGeo, avatarKit)
+  avatarBody.castShadow = true
+  scene.add(avatarBody)
+
+  // Forearms, parented to the camera at the bottom corners of the frustum — the standard
+  // first-person viewmodel. Same stepPhase as the shadow, so they cannot drift apart.
+  const armGeo = new THREE.CapsuleGeometry(0.05, 0.34, 3, 5)
+  armGeo.translate(0, -0.17, 0)
+  const armL = new THREE.Mesh(armGeo, avatarKit)
+  const armR = new THREE.Mesh(armGeo, avatarKit)
+  armL.position.set(-0.26, -0.32, -0.55)
+  armR.position.set(0.26, -0.32, -0.55)
+  camera.add(armL, armR)
+  scene.add(camera) // a camera must be in the scene graph for its children to render
+
+  // Without a shadow map the invisible body casts nothing, so give the walker a disc
+  // instead — the same fallback shape used for props on the cheap tier. blobGeo/blobMat
+  // are already created and disposed by the shadow work above; not disposed again here.
+  const avatarBlob = new THREE.Mesh(blobGeo, blobMat)
+  avatarBlob.rotation.x = -Math.PI / 2
+  avatarBlob.scale.setScalar(1.1)
+  scene.add(avatarBlob)
+
   // One label, reused for whichever pacer is nearest AHEAD of the walker — Zwift shows
   // who you are about to catch, not a name tag on every body in the scene.
   const labelCanvas = document.createElement('canvas')
@@ -763,6 +790,17 @@ onMounted(() => {
     camera.position.set(p.x, EYE_HEIGHT, p.z)
     const ahead = trackPoint(d + 10)
     camera.lookAt(ahead.x, EYE_HEIGHT - 0.2, ahead.z)
+    // Measured, not modelled: state.steps is the belt's own pedometer, so the arms swing
+    // at your real cadence rather than an assumed one.
+    const stride = strideLength(props.distance, props.steps ?? 0)
+    const bodyPhase = stepPhase(d, stride) * Math.PI * 2
+    const bodySwing = Math.sin(bodyPhase) * 0.55
+    avatarBody.position.set(camera.position.x, 0, camera.position.z)
+    avatarBody.rotation.y = camera.rotation.y
+    armL.rotation.x = bodySwing
+    armR.rotation.x = -bodySwing
+    avatarBlob.visible = !TIER_BUDGET[tier].shadowMap
+    avatarBlob.position.set(camera.position.x, 0.03, camera.position.z)
     // Settings can pin the time of day; 'auto' follows walked distance (#72)
     const tod = props.timeOfDay ?? 'auto'
     const phase = tod === 'auto' ? dayPhase(d) : TIME_PHASES[tod]
@@ -1108,6 +1146,8 @@ onMounted(() => {
     pacerLegGeo.dispose()
     pacerRigs.forEach((r) => r.kit.dispose())
     rabbitKit.dispose()
+    avatarKit.dispose()
+    armGeo.dispose()
     labelTex.dispose()
     labelSprite.material.dispose()
     renderer?.dispose()

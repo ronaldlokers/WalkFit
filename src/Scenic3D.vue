@@ -772,14 +772,16 @@ onMounted(() => {
       rig.group.position.set(at.x, 0, at.z)
       // the tangent comes from trackPoint, not from the Pacer — a Pacer has no heading
       rig.group.rotation.y = Math.atan2(-at.tx, -at.tz)
-      // limbs swing in antiphase, arms opposite legs, at the pacer's own cadence — legs swing
-      // less than arms so the foot lift reads as a stride, not a kick
+      // limbs swing in antiphase, arms opposite legs, at the pacer's own cadence.
+      // Arms swing LESS than legs, not more. From behind — the only angle a walker sees a
+      // pacer from — a wide arm swing foreshortens into a splayed "cactus" pose instead of
+      // reading as a pump alongside the torso.
       const ph = stepPhase(p.d, 0.9) * Math.PI * 2
       const swing = Math.sin(ph)
       rig.legL.rotation.x = swing * 0.55
       rig.legR.rotation.x = -swing * 0.55
-      rig.armL.rotation.x = -swing * 0.7
-      rig.armR.rotation.x = swing * 0.7
+      rig.armL.rotation.x = -swing * 0.4
+      rig.armR.rotation.x = swing * 0.4
     }
     renderer!.render(scene, camera)
   }

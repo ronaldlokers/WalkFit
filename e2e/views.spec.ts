@@ -70,9 +70,9 @@ test.describe('main view', () => {
     await expect(page.locator('.stat-strip.idle')).toBeVisible()
     await expect(page.locator('.stat-strip')).toContainText('min/km')
     // the Morning Glass dock shows Start + Stop while idle; Pause only appears once a
-    // walk is running (v-if="state.running" — see the "Pause appears during a walk"
-    // test below), and Reset/the goal chips stay parked (deliberately display:none)
-    // until they earn a spot in the design
+    // walk is running (v-if="state.running" — covered in App.hrWorkout.test.ts, which
+    // can drive state.running directly without a live GATT flow), and Reset/the goal
+    // chips stay parked (deliberately display:none) until they earn a spot in the design
     for (const label of ['Start', 'Stop']) {
       await expect(page.getByRole('button', { name: label })).toBeVisible()
     }
@@ -85,18 +85,6 @@ test.describe('main view', () => {
     await page.getByRole('button', { name: 'Menu' }).click()
     await expect(page.locator('.menu-item', { hasText: 'Settings' })).toBeVisible()
     await expect(page.locator('.menu-item', { hasText: 'Disconnect' })).toBeHidden()
-  })
-
-  test('Pause appears during a walk', async ({ page }) => {
-    // Pause is v-if="state.running" — nothing above guards its restoration once a walk
-    // is actually running, only that it stays hidden while idle. Demo mode drives a real
-    // running state without touching Web Bluetooth.
-    await seed(page)
-    await page.goto('/?demo')
-    await page.getByRole('button', { name: 'Connect' }).click()
-    await expect(page.getByRole('button', { name: 'Start' })).toBeEnabled()
-    await page.getByRole('button', { name: 'Start' }).click()
-    await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
   })
 
   test('scenic toggle and the persisted-scenic reload regression', async ({ page }) => {

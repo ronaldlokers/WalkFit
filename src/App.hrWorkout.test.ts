@@ -400,6 +400,26 @@ describe('HR workout', () => {
   })
 })
 
+describe('immersive dock', () => {
+  it('the Pause button is reachable once a walk is running (#restored)', async () => {
+    // A CSS rule hid `.action-row .btn.ghost` in the immersive layout, which made both
+    // Pause and Reset unclickable. Pause is v-if="state.running", so guard both states.
+    // This only proves the button renders once running is true — jsdom doesn't apply
+    // stylesheets, so it can't verify the CSS itself stays scoped off Pause; that's on
+    // the narrowed selector in App.vue plus manual verification.
+    const App = (await import('./App.vue')).default
+    const w = (mounted = mount(App))
+    await toMain(w)
+    const pause = () => w.findAll('button').find((b) => b.text().includes('Pause'))
+    fakeTm.running = false // beforeEach defaults to running; start idle to check both states
+    await nextTick()
+    expect(pause()).toBeUndefined()
+    fakeTm.running = true
+    await nextTick()
+    expect(pause()).toBeTruthy()
+  })
+})
+
 describe('weight-loss workout — Skip segment (#110)', () => {
   async function startFirstPlan(w: VueWrapper) {
     await toMain(w)

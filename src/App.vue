@@ -471,6 +471,9 @@ const weatherSeed = Date.now() % 100000
 // time-of-day override for the 3D view (Settings → Display)
 const scenicTime = ref(localStorage.getItem('walkfit.scenic.time') || 'auto')
 watch(scenicTime, (v) => localStorage.setItem('walkfit.scenic.time', v))
+// render-quality tier override for the 3D view (Settings → Display); 'auto' probes the device
+const scenicQuality = ref(localStorage.getItem('walkfit.scenic.quality') || 'auto')
+watch(scenicQuality, (v) => localStorage.setItem('walkfit.scenic.quality', v))
 
 // --- live calorie counter ---
 // Integrated per-tick from actual speed (via metForSpeed), not a single average-speed
@@ -1367,6 +1370,7 @@ const pace = computed(() => {
           :speed="state.speed"
           :weather-seed="weatherSeed"
           :time-of-day="scenicTime as never"
+          :quality="scenicQuality as never"
           @unsupported="scenicUnsupported"
         />
       </div>
@@ -1427,7 +1431,7 @@ const pace = computed(() => {
       </div>
       <div v-if="walkGoal" class="goal-progress">
         <div class="goal-bar">
-          <div class="goal-fill" :style="{ width: goalProgress * 100 + '%' }"></div>
+          <div class="goal-fill" :style="{ transform: `scaleX(${goalProgress})` }"></div>
         </div>
         <span class="goal-pct">{{
           goalProgress >= 1 ? t('goal.reached') : Math.round(goalProgress * 100) + '%'
@@ -1792,6 +1796,7 @@ const pace = computed(() => {
         v-model:goal-steps="goals.steps"
         v-model:goal-minutes="goals.minutes"
         v-model:scenic-time="scenicTime"
+        v-model:scenic-quality="scenicQuality"
         v-model:goal-weight="goalWeight"
         v-model:strava-auto-upload="stravaAutoUpload"
         :tm="{ state, connect, disconnect, forget: forgetTreadmill }"
@@ -1958,6 +1963,22 @@ code {
 /* --- 3D scenic (#51): canvas wrapper --- */
 .scene3d-wrap {
   position: relative;
+}
+/* A bright sky is now possible (render-quality slice 1), so the HUD needs its own
+   contrast rather than relying on a dim world. Darkens only the top and bottom bands,
+   where the header stats and the control pill sit. */
+.scene3d-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(8, 10, 14, 0.42) 0%,
+    rgba(8, 10, 14, 0) 22%,
+    rgba(8, 10, 14, 0) 72%,
+    rgba(8, 10, 14, 0.5) 100%
+  );
 }
 
 .chart-wrap {
@@ -2626,11 +2647,17 @@ input[type='range']::-webkit-slider-thumb {
   background: rgba(23, 50, 77, 0.12);
   overflow: hidden;
 }
+/* Scaled, not resized: animating `width` relayouts the flex row on every frame of the
+   transition. The element is full-width and squashed to `scaleX(goalProgress)` instead,
+   which the compositor handles on its own. `goalProgress` is already clamped to 0..1.
+   The rounded cap comes from .goal-bar's own radius plus its overflow:hidden — a radius
+   here would be squashed horizontally along with everything else. */
 .goal-fill {
   height: 100%;
+  width: 100%;
   background: var(--accent);
-  border-radius: 3px;
-  transition: width 0.3s;
+  transform-origin: left center;
+  transition: transform 0.3s;
 }
 .goal-pct {
   font-size: 12px;
@@ -2737,7 +2764,7 @@ input[type='range']::-webkit-slider-thumb {
   transform: translateX(-50%);
   z-index: 10;
   margin: 0;
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.85);
   color: #17324d;
@@ -2810,7 +2837,7 @@ input[type='range']::-webkit-slider-thumb {
   bottom: 104px;
   z-index: 10;
   width: min(560px, 94vw);
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.85);
   box-shadow: 0 10px 28px rgba(23, 50, 77, 0.14);

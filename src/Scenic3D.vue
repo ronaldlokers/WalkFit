@@ -24,21 +24,45 @@ import {
   relayZoneLines,
   hurdleTicks,
   waterfallPoints,
+} from './scenic'
+import type { Prop } from './scenic'
+import {
+  ribbonArrays,
+  stripArrays,
+  geometryFrom,
+  ensureUv,
+  assertSameAttributes,
+  REPEAT,
+  tartanTexture,
+  grassTexture,
+  barkTexture,
+  foliageTexture,
+  concreteTexture,
+  surface,
+  blobShadowTexture,
+  glowTexture,
+  starPositions,
+  cloudTexture,
+} from './scenicMeshes'
+import {
   dayPhase,
   skyAt,
+  skyBodies,
   weatherFor,
   WEATHER_FOG,
   TIME_PHASES,
   isNight,
-} from './scenic'
-import type { TimeOfDay } from './scenic'
-import type { Prop } from './scenic'
+} from './scenicSky'
+import type { TimeOfDay } from './scenicSky'
+import { tierFromFrames, resolveTier, PROBE_FRAMES, TIER_BUDGET } from './scenicQuality'
+import type { Tier, QualitySetting } from './scenicQuality'
 
 const props = defineProps<{
   distance: number
   speed: number
   weatherSeed?: number // per-walk weather pick (#72); omitted = clear
   timeOfDay?: TimeOfDay // Settings override; 'auto' follows walked distance
+  quality?: QualitySetting
 }>()
 const emit = defineEmits<{ unsupported: [] }>()
 
@@ -73,6 +97,13 @@ onMounted(() => {
   // contexts, and leaking one per 2D↔3D toggle can evict the real renderer's (#60).
   probeCtx.getExtension('WEBGL_lose_context')?.loseContext()
 
+  // Start on the cheap tier and upgrade once if the machine turns out to be fast. Never
+  // downgrade mid-session: a tier flip during a walk is more jarring than a few dropped
+  // frames, and the walker cannot do anything about it either way.
+  let tier: Tier = props.quality === 'high' ? 'high' : 'low'
+  const probeSamples: number[] = []
+  let probeDone = props.quality !== 'auto' && props.quality !== undefined
+
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(60, 1, 0.3, FOG_FAR + 60)
   // per-walk weather (#72): deterministic from the session seed
@@ -82,15 +113,58 @@ onMounted(() => {
 
   renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  // ACES compresses the highlights, which is what lets the palette be authored at real
+  // outdoor brightness instead of the muted values the old un-tone-mapped scene needed.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = 1.0
   el.appendChild(renderer.domElement)
 
   const hemi = new THREE.HemisphereLight(0xffffff, 0x30363f, 0.9)
   const sun = new THREE.DirectionalLight(0xffffff, 1)
-  sun.position.set(-40, 60, 30)
-  scene.add(hemi, sun)
+  const sunTarget = new THREE.Object3D()
+  scene.add(hemi, sun, sunTarget)
+  sun.target = sunTarget
+  const SUN_DIST = 120
+
+  // Fixed-size shadow box re-centred on the walker each frame. Fitting it to the whole
+  // 400 m loop would spend nearly all the map's resolution on geometry behind you.
+  const SHADOW_BOX = 60 // metres either side of the camera
+  function enableShadows() {
+    renderer!.shadowMap.enabled = true
+    renderer!.shadowMap.type = THREE.PCFShadowMap
+    sun.castShadow = true
+    sun.shadow.mapSize.set(2048, 2048)
+    const cam = sun.shadow.camera
+    cam.left = -SHADOW_BOX
+    cam.right = SHADOW_BOX
+    cam.top = SHADOW_BOX
+    cam.bottom = -SHADOW_BOX
+    // Tight near/far around the sun's fixed distance (not 1..SUN_DIST*2): every bias unit
+    // spends its precision on the box that actually matters instead of empty space, so a
+    // much smaller bias still clears the self-shadow acne below.
+    cam.near = SUN_DIST - 80
+    cam.far = SUN_DIST + 80
+    cam.updateProjectionMatrix()
+    sun.shadow.bias = -0.0004
+    sun.shadow.normalBias = 0.03
+  }
+
+  // Declared ahead of the sky dome/bodies below because `addClouds()` (immediately
+  // invoked on the high tier) and the static-world bake both push disposable geometry
+  // into this array — a `const` further down would leave it in the temporal dead zone
+  // for that first `addClouds()` call.
+  const disposables: THREE.BufferGeometry[] = []
+  const track = (mesh: THREE.Mesh) => {
+    disposables.push(mesh.geometry as THREE.BufferGeometry)
+    scene.add(mesh)
+    return mesh
+  }
 
   // Sky dome: vertex-color gradient from fog color at the horizon to sky color overhead,
   // following the camera. Kills the hard seam where fogged ground meets a flat background.
+  // toneMapped:false is load-bearing — three.js applies fog AFTER tone mapping, so real
+  // fogged geometry fades to the raw hex. If the dome were tone mapped it would no longer
+  // match the fog it is painted to blend into, and the seam would come back.
   const domeGeo = new THREE.SphereGeometry(260, 24, 12)
   const domeColors = new THREE.Float32BufferAttribute(
     new Float32Array(domeGeo.attributes.position!.count * 3),
@@ -99,9 +173,83 @@ onMounted(() => {
   domeGeo.setAttribute('color', domeColors)
   const dome = new THREE.Mesh(
     domeGeo,
-    new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false }),
+    new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      side: THREE.BackSide,
+      fog: false,
+      toneMapped: false,
+    }),
   )
   scene.add(dome)
+
+  // Sky bodies: a sun/moon glow sprite each, a star field that fades in at night, and a
+  // drifting cloud shell on the high tier. All four must dodge the static-world bake
+  // below (see the `staticRoots` filter) or they get merged into a mesh and vanish.
+  const SKY_R = 250 // just inside the 260 dome
+  const glowTex = glowTexture(128)
+  const sunSprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: glowTex,
+      color: 0xfff4dd,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    }),
+  )
+  sunSprite.scale.setScalar(46)
+  const moonSprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: glowTex, color: 0xcfd8ea, depthWrite: false, fog: false }),
+  )
+  moonSprite.scale.setScalar(26)
+  scene.add(sunSprite, moonSprite)
+
+  const starGeo = new THREE.BufferGeometry()
+  starGeo.setAttribute(
+    'position',
+    new THREE.BufferAttribute(starPositions(TIER_BUDGET[tier].stars, SKY_R), 3),
+  )
+  const starMat = new THREE.PointsMaterial({
+    color: 0xdfe6ff,
+    // raw framebuffer pixels: sizeAttenuation:false means three does NOT apply the
+    // renderer's pixel ratio, so without this a DPR-2 screen renders 0.8 CSS px stars —
+    // sub-pixel, shimmering/invisible on the phone-on-treadmill case this targets
+    size: 1.6 * renderer.getPixelRatio(),
+    sizeAttenuation: false,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    fog: false,
+  })
+  const stars = new THREE.Points(starGeo, starMat)
+  scene.add(stars)
+
+  // clouds: a second dome shell just inside the sky dome, high tier only
+  let clouds: THREE.Mesh | null = null
+  let cloudTex: THREE.CanvasTexture | null = null
+  function addClouds() {
+    if (clouds) return
+    cloudTex = cloudTexture(512)
+    cloudTex.repeat.set(3, 2)
+    // thetaLength must reach past 90deg: at 81.8deg the shell's lower rim floated 8.2deg
+    // above the horizon as a hard edge across the sky. Past vertical it tucks behind the
+    // ground plane, which is opaque and depth-writing, so the seam is simply occluded.
+    const g = new THREE.SphereGeometry(248, 24, 10, 0, Math.PI * 2, 0, Math.PI * 0.6)
+    clouds = new THREE.Mesh(
+      g,
+      new THREE.MeshBasicMaterial({
+        map: cloudTex,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.BackSide,
+        depthWrite: false,
+        fog: false,
+      }),
+    )
+    disposables.push(g)
+    scene.add(clouds)
+  }
+  if (TIER_BUDGET[tier].clouds) addClouds()
+
   const cLo = new THREE.Color()
   const cHi = new THREE.Color()
   const cMix = new THREE.Color()
@@ -116,6 +264,15 @@ onMounted(() => {
     }
     domeColors.needsUpdate = true
   }
+  // Hoisted out of update() (Fix 4): that function runs every rendered frame, so a
+  // closure declared inside it was a fresh allocation per frame.
+  const place = (o: THREE.Object3D, b: { azimuth: number; elevation: number }) => {
+    o.position.set(
+      camera.position.x + Math.cos(b.azimuth) * Math.cos(b.elevation) * SKY_R,
+      Math.sin(b.elevation) * SKY_R,
+      camera.position.z + Math.sin(b.azimuth) * Math.cos(b.elevation) * SKY_R,
+    )
+  }
 
   // --- shared geometries/materials ---
   const geo = {
@@ -126,28 +283,87 @@ onMounted(() => {
     pole: new THREE.CylinderGeometry(0.09, 0.12, 1, 6),
     head: new THREE.BoxGeometry(1.6, 0.5, 0.25),
   }
-  const flat = (color: number) => new THREE.MeshLambertMaterial({ color, flatShading: true })
+  // Cheap-tier ground contact for props (Step 4 below) — shared across every prop that
+  // gets one, so it costs one texture and one geometry, not one per tree.
+  const blobTex = blobShadowTexture(128)
+  const blobGeo = new THREE.PlaneGeometry(1, 1)
+  const blobMat = new THREE.MeshBasicMaterial({
+    map: blobTex,
+    transparent: true,
+    depthWrite: false,
+  })
+  // Set when the bake merges the blob discs into one mesh (below) — lets applyTier hide
+  // them the instant real shadows come on, and bring them back if shadows go off again.
+  let blobMesh: THREE.Mesh | null = null
+  function makeTextures(size: number) {
+    const aniso = Math.min(4, renderer!.capabilities.getMaxAnisotropy())
+    const t = {
+      tartan: tartanTexture(size),
+      grass: grassTexture(size, 108),
+      infield: grassTexture(size, 96),
+      bark: barkTexture(size),
+      foliage: foliageTexture(size),
+      concrete: concreteTexture(size),
+    }
+    for (const tex of Object.values(t)) tex.anisotropy = aniso
+    // `ribbonArrays` spans v from 0 to 1 across the ribbon's width however wide it is,
+    // while REPEAT scales u only. Left alone, the 7.32 m track band and the 0.18 m kerb
+    // would get wildly different u:v aspect ratios and the kerb would smear into streaks.
+    // Scale v by the ribbon's real width so both axes tile at the same metres-per-repeat.
+    // A fractional v repeat is fine: unlike u, v does not wrap around a closed loop, so
+    // there is no seam for it to misalign at.
+    t.tartan.repeat.set(1, (TRACK_OUT - TRACK_IN) / REPEAT.track)
+    t.infield.repeat.set(1, 30 / REPEAT.infield) // infield ribbon spans 30 m inward
+    t.concrete.repeat.set(1, 0.18 / REPEAT.kerb) // kerb: TRACK_IN-0.2 .. TRACK_IN-0.02
+    t.grass.repeat.set(60, 60) // one big 700 m plane, so tile it hard
+    return t
+  }
+  // Task 6 deliberately left this out because nothing read it yet; it has a reader now.
+  let budget = TIER_BUDGET[tier]
+  // an explicit quality: 'high' setting must get shadows immediately — the probe that
+  // would otherwise call this (via applyTier) never runs when the tier isn't 'auto'.
+  if (budget.shadowMap && !renderer!.shadowMap.enabled) enableShadows()
+  let tex = makeTextures(budget.textureSize)
+
   const mat = {
-    trunk: flat(0x5d4634),
-    crown1: flat(0x3f7d3a),
-    crown2: flat(0x59923e),
-    pine: flat(0x2c5d33),
-    rock: flat(0x777d87),
-    pole: flat(0x4a505b),
+    trunk: surface({ color: 0xffffff, map: tex.bark, roughness: 0.95 }),
+    crown1: surface({ color: 0xffffff, map: tex.foliage, roughness: 1, flatShading: true }),
+    crown2: surface({ color: 0xc8e0a8, map: tex.foliage, roughness: 1, flatShading: true }),
+    pine: surface({ color: 0x8fb890, map: tex.foliage, roughness: 1, flatShading: true }),
+    rock: surface({ color: 0x777d87, roughness: 0.85, flatShading: true }),
+    pole: surface({ color: 0x4a505b, roughness: 0.6 }),
     floodOn: new THREE.MeshBasicMaterial({ color: 0xfff2c8 }), // unlit — reads as lit at night
-    kerb: new THREE.MeshLambertMaterial({ color: 0xe8ecf2, side: THREE.DoubleSide }),
+    kerb: surface({
+      color: 0xffffff,
+      map: tex.concrete,
+      roughness: 0.9,
+      side: THREE.DoubleSide,
+    }),
     breakLine: new THREE.MeshBasicMaterial({ color: 0x3ba55d, side: THREE.DoubleSide }),
     relay: new THREE.MeshBasicMaterial({ color: 0xd8b638, side: THREE.DoubleSide }),
     hurdle: new THREE.MeshBasicMaterial({ color: 0x2e7d4f, side: THREE.DoubleSide }),
-    grass: new THREE.MeshLambertMaterial({ color: 0x2f4a2b }),
+    grass: surface({ color: 0xffffff, map: tex.grass, roughness: 1 }),
     // The loop ribbons reverse travel direction halfway around, so a fixed triangle
     // winding faces down on one straight and up on the other — DoubleSide instead of
     // per-segment winding gymnastics (they're flat strips only ever seen from above).
-    infield: new THREE.MeshLambertMaterial({ color: 0x355530, side: THREE.DoubleSide }),
-    track: new THREE.MeshLambertMaterial({ color: 0x9c4238, side: THREE.DoubleSide }), // red tartan
+    infield: surface({
+      color: 0xffffff,
+      map: tex.infield,
+      roughness: 1,
+      side: THREE.DoubleSide,
+    }),
+    track: surface({
+      color: 0xffffff,
+      map: tex.tartan,
+      roughness: 0.85,
+      side: THREE.DoubleSide,
+    }),
     laneLine: new THREE.MeshBasicMaterial({ color: 0xdfe4ea, side: THREE.DoubleSide }),
     finish: new THREE.MeshBasicMaterial({ color: 0xf2f5f9, side: THREE.DoubleSide }),
   }
+  // assertSameAttributes/mergeGeometries errors prefer material.name — without this every
+  // merge batch reports as generic "MeshStandardMaterial", useless for diagnosing which one.
+  Object.entries(mat).forEach(([k, m]) => (m.name = k))
 
   function buildProp(p: Prop): THREE.Object3D {
     const g = new THREE.Group()
@@ -197,34 +413,35 @@ onMounted(() => {
       g.rotation.y = p.seed * Math.PI * 2
       g.scale.setScalar(p.scale)
     }
+    // Cheap tier runs no shadow map: fake ground contact with a static dark disc instead.
+    // Built for every prop regardless of the tier the session eventually settles on — the
+    // world is baked once, so the auto probe's low→high upgrade (or a later Settings
+    // downgrade) can't add or remove geometry. The merged blob mesh is instead toggled
+    // visible/invisible in applyTier to match whichever tier is actually active.
+    if (p.type !== 'flood') {
+      const blob = new THREE.Mesh(blobGeo, blobMat)
+      blob.rotation.x = -Math.PI / 2
+      blob.position.y = 0.03
+      blob.scale.setScalar(1.6)
+      g.add(blob)
+    }
     return g
   }
 
-  // Closed ribbon around the whole loop between lateral offsets [o0, o1], sampled every
-  // 2 m. Winding chosen so face normals point +y (visible from above; FrontSide culling).
-  function buildLoopRibbon(o0: number, o1: number, y: number, m: THREE.Material): THREE.Mesh {
-    const step = 2
-    const n = Math.ceil(LAP_M / step)
-    const pts: number[] = []
-    const idx: number[] = []
-    for (let i = 0; i <= n; i++) {
-      const s = (i / n) * LAP_M
-      const a = trackPoint(s, o0)
-      const b = trackPoint(s, o1)
-      pts.push(a.x, y, a.z, b.x, y, b.z)
-      if (i > 0) {
-        const k = (i - 1) * 2
-        idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3)
-      }
-    }
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3))
-    g.setIndex(idx)
-    g.computeVertexNormals()
-    return new THREE.Mesh(g, m)
+  // Closed ribbon around the whole loop between lateral offsets [o0, o1]. Winding chosen
+  // so face normals point +y (visible from above; FrontSide culling).
+  function buildLoopRibbon(
+    o0: number,
+    o1: number,
+    y: number,
+    m: THREE.Material,
+    repeatMetres = REPEAT.mark,
+  ): THREE.Mesh {
+    return new THREE.Mesh(geometryFrom(ribbonArrays(o0, o1, y, repeatMetres)), m)
   }
 
-  // Short strip across the track at arc position s (finish line, lane staggers).
+  // Short strip across the track at arc position s (finish line, lane staggers, relay and
+  // hurdle marks).
   function buildCrossStrip(
     s: number,
     widthM: number,
@@ -233,30 +450,11 @@ onMounted(() => {
     o0 = TRACK_IN,
     o1 = TRACK_OUT,
   ): THREE.Mesh {
-    const a0 = trackPoint(s, o0)
-    const a1 = trackPoint(s, o1)
-    const b0 = trackPoint(s + widthM, o0)
-    const b1 = trackPoint(s + widthM, o1)
-    const g = new THREE.BufferGeometry()
-    g.setAttribute(
-      'position',
-      new THREE.Float32BufferAttribute(
-        [a0.x, y, a0.z, a1.x, y, a1.z, b0.x, y, b0.z, b1.x, y, b1.z],
-        3,
-      ),
-    )
-    g.setIndex([0, 2, 1, 1, 2, 3])
-    g.computeVertexNormals()
-    return new THREE.Mesh(g, m)
+    return new THREE.Mesh(geometryFrom(stripArrays(s, widthM, y, o0, o1)), m)
   }
 
   // --- static world, built once ---
-  const disposables: THREE.BufferGeometry[] = []
-  const track = (mesh: THREE.Mesh) => {
-    disposables.push(mesh.geometry as THREE.BufferGeometry)
-    scene.add(mesh)
-    return mesh
-  }
+  // (disposables/track declared earlier — addClouds() needs them before this point)
 
   // grass everywhere (single big plane), slightly below the track surface
   const groundGeo = new THREE.PlaneGeometry(700, 700)
@@ -267,10 +465,10 @@ onMounted(() => {
   disposables.push(groundGeo)
 
   // infield: a slightly lighter green fill inside the inner kerb
-  track(buildLoopRibbon(TRACK_IN - 30, TRACK_IN, 0.0, mat.infield))
+  track(buildLoopRibbon(TRACK_IN - 30, TRACK_IN, 0.0, mat.infield, REPEAT.infield))
   // the red track band with white lane lines (lines sit 4 cm above the surface —
   // less separation z-fights into shimmer on the far side of the loop)
-  track(buildLoopRibbon(TRACK_IN, TRACK_OUT, 0.02, mat.track))
+  track(buildLoopRibbon(TRACK_IN, TRACK_OUT, 0.02, mat.track, REPEAT.track))
   for (let lane = 0; lane <= LANES; lane++) {
     const o = TRACK_IN + lane * LANE_W
     track(buildLoopRibbon(o - 0.03, o + 0.03, 0.06, mat.laneLine))
@@ -282,7 +480,7 @@ onMounted(() => {
     track(buildCrossStrip(st.s, 0.4, 0.07, mat.finish, st.o0 + 0.06, st.o1 - 0.06))
   }
   // raised white kerb on the inside edge, like a real track's inner rail
-  track(buildLoopRibbon(TRACK_IN - 0.2, TRACK_IN - 0.02, 0.08, mat.kerb))
+  track(buildLoopRibbon(TRACK_IN - 0.2, TRACK_IN - 0.02, 0.08, mat.kerb, REPEAT.kerb))
   // relay exchange-zone limits: a yellow line across each lane at both ends of the
   // three 30 m zones around the 100/200/300 m marks
   for (const l of relayZoneLines()) {
@@ -297,22 +495,21 @@ onMounted(() => {
   {
     const pts = waterfallPoints()
     const w = 0.14
-    const v: number[] = []
-    const idx: number[] = []
+    const position: number[] = []
+    const uv: number[] = []
+    const index: number[] = []
     pts.forEach((p, i) => {
       const a = trackPoint(p.s - w, p.o)
       const b = trackPoint(p.s + w, p.o)
-      v.push(a.x, 0.065, a.z, b.x, 0.065, b.z)
+      position.push(a.x, 0.065, a.z, b.x, 0.065, b.z)
+      const u = i / (pts.length - 1)
+      uv.push(u, 0, u, 1)
       if (i > 0) {
         const k = (i - 1) * 2
-        idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3)
+        index.push(k, k + 2, k + 1, k + 1, k + 2, k + 3)
       }
     })
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3))
-    g.setIndex(idx)
-    g.computeVertexNormals()
-    track(new THREE.Mesh(g, mat.finish))
+    track(new THREE.Mesh(geometryFrom({ position, uv, index }), mat.finish))
   }
   // dashed green break line at the 200 m point (end of the first bend)
   {
@@ -338,7 +535,9 @@ onMounted(() => {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText(String(n), 32, 52)
-    return new THREE.CanvasTexture(c)
+    const t = new THREE.CanvasTexture(c)
+    t.colorSpace = THREE.SRGBColorSpace
+    return t
   }
   const numberGeo = new THREE.PlaneGeometry(0.8, 1.2)
   const numberMats: THREE.MeshBasicMaterial[] = []
@@ -368,7 +567,9 @@ onMounted(() => {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText(label, 64, 34)
-    return new THREE.CanvasTexture(c)
+    const t = new THREE.CanvasTexture(c)
+    t.colorSpace = THREE.SRGBColorSpace
+    return t
   }
   const signMats: THREE.MeshBasicMaterial[] = []
   for (const sign of distanceSigns()) {
@@ -392,41 +593,59 @@ onMounted(() => {
 
   // Bake the static world into one mesh per material (#62): the loop ribbons, cross
   // strips, and ~50 scenery groups otherwise cost ~350 draw calls per frame on a scene
-  // that never changes. Textured meshes (signposts, lane numbers) keep their own
-  // uv-specific draws; the dome and lights stay live.
+  // that never changes. The dome and lights stay live.
   {
     scene.updateMatrixWorld(true)
     const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>()
-    const keepTextured: THREE.Mesh[] = []
-    const staticRoots = scene.children.filter((c) => c !== dome && !(c as THREE.Light).isLight)
+    // sunTarget is a plain Object3D, not a Light, so it would otherwise be swept into
+    // staticRoots and removed — after which its matrixWorld freezes and the directional
+    // light aims at the origin instead of following the walker. The sun/moon sprites,
+    // star points and cloud shell are all live-updated per frame too (see update() below)
+    // — left in staticRoots they would get merged into a mesh and silently vanish.
+    const skyObjects: THREE.Object3D[] = [dome, sunSprite, moonSprite, stars]
+    if (clouds) skyObjects.push(clouds)
+    const staticRoots = scene.children.filter(
+      (c) => !skyObjects.includes(c) && !(c as THREE.Light).isLight && c !== sunTarget,
+    )
     for (const root of staticRoots) {
       root.traverse((o) => {
         const m = o as THREE.Mesh
         if (!m.isMesh) return
-        const material = m.material as THREE.Material & { map?: THREE.Texture }
-        if (material.map) {
-          keepTextured.push(m)
-          return
-        }
+        const material = m.material as THREE.Material
         const g = (m.geometry as THREE.BufferGeometry).clone()
         g.applyMatrix4(m.matrixWorld)
-        g.deleteAttribute('uv') // primitives carry uv, the custom ribbons don't — unify
+        ensureUv(g) // was deleteAttribute('uv') — textured surfaces need uv, not none
         const arr = byMat.get(material) ?? []
         arr.push(g)
         byMat.set(material, arr)
       })
     }
-    // preserve world transforms of the textured meshes while their parents go away
-    for (const m of keepTextured) scene.attach(m)
-    for (const root of staticRoots) {
-      if (!keepTextured.includes(root as THREE.Mesh)) scene.remove(root)
-    }
+    for (const root of staticRoots) scene.remove(root)
     for (const [material, geoms] of byMat) {
+      assertSameAttributes(geoms, material.name || material.type)
       const merged = mergeGeometries(geoms)
       geoms.forEach((g) => g.dispose())
-      if (!merged) continue
+      if (!merged) {
+        throw new Error(
+          `scenic merge: mergeGeometries returned null for "${material.name || material.type}"`,
+        )
+      }
       disposables.push(merged)
-      scene.add(new THREE.Mesh(merged, material))
+      const m = new THREE.Mesh(merged, material)
+      if (material === blobMat) {
+        blobMesh = m
+        // Session may mount straight onto Quality (shadows on) — hide the fake ground
+        // contact discs immediately instead of waiting for a later applyTier() call.
+        blobMesh.visible = !budget.shadowMap
+      }
+      // DoubleSide surfaces must not cast: three flips shadowSide for them, so these flat
+      // ribbons and painted markings write their own depth into the map and self-shadow
+      // into acne. Deriving this from `side` rather than a hand-kept list means a new
+      // marking cannot silently reintroduce it.
+      const twoSided = (material as THREE.Material).side === THREE.DoubleSide
+      m.castShadow = !twoSided
+      m.receiveShadow = true
+      scene.add(m)
     }
   }
 
@@ -443,6 +662,14 @@ onMounted(() => {
     const phase = tod === 'auto' ? dayPhase(d) : TIME_PHASES[tod]
     // floodlights read as lit only after dark (#72) — one shared unlit material
     mat.floodOn.color.setHex(isNight(phase) ? 0xfff2c8 : 0x9aa0a8)
+    const bodies = skyBodies(phase)
+    // keep the light rig centred on the walker so its shadow box stays useful
+    sunTarget.position.set(camera.position.x, 0, camera.position.z)
+    sun.position.set(
+      camera.position.x + Math.cos(bodies.sun.azimuth) * Math.cos(bodies.sun.elevation) * SUN_DIST,
+      Math.max(2, Math.sin(bodies.sun.elevation) * SUN_DIST),
+      camera.position.z + Math.sin(bodies.sun.azimuth) * Math.cos(bodies.sun.elevation) * SUN_DIST,
+    )
     const sky = skyAt(phase, weather)
     scene.fog!.color.setHex(sky.fog)
     const domeKey = sky.sky * 0x1000000 + sky.fog
@@ -454,7 +681,67 @@ onMounted(() => {
     sun.intensity = sky.sunIntensity
     sun.color.setHex(sky.sunColor)
     hemi.intensity = sky.ambient
+    place(sunSprite, bodies.sun)
+    place(moonSprite, bodies.moon)
+    sunSprite.visible = bodies.sun.visible
+    moonSprite.visible = bodies.moon.visible
+    starMat.opacity = bodies.starOpacity
+    stars.visible = bodies.starOpacity > 0.01
+    stars.position.set(camera.position.x, 0, camera.position.z)
+    if (clouds) {
+      clouds.position.set(camera.position.x, 0, camera.position.z)
+      clouds.rotation.y = d * 0.0004 // drift with walked distance, like everything else
+      // Tint from the sky, or a white shell doubles the night sky's luminance — the same
+      // "weather brightens the night" mistake, arriving by a different route.
+      ;(clouds.material as THREE.MeshBasicMaterial).color.setHex(sky.sky)
+    }
     renderer!.render(scene, camera)
+  }
+
+  function applyTier(next: Tier) {
+    tier = next
+    budget = TIER_BUDGET[tier]
+    // regenerate at the new resolution and swap the maps in place — the materials and
+    // meshes stay, only the texture objects change, so the baked geometry is untouched
+    const old = tex
+    tex = makeTextures(budget.textureSize)
+    const remap: [THREE.Material, THREE.Texture][] = [
+      [mat.trunk, tex.bark],
+      [mat.crown1, tex.foliage],
+      [mat.crown2, tex.foliage],
+      [mat.pine, tex.foliage],
+      [mat.kerb, tex.concrete],
+      [mat.grass, tex.grass],
+      [mat.infield, tex.infield],
+      [mat.track, tex.tartan],
+    ]
+    for (const [m, t] of remap) {
+      const mm = m as THREE.Material & { map?: THREE.Texture | null }
+      mm.map = t
+      mm.needsUpdate = true
+    }
+    Object.values(old).forEach((t) => t.dispose())
+    if (budget.shadowMap && !renderer!.shadowMap.enabled) enableShadows()
+    else if (!budget.shadowMap && renderer!.shadowMap.enabled) {
+      // downgrade: stop paying for the depth pre-pass, and bring the blobs back
+      renderer!.shadowMap.enabled = false
+      sun.castShadow = false
+    }
+    if (blobMesh) blobMesh.visible = !budget.shadowMap
+    // addClouds() is idempotent, so this pair is safe on repeated toggles either way —
+    // without the visible=false half, a Quality->Performance downgrade left the drifting
+    // cloud shell on forever, contradicting "on Performance there are none" (same shape
+    // as the shadow-disable bug fixed previously: a tier path written one-way).
+    if (budget.clouds) addClouds()
+    if (clouds) clouds.visible = budget.clouds
+    starGeo.setAttribute(
+      'position',
+      new THREE.BufferAttribute(starPositions(budget.stars, SKY_R), 3),
+    )
+    // Draw the change. update() is the only path to renderer.render(), and frame() skips it
+    // while the belt is stopped, so without this the Settings control does nothing at all
+    // until the walker moves.
+    update(display)
   }
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -464,6 +751,14 @@ onMounted(() => {
     if (disposed) return
     const dt = Math.min(0.1, (now - last) / 1000)
     last = now
+    if (!probeDone) {
+      probeSamples.push(dt * 1000)
+      if (probeSamples.length >= PROBE_FRAMES) {
+        probeDone = true
+        const next = resolveTier(props.quality ?? 'auto', tierFromFrames(probeSamples))
+        if (next !== tier) applyTier(next)
+      }
+    }
     const target = props.distance
     if (Math.abs(target - display) > LAP_M / 4) display = target // view (re)opened — snap
     // advance at belt speed, gently corrected toward the true integrated distance
@@ -522,6 +817,27 @@ onMounted(() => {
     )
   }
 
+  // Settings can change while the view is open. Without this the quality control appears
+  // dead until the component remounts, because tier/probeDone are closure state captured
+  // at mount. Switching back to 'auto' restarts the probe from scratch.
+  const stopQualityWatch = watch(
+    () => props.quality,
+    (q) => {
+      const setting = q ?? 'auto'
+      probeSamples.length = 0
+      probeDone = setting !== 'auto'
+      if (probeDone && setting !== tier) applyTier(setting as Tier)
+    },
+  )
+
+  // Same reason as stopQualityWatch: update() is the only path to renderer.render() and the
+  // frame loop skips it while the belt is stopped, so without this a time-of-day change made
+  // from Settings does nothing at all until the walker moves.
+  const stopTimeWatch = watch(
+    () => props.timeOfDay,
+    () => update(display),
+  )
+
   const ro = new ResizeObserver(() => {
     const w = el.clientWidth
     const h = el.clientHeight
@@ -529,7 +845,10 @@ onMounted(() => {
     // DPR can change under us (window dragged to another monitor, zoom) — re-check it
     // here rather than only at mount, or the canvas goes blurry/oversampled (#60)
     const dpr = Math.min(window.devicePixelRatio, 2)
-    if (renderer.getPixelRatio() !== dpr) renderer.setPixelRatio(dpr)
+    if (renderer.getPixelRatio() !== dpr) {
+      renderer.setPixelRatio(dpr)
+      starMat.size = 1.6 * dpr
+    }
     renderer.setSize(w, h)
     camera.aspect = w / h
     camera.updateProjectionMatrix()
@@ -543,6 +862,8 @@ onMounted(() => {
   cleanup = () => {
     stopLoop()
     stopDistanceWatch?.()
+    stopQualityWatch()
+    stopTimeWatch()
     document.removeEventListener('visibilitychange', onVisibility)
     renderer?.domElement.removeEventListener('webglcontextlost', onContextLost)
     renderer?.domElement.removeEventListener('webglcontextrestored', onContextRestored)
@@ -560,8 +881,19 @@ onMounted(() => {
     })
     domeGeo.dispose()
     dome.material.dispose()
+    glowTex.dispose()
+    sunSprite.material.dispose()
+    moonSprite.material.dispose()
+    starGeo.dispose()
+    starMat.dispose()
+    cloudTex?.dispose()
+    ;(clouds?.material as THREE.Material | undefined)?.dispose()
+    blobTex.dispose()
+    blobGeo.dispose()
+    blobMat.dispose()
     Object.values(geo).forEach((g) => g.dispose())
     Object.values(mat).forEach((m) => m.dispose())
+    Object.values(tex).forEach((t) => t.dispose())
     renderer?.dispose()
     // dispose() alone leaves the context slot occupied until GC — force-release it so
     // repeated 2D↔3D toggles can't exhaust the browser's context budget (#60)

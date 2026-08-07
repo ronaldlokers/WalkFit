@@ -195,14 +195,14 @@ onMounted(() => {
   let tex = makeTextures(budget.textureSize)
 
   const mat = {
-    trunk: surface(tier, { color: 0xffffff, map: tex.bark, roughness: 0.95 }),
-    crown1: surface(tier, { color: 0xffffff, map: tex.foliage, roughness: 1, flatShading: true }),
-    crown2: surface(tier, { color: 0xc8e0a8, map: tex.foliage, roughness: 1, flatShading: true }),
-    pine: surface(tier, { color: 0x8fb890, map: tex.foliage, roughness: 1, flatShading: true }),
-    rock: surface(tier, { color: 0x777d87, roughness: 0.85, flatShading: true }),
-    pole: surface(tier, { color: 0x4a505b, roughness: 0.6 }),
+    trunk: surface({ color: 0xffffff, map: tex.bark, roughness: 0.95 }),
+    crown1: surface({ color: 0xffffff, map: tex.foliage, roughness: 1, flatShading: true }),
+    crown2: surface({ color: 0xc8e0a8, map: tex.foliage, roughness: 1, flatShading: true }),
+    pine: surface({ color: 0x8fb890, map: tex.foliage, roughness: 1, flatShading: true }),
+    rock: surface({ color: 0x777d87, roughness: 0.85, flatShading: true }),
+    pole: surface({ color: 0x4a505b, roughness: 0.6 }),
     floodOn: new THREE.MeshBasicMaterial({ color: 0xfff2c8 }), // unlit — reads as lit at night
-    kerb: surface(tier, {
+    kerb: surface({
       color: 0xffffff,
       map: tex.concrete,
       roughness: 0.9,
@@ -211,17 +211,17 @@ onMounted(() => {
     breakLine: new THREE.MeshBasicMaterial({ color: 0x3ba55d, side: THREE.DoubleSide }),
     relay: new THREE.MeshBasicMaterial({ color: 0xd8b638, side: THREE.DoubleSide }),
     hurdle: new THREE.MeshBasicMaterial({ color: 0x2e7d4f, side: THREE.DoubleSide }),
-    grass: surface(tier, { color: 0xffffff, map: tex.grass, roughness: 1 }),
+    grass: surface({ color: 0xffffff, map: tex.grass, roughness: 1 }),
     // The loop ribbons reverse travel direction halfway around, so a fixed triangle
     // winding faces down on one straight and up on the other — DoubleSide instead of
     // per-segment winding gymnastics (they're flat strips only ever seen from above).
-    infield: surface(tier, {
+    infield: surface({
       color: 0xffffff,
       map: tex.infield,
       roughness: 1,
       side: THREE.DoubleSide,
     }),
-    track: surface(tier, {
+    track: surface({
       color: 0xffffff,
       map: tex.tartan,
       roughness: 0.85,
@@ -394,7 +394,9 @@ onMounted(() => {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText(String(n), 32, 52)
-    return new THREE.CanvasTexture(c)
+    const t = new THREE.CanvasTexture(c)
+    t.colorSpace = THREE.SRGBColorSpace
+    return t
   }
   const numberGeo = new THREE.PlaneGeometry(0.8, 1.2)
   const numberMats: THREE.MeshBasicMaterial[] = []
@@ -424,7 +426,9 @@ onMounted(() => {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText(label, 64, 34)
-    return new THREE.CanvasTexture(c)
+    const t = new THREE.CanvasTexture(c)
+    t.colorSpace = THREE.SRGBColorSpace
+    return t
   }
   const signMats: THREE.MeshBasicMaterial[] = []
   for (const sign of distanceSigns()) {
@@ -452,7 +456,12 @@ onMounted(() => {
   {
     scene.updateMatrixWorld(true)
     const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>()
-    const staticRoots = scene.children.filter((c) => c !== dome && !(c as THREE.Light).isLight)
+    // sunTarget is a plain Object3D, not a Light, so it would otherwise be swept into
+    // staticRoots and removed — after which its matrixWorld freezes and the directional
+    // light aims at the origin instead of following the walker.
+    const staticRoots = scene.children.filter(
+      (c) => c !== dome && !(c as THREE.Light).isLight && c !== sunTarget,
+    )
     for (const root of staticRoots) {
       root.traverse((o) => {
         const m = o as THREE.Mesh

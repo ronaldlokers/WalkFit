@@ -8,7 +8,6 @@
 // uv and the merge pass fills in zeros for anything still missing it.
 import * as THREE from 'three'
 import { trackPoint, LAP_M, worldHash } from './scenic'
-import type { Tier } from './scenicQuality'
 
 export interface MeshArrays {
   position: number[]
@@ -129,7 +128,7 @@ export function tartanTexture(size: number): THREE.CanvasTexture {
   const [c, ctx] = canvas(size)
   ctx.fillStyle = '#9c4238'
   ctx.fillRect(0, 0, size, size)
-  const grains = size * size * 0.12
+  const grains = Math.min(size * size * 0.12, 40000)
   for (let i = 0; i < grains; i++) {
     const x = worldHash(i * 3 + 1) * size
     const y = worldHash(i * 3 + 2) * size
@@ -164,7 +163,7 @@ export function grassTexture(size: number, hue: number): THREE.CanvasTexture {
     ctx.fillRect(x, y, size / cells, size / cells)
   }
   ctx.strokeStyle = 'rgba(160,200,140,0.10)'
-  for (let i = 0; i < size * 1.5; i++) {
+  for (let i = 0; i < Math.min(size * 1.5, 1200); i++) {
     const x = worldHash(i * 5 + 31) * size
     const y = worldHash(i * 5 + 32) * size
     ctx.beginPath()
@@ -180,7 +179,7 @@ export function barkTexture(size: number): THREE.CanvasTexture {
   const [c, ctx] = canvas(size)
   ctx.fillStyle = '#5d4634'
   ctx.fillRect(0, 0, size, size)
-  for (let i = 0; i < size / 2; i++) {
+  for (let i = 0; i < Math.min(size / 2, 400); i++) {
     const x = worldHash(i * 4 + 51) * size
     ctx.fillStyle = worldHash(i * 4 + 52) < 0.5 ? 'rgba(0,0,0,0.22)' : 'rgba(210,180,150,0.10)'
     ctx.fillRect(x, 0, 1 + worldHash(i * 4 + 53) * 2, size)
@@ -193,7 +192,7 @@ export function foliageTexture(size: number): THREE.CanvasTexture {
   const [c, ctx] = canvas(size)
   ctx.fillStyle = '#3f7d3a'
   ctx.fillRect(0, 0, size, size)
-  for (let i = 0; i < size * 2; i++) {
+  for (let i = 0; i < Math.min(size * 2, 1200); i++) {
     const x = worldHash(i * 6 + 71) * size
     const y = worldHash(i * 6 + 72) * size
     const r = 2 + worldHash(i * 6 + 73) * (size / 24)
@@ -211,7 +210,7 @@ export function concreteTexture(size: number): THREE.CanvasTexture {
   const [c, ctx] = canvas(size)
   ctx.fillStyle = '#e8ecf2'
   ctx.fillRect(0, 0, size, size)
-  for (let i = 0; i < size * size * 0.04; i++) {
+  for (let i = 0; i < Math.min(size * size * 0.04, 16000); i++) {
     ctx.fillStyle = `rgba(120,130,145,${0.04 + worldHash(i + 131) * 0.06})`
     ctx.fillRect(worldHash(i * 2 + 132) * size, worldHash(i * 2 + 133) * size, 2, 2)
   }
@@ -226,25 +225,24 @@ export function concreteTexture(size: number): THREE.CanvasTexture {
   return finish(c)
 }
 
-// Lambert on the cheap tier (it accepts a map and costs far less), Standard on the
-// expensive one where roughness response is worth paying for.
-export function surface(
-  tier: Tier,
-  opts: {
-    color: number
-    map?: THREE.Texture
-    roughness?: number
-    side?: THREE.Side
-    flatShading?: boolean
-  },
-): THREE.Material {
-  const base = {
+// Always Standard: material class cannot change after the bake (materials are the merge
+// keys), so a tier-dependent class meant the auto-probed upgrade silently kept Lambert
+// and left every roughness value inert. The tier still gates what actually costs —
+// shadow map, texture resolution, object counts.
+export function surface(opts: {
+  color: number
+  map?: THREE.Texture
+  roughness?: number
+  side?: THREE.Side
+  flatShading?: boolean
+}): THREE.Material {
+  const base: THREE.MeshStandardMaterialParameters = {
     color: opts.color,
-    map: opts.map,
     side: opts.side ?? THREE.FrontSide,
     flatShading: opts.flatShading ?? false,
+    roughness: opts.roughness ?? 0.9,
+    metalness: 0,
   }
-  return tier === 'high'
-    ? new THREE.MeshStandardMaterial({ ...base, roughness: opts.roughness ?? 0.9, metalness: 0 })
-    : new THREE.MeshLambertMaterial(base)
+  if (opts.map) base.map = opts.map
+  return new THREE.MeshStandardMaterial(base)
 }

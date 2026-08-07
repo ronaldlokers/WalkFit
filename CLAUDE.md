@@ -126,6 +126,20 @@ Keep pinned Playwright version and image tag in sync.
   `src/scenic.test.ts`. See the scenic paragraph below.
 - `src/Scenic3D.vue` — the three.js first-person scenic renderer; async component, so
   three.js lives in a lazy chunk (see below).
+- `src/scenicSky.ts` — day/night cycle, weather, palette, and `skyBodies()` (sun/moon
+  azimuth+elevation, star opacity), split out of `scenic.ts`. The sun's elevation curve is
+  piecewise, anchored so it crosses the horizon at `NIGHT_DAWN_EDGE` and `SUN_SET_PHASE` —
+  a plain cosine once put the sun 68 deg underground at the dawn preset. Star opacity ramps
+  inside the night band's own edges so a risen sun never sits over visible stars. Weather
+  desaturates toward each colour's own luminance rather than a fixed grey, or a misty night
+  comes out brighter than a clear day. Unit-tested in `src/scenicSky.test.ts`.
+- `src/scenicQuality.ts` — adaptive quality tiers: a median-of-60-frames probe picks
+  `low`/`high`, `walkfit.scenic.quality` overrides it. Gates the shadow map, texture size,
+  star count and clouds. Every tier path must work in BOTH directions — enabling and
+  disabling — or picking Performance buys neither the saving nor the fallback.
+- `src/scenicMeshes.ts` — pure vertex/uv/index array builders plus the three.js mesh and
+  procedural `CanvasTexture` factories, extracted from `Scenic3D.vue`. Every `REPEAT` value
+  must divide `LAP_M` exactly, or the texture misaligns with itself at the start/finish seam.
 - `src/App.vue` — the rest of the UI: loop, chart, controls,
   header live-stat strip (time/distance/kcal/speed/pace — real zeros faded while idle),
   header overflow menu, onboarding wizard; the statistics and settings sheets live in
@@ -167,7 +181,8 @@ incremental sync cursors), `walkfit.view` (`track` | `scenic`),
 (the app is always the immersive
 layout since #103: fullscreen visual, fading HUD pills, workout state in the
 `.imm-workout` ribbon; the big-numbers/kiosk option was removed), `walkfit.scenic.time`
-(3D time-of-day override),
+(3D time-of-day override), `walkfit.scenic.quality` (`auto` | `low` | `high`, 3D quality
+override),
 `walkfit.capture` (raw BLE frame
 debug logging, off unless `'1'`), `walkfit.demo` (demo mode — src/demo.ts simulates the
 treadmill + HR strap behind the composable interfaces and seeds a fixture dataset;
@@ -273,6 +288,15 @@ runtime dependency**, and only the scenic view pays for it: `Scenic3D.vue` is a
 downloads on first open — the main bundle stays three-free. No WebGL (probed before any
 three setup) → the component emits `unsupported`, the app falls back to the 2D track
 view and disables the Scenic toggle.
+
+Every geometry builder emits UVs and the bake pass **fills in zeros** for anything missing
+them (`ensureUv`) — it used to do the opposite, deleting `uv` so `mergeGeometries` would
+accept a mixed batch, which textured surfaces cannot live with. `assertSameAttributes`
+throws on a mismatched batch, because a silent merge of disagreeing attribute sets renders
+as corruption rather than an error. Anything that must survive the bake has to be excluded
+from the `staticRoots` filter — including `sunTarget`, since a `DirectionalLight` whose
+target has been removed from the scene aims at the world origin and every shadow in the
+scene is then quietly wrong.
 
 The 2D track view is **generated from the same scenic.ts model** the 3D view walks —
 not hand-drawn SVG: `track2d` in App.vue maps 3D `(x, z)` → SVG `(cx + z·k, cy + x·k)`

@@ -118,7 +118,7 @@ export function skyAt(phase: number, weather: WeatherId = 'clear'): SkyState {
 // Night band (#72): floodlights switch on, path edges matter — shared so the component
 // and any future logic agree on what "night" means.
 export function isNight(phase: number): boolean {
-  return phase >= 0.82 || phase < 0.02
+  return phase >= NIGHT_DUSK_EDGE || phase < NIGHT_DAWN_EDGE
 }
 
 // --- sun and moon ---
@@ -144,6 +144,9 @@ const MAX_ELEVATION = Math.PI * 0.42 // just shy of straight overhead
 // isNight()'s dawn edge (phase < 0.02). Elevation must stay negative right up to this
 // edge — see the p < NIGHT_DAWN_EDGE branch in sunElevation below.
 const NIGHT_DAWN_EDGE = 0.02
+// isNight()'s dusk edge (phase >= 0.82) — shared with starFade's dusk-shoulder ramp below,
+// which needs the same edge so "stars fully out" lands exactly where "night" starts.
+const NIGHT_DUSK_EDGE = 0.82
 
 // Elevation has to agree with the PALETTE, not with an arbitrary cosine. A plain
 // cos(p - 0.45) crosses zero at 0.20 and 0.70, which puts the sun 68° underground at the
@@ -192,9 +195,9 @@ function starFade(p: number): number {
   // break the "stars are exactly 0 once the sun is up" invariant at the boundary itself.
   const EPS = 1e-9
   const clamp = (v: number) => (v < EPS ? 0 : Math.min(1, v))
-  // dusk: rise from 0 at sunset (SUN_SET_PHASE) to 1 by the night band's edge (0.82),
-  // then clamp holds it at 1 for the rest of the (wrapping) night band
-  if (p >= SUN_SET_PHASE) return clamp((p - SUN_SET_PHASE) / (0.82 - SUN_SET_PHASE))
+  // dusk: rise from 0 at sunset (SUN_SET_PHASE) to 1 by the night band's edge
+  // (NIGHT_DUSK_EDGE), then clamp holds it at 1 for the rest of the (wrapping) night band
+  if (p >= SUN_SET_PHASE) return clamp((p - SUN_SET_PHASE) / (NIGHT_DUSK_EDGE - SUN_SET_PHASE))
   // dawn: fall from 1 at phase 0 to 0 by NIGHT_DAWN_EDGE, inside the night band's tail
   if (p < NIGHT_DAWN_EDGE) return clamp(1 - p / NIGHT_DAWN_EDGE)
   return 0

@@ -361,6 +361,9 @@ onMounted(() => {
     laneLine: new THREE.MeshBasicMaterial({ color: 0xdfe4ea, side: THREE.DoubleSide }),
     finish: new THREE.MeshBasicMaterial({ color: 0xf2f5f9, side: THREE.DoubleSide }),
   }
+  // assertSameAttributes/mergeGeometries errors prefer material.name — without this every
+  // merge batch reports as generic "MeshStandardMaterial", useless for diagnosing which one.
+  Object.entries(mat).forEach(([k, m]) => (m.name = k))
 
   function buildProp(p: Prop): THREE.Object3D {
     const g = new THREE.Group()
@@ -415,7 +418,7 @@ onMounted(() => {
     // world is baked once, so the auto probe's low→high upgrade (or a later Settings
     // downgrade) can't add or remove geometry. The merged blob mesh is instead toggled
     // visible/invisible in applyTier to match whichever tier is actually active.
-    if (!TIER_BUDGET[tier].shadowMap && p.type !== 'flood') {
+    if (p.type !== 'flood') {
       const blob = new THREE.Mesh(blobGeo, blobMat)
       blob.rotation.x = -Math.PI / 2
       blob.position.y = 0.03
@@ -622,23 +625,25 @@ onMounted(() => {
       assertSameAttributes(geoms, material.name || material.type)
       const merged = mergeGeometries(geoms)
       geoms.forEach((g) => g.dispose())
-      if (!merged) continue
+      if (!merged) {
+        throw new Error(
+          `scenic merge: mergeGeometries returned null for "${material.name || material.type}"`,
+        )
+      }
       disposables.push(merged)
       const m = new THREE.Mesh(merged, material)
-      if (material === blobMat) blobMesh = m
-      // everything in the scenery ring both casts and receives; the flat painted
-      // markings only receive, or their 4 cm lift casts a visible false shadow
-      const painted =
-        material === mat.laneLine ||
-        material === mat.finish ||
-        material === mat.relay ||
-        material === mat.hurdle ||
-        material === mat.breakLine
-      // Flat ground ribbons must not cast: they are DoubleSide, so they write their own
-      // depth into the shadow map and self-shadow into acne, and the kerb's 6 cm lift
-      // throws a false stripe across the track at low sun angles. Nothing is under them.
-      const flatGround = material === mat.track || material === mat.infield || material === mat.kerb
-      m.castShadow = !painted && !flatGround
+      if (material === blobMat) {
+        blobMesh = m
+        // Session may mount straight onto Quality (shadows on) — hide the fake ground
+        // contact discs immediately instead of waiting for a later applyTier() call.
+        blobMesh.visible = !budget.shadowMap
+      }
+      // DoubleSide surfaces must not cast: three flips shadowSide for them, so these flat
+      // ribbons and painted markings write their own depth into the map and self-shadow
+      // into acne. Deriving this from `side` rather than a hand-kept list means a new
+      // marking cannot silently reintroduce it.
+      const twoSided = (material as THREE.Material).side === THREE.DoubleSide
+      m.castShadow = !twoSided
       m.receiveShadow = true
       scene.add(m)
     }
@@ -686,6 +691,9 @@ onMounted(() => {
     if (clouds) {
       clouds.position.set(camera.position.x, 0, camera.position.z)
       clouds.rotation.y = d * 0.0004 // drift with walked distance, like everything else
+      // Tint from the sky, or a white shell doubles the night sky's luminance — the same
+      // "weather brightens the night" mistake, arriving by a different route.
+      ;(clouds.material as THREE.MeshBasicMaterial).color.setHex(sky.sky)
     }
     renderer!.render(scene, camera)
   }
@@ -730,6 +738,10 @@ onMounted(() => {
       'position',
       new THREE.BufferAttribute(starPositions(budget.stars, SKY_R), 3),
     )
+    // Draw the change. update() is the only path to renderer.render(), and frame() skips it
+    // while the belt is stopped, so without this the Settings control does nothing at all
+    // until the walker moves.
+    update(display)
   }
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches

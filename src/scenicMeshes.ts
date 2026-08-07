@@ -21,8 +21,8 @@ export interface MeshArrays {
 // repeatMetres, so the closing ring lands at u = 400 / repeatMetres — and unless that
 // is a whole number the tile does not line up with itself where the loop closes, which
 // reads as the texture visibly jumping at the start/finish line. 400 / 5 = 80,
-// 400 / 40 = 10, 400 / 10 = 40, 400 / 8 = 50, 400 / 1 = 400. All integers.
-export const REPEAT = { track: 5, lane: 40, infield: 10, kerb: 8, mark: 1 }
+// 400 / 10 = 40, 400 / 8 = 50, 400 / 1 = 400. All integers.
+export const REPEAT = { track: 5, infield: 10, kerb: 8, mark: 1 }
 
 // Closed ribbon around the whole loop between lateral offsets [o0, o1], sampled every
 // `step` metres. `u` advances one unit per `repeatMetres` of arc so a tiled texture keeps

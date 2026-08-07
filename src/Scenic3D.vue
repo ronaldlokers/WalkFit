@@ -39,6 +39,7 @@ import {
   foliageTexture,
   concreteTexture,
   surface,
+  blobShadowTexture,
 } from './scenicMeshes'
 import {
   dayPhase,
@@ -122,6 +123,25 @@ onMounted(() => {
   sun.target = sunTarget
   const SUN_DIST = 120
 
+  // Fixed-size shadow box re-centred on the walker each frame. Fitting it to the whole
+  // 400 m loop would spend nearly all the map's resolution on geometry behind you.
+  const SHADOW_BOX = 60 // metres either side of the camera
+  function enableShadows() {
+    renderer!.shadowMap.enabled = true
+    renderer!.shadowMap.type = THREE.PCFSoftShadowMap
+    sun.castShadow = true
+    sun.shadow.mapSize.set(2048, 2048)
+    const cam = sun.shadow.camera
+    cam.left = -SHADOW_BOX
+    cam.right = SHADOW_BOX
+    cam.top = SHADOW_BOX
+    cam.bottom = -SHADOW_BOX
+    cam.near = 1
+    cam.far = SUN_DIST * 2
+    cam.updateProjectionMatrix()
+    sun.shadow.bias = -0.0006
+  }
+
   // Sky dome: vertex-color gradient from fog color at the horizon to sky color overhead,
   // following the camera. Kills the hard seam where fogged ground meets a flat background.
   // toneMapped:false is load-bearing — three.js applies fog AFTER tone mapping, so real
@@ -167,6 +187,15 @@ onMounted(() => {
     pole: new THREE.CylinderGeometry(0.09, 0.12, 1, 6),
     head: new THREE.BoxGeometry(1.6, 0.5, 0.25),
   }
+  // Cheap-tier ground contact for props (Step 4 below) — shared across every prop that
+  // gets one, so it costs one texture and one geometry, not one per tree.
+  const blobTex = blobShadowTexture(128)
+  const blobGeo = new THREE.PlaneGeometry(1, 1)
+  const blobMat = new THREE.MeshBasicMaterial({
+    map: blobTex,
+    transparent: true,
+    depthWrite: false,
+  })
   function makeTextures(size: number) {
     const aniso = Math.min(4, renderer!.capabilities.getMaxAnisotropy())
     const t = {
@@ -192,6 +221,9 @@ onMounted(() => {
   }
   // Task 6 deliberately left this out because nothing read it yet; it has a reader now.
   let budget = TIER_BUDGET[tier]
+  // an explicit quality: 'high' setting must get shadows immediately — the probe that
+  // would otherwise call this (via applyTier) never runs when the tier isn't 'auto'.
+  if (budget.shadowMap && !renderer!.shadowMap.enabled) enableShadows()
   let tex = makeTextures(budget.textureSize)
 
   const mat = {
@@ -279,6 +311,17 @@ onMounted(() => {
       g.rotation.y = p.seed * Math.PI * 2
       g.scale.setScalar(p.scale)
     }
+    // Cheap tier runs no shadow map: fake ground contact with a static dark disc instead.
+    // Decided at build time, not tier-reactively — the world is baked once, so a
+    // mid-session low→high upgrade leaves these in place under the real shadows. That's
+    // a slightly dark patch for a couple of seconds, not worth rebuilding the whole bake.
+    if (!TIER_BUDGET[tier].shadowMap && p.type !== 'flood') {
+      const blob = new THREE.Mesh(blobGeo, blobMat)
+      blob.rotation.x = -Math.PI / 2
+      blob.position.y = 0.03
+      blob.scale.setScalar(1.6)
+      g.add(blob)
+    }
     return g
   }
 
@@ -320,6 +363,7 @@ onMounted(() => {
   const ground = new THREE.Mesh(groundGeo, mat.grass)
   ground.rotation.x = -Math.PI / 2
   ground.position.y = -0.02
+  ground.receiveShadow = true
   scene.add(ground)
   disposables.push(groundGeo)
 
@@ -482,7 +526,18 @@ onMounted(() => {
       geoms.forEach((g) => g.dispose())
       if (!merged) continue
       disposables.push(merged)
-      scene.add(new THREE.Mesh(merged, material))
+      const m = new THREE.Mesh(merged, material)
+      // everything in the scenery ring both casts and receives; the flat painted
+      // markings only receive, or their 4 cm lift casts a visible false shadow
+      const painted =
+        material === mat.laneLine ||
+        material === mat.finish ||
+        material === mat.relay ||
+        material === mat.hurdle ||
+        material === mat.breakLine
+      m.castShadow = !painted
+      m.receiveShadow = true
+      scene.add(m)
     }
   }
 
@@ -544,6 +599,7 @@ onMounted(() => {
       mm.needsUpdate = true
     }
     Object.values(old).forEach((t) => t.dispose())
+    if (budget.shadowMap && !renderer!.shadowMap.enabled) enableShadows()
   }
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -671,6 +727,9 @@ onMounted(() => {
     })
     domeGeo.dispose()
     dome.material.dispose()
+    blobTex.dispose()
+    blobGeo.dispose()
+    blobMat.dispose()
     Object.values(geo).forEach((g) => g.dispose())
     Object.values(mat).forEach((m) => m.dispose())
     Object.values(tex).forEach((t) => t.dispose())

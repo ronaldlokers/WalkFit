@@ -225,6 +225,21 @@ export function concreteTexture(size: number): THREE.CanvasTexture {
   return finish(c)
 }
 
+// Fallback ground contact for the cheap tier, which runs no shadow map at all: a soft
+// dark disc laid under each prop. It does not track the sun — that is the honest trade.
+export function blobShadowTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
+  g.addColorStop(0, 'rgba(0,0,0,0.45)')
+  g.addColorStop(0.6, 'rgba(0,0,0,0.18)')
+  g.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, size, size)
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
+
 // Always Standard: material class cannot change after the bake (materials are the merge
 // keys), so a tier-dependent class meant the auto-probed upgrade silently kept Lambert
 // and left every roughness value inert. The tier still gates what actually costs —

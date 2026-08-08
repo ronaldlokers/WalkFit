@@ -90,6 +90,49 @@ export function trackPoint(s: number, o = 0): TrackPoint {
   }
 }
 
+// --- curvature (slice 4: camera lean) ---
+export const BEND_LEN_M = Math.PI * BEND_R
+
+// Signed curvature of the lane-1 line at arc distance s: 0 on the straights, 1/BEND_R on
+// the bends. POSITIVE MEANS TURNING LEFT — and both bends are left turns, because the loop
+// is walked counterclockwise with the infield on the left. The bend CENTRES sit on
+// opposite sides of the world origin, which makes it tempting to give them opposite signs;
+// relative to the direction of travel they curve the same way, and a camera that took its
+// roll from a flipping sign would lean out of one bend.
+export function curvatureAt(s: number): number {
+  const w = ((s % LAP_M) + LAP_M) % LAP_M
+  if (w < STRAIGHT_M) return 0
+  if (w < STRAIGHT_M + BEND_LEN_M) return 1 / BEND_R
+  if (w < 2 * STRAIGHT_M + BEND_LEN_M) return 0
+  return 1 / BEND_R
+}
+
+// A real track has no transition spiral: curvature steps by a full 1/R at the tangent
+// point, and a camera roll driven off curvatureAt alone snaps over in a single frame.
+// Blend across the nearest segment boundary instead. Analytic (no state), so it stays as
+// deterministic and testable as everything else here.
+export const CURVATURE_EASE_M = 6
+
+export function curvatureEased(s: number, ease = CURVATURE_EASE_M): number {
+  const w = ((s % LAP_M) + LAP_M) % LAP_M
+  // LAP_M is included so the finish-line wrap eases like any other boundary
+  const bounds = [0, STRAIGHT_M, STRAIGHT_M + BEND_LEN_M, 2 * STRAIGHT_M + BEND_LEN_M, LAP_M]
+  let nearest = Infinity
+  let at = 0
+  for (const b of bounds) {
+    if (Math.abs(w - b) < Math.abs(nearest)) {
+      nearest = w - b
+      at = b
+    }
+  }
+  if (Math.abs(nearest) >= ease / 2) return curvatureAt(w)
+  // every segment is far longer than `ease`, so ±ease lands squarely in the neighbours
+  const before = curvatureAt(at - ease)
+  const after = curvatureAt(at + ease)
+  const u = nearest / ease + 0.5 // 0 at the window's leading edge, 1 at its trailing edge
+  return before + (after - before) * (u * u * (3 - 2 * u)) // smoothstep
+}
+
 // --- surroundings ---
 // Deterministic scenery outside the track: trees/bushes/rocks scattered around the
 // perimeter, plus floodlight poles. Static — a loop world needs no streaming.

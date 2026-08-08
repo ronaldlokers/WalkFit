@@ -275,9 +275,16 @@ describe('cameraMotion (slice 4)', () => {
     expect(at(GAIT / 2).dy).toBeCloseTo(at(0).dy, 9) // bob repeats every half gait cycle
     expect(at(GAIT).dx).toBeCloseTo(at(0).dx, 9)
     expect(at(GAIT / 2).dx).toBeCloseTo(-at(0).dx, 9) // sway does NOT — it inverts
-    // and the sway genuinely swings to both sides within one cycle
-    expect(at(GAIT / 4).dx).toBeGreaterThan(0)
-    expect(at((3 * GAIT) / 4).dx).toBeLessThan(0)
+    // pin the bob to its actual extreme a quarter cycle in — d = 0 and d = GAIT/2 are
+    // both zero-crossings for EVERY even multiplier, so those alone can't tell a correct
+    // 2x bob from a 4x one. At GAIT/4 a 1x bob reads 0 and a 4x bob reads +BOB_M (the
+    // wrong sign); only the correct 2x bob lands on -BOB_M.
+    expect(at(GAIT / 4).dy).toBeCloseTo(-BOB_M, 9)
+    // and the sway genuinely swings to both sides within one cycle: pin the actual
+    // extremes (not just the sign) — a 2x sway would read 0 at both these points, which
+    // these values are not
+    expect(at(GAIT / 4).dx).toBeCloseTo(SWAY_M, 9)
+    expect(at((3 * GAIT) / 4).dx).toBeCloseTo(-SWAY_M, 9)
   })
 
   it('is continuous across the lap wrap', () => {

@@ -165,6 +165,7 @@ export function cameraMotion(
   curvature: number, // signed 1/R at the current arc position, 0 on the straights
   enabled: boolean,
 ): CameraMotion {
+  if (!enabled) return { dy: 0, dx: 0, roll: 0, fov: FOV_BASE_DEG }
   // Same reasoning as strideLength: a NaN reaching camera.position blanks the scene, and
   // `stride <= 0` cannot catch NaN because every comparison with NaN is false.
   const still = Number.isFinite(speed) ? speed : 0
@@ -172,7 +173,6 @@ export function cameraMotion(
     FOV_BASE_DEG +
     (FOV_MAX_DEG - FOV_BASE_DEG) *
       clamp((still - FOV_SPEED_LO) / (FOV_SPEED_HI - FOV_SPEED_LO), 0, 1)
-  if (!enabled) return { dy: 0, dx: 0, roll: 0, fov: FOV_BASE_DEG }
   if (!Number.isFinite(distance) || !Number.isFinite(stride) || stride <= 0) {
     return { dy: 0, dx: 0, roll: 0, fov }
   }
@@ -181,7 +181,7 @@ export function cameraMotion(
   // motion doubles — the slice-3 bug that survived eight review rounds, because a
   // screenshot cannot show frequency.
   const gait = stepPhase(distance, gaitCycleM(stride)) * Math.PI * 2
-  const dy = -BOB_M * Math.cos(2 * gait) // lowest at the footfall, highest mid-step
+  const dy = BOB_M * Math.cos(2 * gait) // lowest at the footfall, highest mid-step
   const dx = SWAY_M * Math.sin(gait)
   const lean = Number.isFinite(curvature) ? clamp(curvature * BEND_R, -1, 1) : 0
   return { dy, dx, roll: ROLL_MAX_RAD * lean, fov }

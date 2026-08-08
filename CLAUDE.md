@@ -147,6 +147,21 @@ Keep pinned Playwright version and image tag in sync.
   (cadence is MEASURED from the belt's own pedometer via `state.steps`, not modelled —
   `gaitCycleM` converts a footfall's `strideLength` into the two-footfall period `stepPhase`
   actually swings limbs over), and `paceGap`. Unit-tested in `src/scenicLife.test.ts`.
+- `src/scenicVenue.ts` — **pure, three.js-free** club-track furniture: `stadium()` returns
+  parts in the same shape `surroundings()` uses, so the component's prop builder and
+  merge-by-material bake absorb them unchanged. `PART_SIZES` is the single source of truth
+  for part footprints — the renderer builds meshes to it and `scenicVenue.test.ts` checks
+  those same numbers against the kerb, so a resize can't pass the test while changing what
+  is drawn; the grandstand's across-track depth lives there specifically because it's a
+  renderer-side dimension no other test could see, and it once overhung the fence by 1.2 m
+  so the netting ran underneath the terracing. Nothing may sit between `TRACK_IN` and
+  `TRACK_OUT` (the running lanes) — a test pins it. The infield footprint check is
+  axis-aligned (width across the track, length along it), so it's only valid for parts
+  centred on a straight — it would silently stop being correct for a part on a bend arc.
+  The fence's chain-link `u` repeat must divide `LAP_M` exactly (4 m/repeat, 400/4 = 100) or
+  it misaligns where the loop closes; its gate is cut by skipping index emission, not
+  vertices, so u continuity across the seam survives. Unit-tested in
+  `src/scenicVenue.test.ts`.
 - `src/App.vue` — the rest of the UI: loop, chart, controls,
   header live-stat strip (time/distance/kcal/speed/pace — real zeros faded while idle),
   header overflow menu, onboarding wizard; the statistics and settings sheets live in
@@ -295,6 +310,19 @@ runtime dependency**, and only the scenic view pays for it: `Scenic3D.vue` is a
 downloads on first open — the main bundle stays three-free. No WebGL (probed before any
 three setup) → the component emits `unsupported`, the app falls back to the 2D track
 view and disables the Scenic toggle.
+
+The venue (`src/scenicVenue.ts`) is a **club track, not a stadium bowl**: one covered
+stand on the home straight, open horizon on the other three sides so the day/night sky
+and the scenery ring stay visible — a closed bowl would occlude both. Venue parts are
+STATIC and so get added to the scene BEFORE the bake block, unlike the pacers, rabbit and
+avatar, which move and so are added after it. The skyline is the one exception: it looks
+like venue furniture but is actually a camera-following backdrop (`SKYLINE_R` away,
+`fog: false`, tinted to the fog colour every frame) and is excluded from the bake via the
+`skyObjects` array, same as the sky dome. It has to work this way — a world-anchored ring
+can't work at all, since the camera wanders up to 56 m off the infield's centre, and any
+radius that clears the opaque sky dome on one side pokes through it on the other. Its
+first cut sat at radius 380, past the camera's 290 far plane and fully saturated by fog:
+it rendered zero pixels for the entire task before this fix.
 
 Every geometry builder emits UVs and the bake pass **fills in zeros** for anything missing
 them (`ensureUv`) — it used to do the opposite, deleting `uv` so `mergeGeometries` would

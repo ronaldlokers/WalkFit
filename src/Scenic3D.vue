@@ -827,7 +827,7 @@ onMounted(() => {
     scene.add(board)
   }
 
-  for (const p of surroundings()) scene.add(buildProp({ ...p, o: venueClearO(p.o) }))
+  for (const p of surroundings()) scene.add(buildProp({ ...p, o: venueClearO(p.type, p.o) }))
   for (const p of stadium()) {
     // the skyline is built above as a camera-following backdrop, not baked venue
     // furniture — baking it here would double it up in the static merge.

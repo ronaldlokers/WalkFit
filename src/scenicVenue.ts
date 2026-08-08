@@ -10,7 +10,7 @@
 // CENTRE of the part, and its long axis follows the track's local tangent at that point
 // (i.e. runs along the straight, not across it). Task 3's renderer relies on this — a
 // part laid across the track instead of along it pokes through the kerb onto the track.
-import { TRACK_IN, TRACK_OUT, STRAIGHT_M, LAP_M, BEND_R, worldHash } from './scenic'
+import { TRACK_IN, TRACK_OUT, STRAIGHT_M, LAP_M, BEND_R, worldHash, type PropType } from './scenic'
 
 export type VenueType =
   | 'stand'
@@ -72,13 +72,16 @@ export const FENCE_O = TRACK_OUT + 18 // 2.8 m clear of the stand's roof edge at
 export const GATE_S0 = BACK_STRAIGHT_MID + 10
 export const GATE_S1 = BACK_STRAIGHT_MID + 26
 // Scenery may not stand inside the perimeter — a tree in the terracing or a fence post
-// through a trunk reads as broken. surroundings() knows nothing about the venue (scenic.ts
-// cannot import this module), so the renderer maps each prop's offset through this on the
-// way in. Props inside the fence are reflected outward rather than deleted, which keeps the
-// ring's density instead of thinning it by half.
+// through a trunk reads as broken. Props inside the fence are reflected outward rather than
+// deleted, which keeps the ring's density instead of thinning it by half.
+//
+// Floodlight masts are exempt: surroundings() pins them just past the track's outer edge
+// because they are functional lighting, and real floodlights stand INSIDE the fence beside
+// the track. Reflecting them out among the trees puts them 35 m from where they belong.
 export const SCENERY_MIN_O = FENCE_O + 2
 
-export function venueClearO(o: number): number {
+export function venueClearO(type: PropType, o: number): number {
+  if (type === 'flood') return o
   return o < SCENERY_MIN_O ? SCENERY_MIN_O + (SCENERY_MIN_O - o) : o
 }
 

@@ -122,9 +122,12 @@ describe('stadium', () => {
 
   it('keeps every scenery prop outside the perimeter fence', () => {
     // 23 of 48 props used to sit inside the fence, five of them inside the grandstand
-    // itself — one tree came through the roof.
+    // itself — one tree came through the roof. Floodlight masts are excluded here: they are
+    // functional lighting deliberately pinned just past the track's outer edge, inside where
+    // this fence-clearance rule applies — see the dedicated exemption test below.
     for (const p of surroundings()) {
-      const o = venueClearO(p.o)
+      if (p.type === 'flood') continue
+      const o = venueClearO(p.type, p.o)
       expect(`${p.type} at o=${o.toFixed(2)}`).toBe(
         o >= SCENERY_MIN_O ? `${p.type} at o=${o.toFixed(2)}` : `${p.type} must clear the fence`,
       )
@@ -133,7 +136,19 @@ describe('stadium', () => {
 
   it('leaves props that were already outside the fence where they were', () => {
     // the reflection must not disturb the ring's outer half
-    expect(venueClearO(SCENERY_MIN_O + 5)).toBe(SCENERY_MIN_O + 5)
-    expect(venueClearO(SCENERY_MIN_O)).toBe(SCENERY_MIN_O)
+    expect(venueClearO('tree', SCENERY_MIN_O + 5)).toBe(SCENERY_MIN_O + 5)
+    expect(venueClearO('tree', SCENERY_MIN_O)).toBe(SCENERY_MIN_O)
+  })
+
+  it('leaves the floodlight masts where surroundings() put them', () => {
+    // They are functional track lighting, not decoration — real floodlights stand inside
+    // the fence beside the track. A blanket relocation once threw them 35 m out among the
+    // trees, where they lit nothing.
+    for (const p of surroundings()) {
+      if (p.type !== 'flood') continue
+      expect(`flood at o=${venueClearO(p.type, p.o).toFixed(2)}`).toBe(
+        `flood at o=${p.o.toFixed(2)}`,
+      )
+    }
   })
 })

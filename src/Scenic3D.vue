@@ -28,9 +28,18 @@ import {
   laneMeasurementO,
   DOME_R,
   CAMERA_FAR,
+  curvatureEased,
 } from './scenic'
 import type { Prop } from './scenic'
-import { pacers, stepPhase, strideLength, gaitCycleM } from './scenicLife'
+import {
+  pacers,
+  stepPhase,
+  strideLength,
+  gaitCycleM,
+  cameraMotion,
+  FOV_BASE_DEG,
+  FOV_EPSILON_DEG,
+} from './scenicLife'
 import type { Pacer } from './scenicLife'
 import {
   stadium,
@@ -90,6 +99,7 @@ const props = defineProps<{
   quality?: QualitySetting
   steps?: number
   rabbitDistance?: number | null // target-pace rabbit (#realism slice 3); null/omitted = none
+  motion?: boolean // head bob / sway / bend lean (#realism slice 4); omitted = on
 }>()
 const emit = defineEmits<{ unsupported: [] }>()
 
@@ -134,7 +144,7 @@ onMounted(() => {
   let probeDone = props.quality !== 'auto' && props.quality !== undefined
 
   const scene = new THREE.Scene()
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.3, CAMERA_FAR)
+  const camera = new THREE.PerspectiveCamera(FOV_BASE_DEG, 1, 0.3, CAMERA_FAR)
   // per-walk weather (#72): deterministic from the session seed
   const weather = weatherFor(props.weatherSeed ?? 0)
   const fogBand = WEATHER_FOG[weather]
@@ -1023,21 +1033,44 @@ onMounted(() => {
   }
 
   // --- camera + sky per frame ---
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   let display = props.distance // smoothed distance the camera actually sits at
   let sessionSeconds = 0
   let lastDomeKey = -1 // repaint the ~350 dome vertex colors only when the sky changed (#62)
   function update(d: number) {
-    const p = trackPoint(d)
-    camera.position.set(p.x, EYE_HEIGHT, p.z)
-    const ahead = trackPoint(d + 10)
-    camera.lookAt(ahead.x, EYE_HEIGHT - 0.2, ahead.z)
     // Measured, not modelled: state.steps is the belt's own pedometer, so the arms swing
-    // at your real cadence rather than an assumed one.
+    // at your real cadence rather than an assumed one — and the camera bobs at it too.
     const stride = strideLength(props.distance, props.steps ?? 0)
+    // prefers-reduced-motion overrides the setting unconditionally: that path renders
+    // discretely per distance tick with no rAF loop, so a bob there is a jolt, not motion.
+    const motion = cameraMotion(
+      d,
+      stride,
+      props.speed,
+      curvatureEased(d),
+      (props.motion ?? true) && !reducedMotion,
+    )
+    // Sway is a lateral offset in the world model's own terms, so it goes straight through
+    // trackPoint — and through the look-at point too, or swaying would yaw the view.
+    const p = trackPoint(d, motion.dx)
+    camera.position.set(p.x, EYE_HEIGHT + motion.dy, p.z)
+    const ahead = trackPoint(d + 10, motion.dx)
+    // The bob shifts the look-at target by the same dy: a pure vertical translation, which
+    // keeps the horizon where it is instead of pitching the camera at it.
+    camera.lookAt(ahead.x, EYE_HEIGHT + motion.dy - 0.2, ahead.z)
     const bodyPhase = stepPhase(d, gaitCycleM(stride)) * Math.PI * 2
     const bodySwing = Math.sin(bodyPhase) * 0.55
     avatarBody.position.set(camera.position.x, 0, camera.position.z)
+    // Read the yaw BEFORE the roll below: rotateZ mixes into the XYZ euler decomposition,
+    // so camera.rotation.y stops being the heading the moment the camera is rolled.
     avatarBody.rotation.y = camera.rotation.y
+    // rotateZ is applied AFTER lookAt every frame, and lookAt rebuilds the quaternion from
+    // scratch, so the roll replaces itself each frame rather than accumulating.
+    if (motion.roll !== 0) camera.rotateZ(motion.roll)
+    if (Math.abs(camera.fov - motion.fov) > FOV_EPSILON_DEG) {
+      camera.fov = motion.fov
+      camera.updateProjectionMatrix()
+    }
     armL.rotation.x = bodySwing
     armR.rotation.x = -bodySwing
     // Settings can pin the time of day; 'auto' follows walked distance (#72)
@@ -1239,7 +1272,6 @@ onMounted(() => {
     update(display)
   }
 
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   let last = performance.now()
   let lastRendered = Infinity // skip GPU work while the belt is stopped and nothing moved (#62)
   let lastPacerRender = 0

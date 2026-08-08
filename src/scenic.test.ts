@@ -21,6 +21,9 @@ import {
   waterfallPoints,
   laneDistanceToS,
   WATERFALL_S,
+  BEND_LEN_M,
+  curvatureAt,
+  curvatureEased,
 } from './scenic'
 
 describe('worldHash', () => {
@@ -210,6 +213,97 @@ describe('track markings', () => {
       expect(laneDistanceToS(laneMeasurementO(st.lane), 400) % 400).toBeCloseTo(0, 6)
       // and every stagger sits on the home straight (constant-s strip is perpendicular)
       expect(st.s).toBeLessThan(STRAIGHT_M)
+    }
+  })
+})
+
+describe('curvatureAt (slice 4)', () => {
+  it('is zero along both straights', () => {
+    for (const s of [0, 1, STRAIGHT_M / 2, STRAIGHT_M - 1]) {
+      expect(curvatureAt(s)).toBe(0)
+    }
+    const back = STRAIGHT_M + BEND_LEN_M
+    for (const s of [back + 1, back + STRAIGHT_M / 2, back + STRAIGHT_M - 1]) {
+      expect(curvatureAt(s)).toBe(0)
+    }
+  })
+
+  it('is 1/BEND_R through both bends', () => {
+    expect(curvatureAt(STRAIGHT_M + BEND_LEN_M / 2)).toBeCloseTo(1 / BEND_R, 9)
+    expect(curvatureAt(2 * STRAIGHT_M + 1.5 * BEND_LEN_M)).toBeCloseTo(1 / BEND_R, 9)
+  })
+
+  it('gives both bends the SAME sign, because both are left turns', () => {
+    // The spec expected the sign to flip. It must not: the track is walked
+    // counterclockwise, so the walker never turns right — only the bend CENTRES sit on
+    // opposite sides in world coordinates. Derive the turn direction from trackPoint's
+    // own tangents rather than trusting the constant.
+    const turnSign = (s: number) => {
+      const a = trackPoint(s)
+      const b = trackPoint(s + 0.01)
+      return Math.sign(a.tx * b.tz - a.tz * b.tx)
+    }
+    const bend1 = STRAIGHT_M + BEND_LEN_M / 2
+    const bend2 = 2 * STRAIGHT_M + 1.5 * BEND_LEN_M
+    expect(turnSign(bend1)).toBe(turnSign(bend2))
+    expect(Math.sign(curvatureAt(bend1))).toBe(Math.sign(curvatureAt(bend2)))
+  })
+
+  it('matches the tangent turning rate the geometry actually produces', () => {
+    // |dθ/ds| on a bend is 1/R — check the constant against a numeric derivative, so a
+    // future geometry change cannot leave curvatureAt quietly stale.
+    const s = STRAIGHT_M + BEND_LEN_M / 2
+    const a = trackPoint(s)
+    const b = trackPoint(s + 0.001)
+    // At exactly this s the tangent points along -x (atan2's ±π branch cut), so a naive
+    // subtraction can pick up a spurious ~2π jump depending on which side of the cut
+    // floating-point rounding lands on. Wrap the raw difference into (-π, π] first.
+    const rawDTheta = Math.atan2(b.tz, b.tx) - Math.atan2(a.tz, a.tx)
+    const dTheta = Math.abs(Math.atan2(Math.sin(rawDTheta), Math.cos(rawDTheta)))
+    expect(dTheta / 0.001).toBeCloseTo(Math.abs(curvatureAt(s)), 4)
+  })
+
+  it('wraps like every other arc parameter', () => {
+    expect(curvatureAt(LAP_M + 1)).toBe(curvatureAt(1))
+    expect(curvatureAt(-1)).toBe(curvatureAt(LAP_M - 1))
+  })
+})
+
+describe('curvatureEased (slice 4)', () => {
+  it('equals the exact curvature away from the tangent points', () => {
+    expect(curvatureEased(STRAIGHT_M / 2)).toBe(0)
+    expect(curvatureEased(STRAIGHT_M + BEND_LEN_M / 2)).toBeCloseTo(1 / BEND_R, 9)
+  })
+
+  it('has no snap at the straight/bend boundary', () => {
+    // a real track has no transition spiral, so raw curvature steps 1/R in one frame —
+    // this is the whole reason the eased variant exists
+    let maxStep = 0
+    let prev = curvatureEased(STRAIGHT_M - 6)
+    for (let s = STRAIGHT_M - 6; s <= STRAIGHT_M + 6; s += 0.05) {
+      const v = curvatureEased(s)
+      maxStep = Math.max(maxStep, Math.abs(v - prev))
+      prev = v
+    }
+    expect(maxStep).toBeLessThan(1 / BEND_R / 20)
+  })
+
+  it('has no snap at the finish-line wrap either', () => {
+    let maxStep = 0
+    let prev = curvatureEased(LAP_M - 6)
+    for (let s = LAP_M - 6; s <= LAP_M + 6; s += 0.05) {
+      const v = curvatureEased(s)
+      maxStep = Math.max(maxStep, Math.abs(v - prev))
+      prev = v
+    }
+    expect(maxStep).toBeLessThan(1 / BEND_R / 20)
+  })
+
+  it('stays inside the curvature range it blends between', () => {
+    for (let s = 0; s < LAP_M; s += 0.25) {
+      const v = curvatureEased(s)
+      expect(v).toBeGreaterThanOrEqual(0)
+      expect(v).toBeLessThanOrEqual(1 / BEND_R + 1e-12)
     }
   })
 })

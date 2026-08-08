@@ -87,6 +87,7 @@ const stravaAutoUpload = defineModel<boolean>('stravaAutoUpload', { required: tr
 const goalWeight = defineModel<number>('goalWeight', { required: true })
 const scenicTime = defineModel<string>('scenicTime', { required: true })
 const scenicQuality = defineModel<string>('scenicQuality', { required: true })
+const scenicMotion = defineModel<boolean>('scenicMotion', { required: true })
 const viewMode = defineModel<'track' | 'scenic'>('viewMode', { required: true })
 const goalKcal = defineModel<number>('goalKcal', { required: true })
 const goalSteps = defineModel<number>('goalSteps', { required: true })
@@ -320,6 +321,24 @@ function confirmForgetNow() {
             <option value="high">{{ t('settings.qualityHigh') }}</option>
           </select>
         </div>
+        <div class="set-row">
+          <span>{{ t('settings.motion') }}</span>
+          <div class="set-actions">
+            <button
+              :class="scenicMotion ? 'btn primary sm' : 'btn ghost sm'"
+              @click="scenicMotion = true"
+            >
+              {{ t('settings.motionOn') }}
+            </button>
+            <button
+              :class="scenicMotion ? 'btn ghost sm' : 'btn primary sm'"
+              @click="scenicMotion = false"
+            >
+              {{ t('settings.motionOff') }}
+            </button>
+          </div>
+        </div>
+        <p class="set-note">{{ t('settings.motionNote') }}</p>
       </template>
 
       <template v-else-if="section === 'integrations'">

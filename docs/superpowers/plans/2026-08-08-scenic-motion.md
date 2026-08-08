@@ -23,9 +23,9 @@
 
 ## Deviation from the spec — read before Task 1
 
-The spec's test list says `curvatureAt` "flips sign between the two bends". **It does not, and it must not.** An athletics track is walked counterclockwise with the infield on the left, so *both* bends are left turns; only the bend centres sit on opposite sides in world coordinates. Total turning around the loop is 2π, not 0. A camera that took its roll sign from a flipping curvature would lean *into* one bend and *out of* the other — the exact motion-sickness failure the off-switch exists to avoid.
+The spec's test list says `curvatureAt` "flips sign between the two bends". **It does not, and it must not.** An athletics track is walked counterclockwise with the infield on the left, so _both_ bends are left turns; only the bend centres sit on opposite sides in world coordinates. Total turning around the loop is 2π, not 0. A camera that took its roll sign from a flipping curvature would lean _into_ one bend and _out of_ the other — the exact motion-sickness failure the off-switch exists to avoid.
 
-This plan therefore implements the geometrically true version: `curvatureAt` returns `0` on both straights and `+1/BEND_R` on **both** bends, under the documented convention *positive = turning left*. Task 1 includes a test that derives the turn direction numerically from `trackPoint`'s own tangents, so the claim is verified against the geometry rather than asserted. Everything else in the spec is implemented as written.
+This plan therefore implements the geometrically true version: `curvatureAt` returns `0` on both straights and `+1/BEND_R` on **both** bends, under the documented convention _positive = turning left_. Task 1 includes a test that derives the turn direction numerically from `trackPoint`'s own tangents, so the claim is verified against the geometry rather than asserted. Everything else in the spec is implemented as written.
 
 ---
 
@@ -449,7 +449,7 @@ In `defineProps`, add after `rabbitDistance`:
 and change the camera construction (line 137) from the literal `60` to the shared constant:
 
 ```ts
-  const camera = new THREE.PerspectiveCamera(FOV_BASE_DEG, 1, 0.3, CAMERA_FAR)
+const camera = new THREE.PerspectiveCamera(FOV_BASE_DEG, 1, 0.3, CAMERA_FAR)
 ```
 
 - [ ] **Step 3: Move the reduced-motion probe above `update()`**
@@ -457,7 +457,7 @@ and change the camera construction (line 137) from the literal `60` to the share
 `update()` is about to read `reducedMotion`, which is currently declared ~200 lines below it (line 1242). It resolves at call time today, but a closure reading a `const` declared after it is a temporal-dead-zone trap waiting for the next reorder. Cut this line:
 
 ```ts
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 ```
 
 from just above `let last = performance.now()`, and paste it into the `// --- camera + sky per frame ---` block, immediately above `let display = props.distance`.
@@ -467,41 +467,41 @@ from just above `let last = performance.now()`, and paste it into the `// --- ca
 Replace the opening of `update()` — from `const p = trackPoint(d)` through `armR.rotation.x = -bodySwing` — with:
 
 ```ts
-    // Measured, not modelled: state.steps is the belt's own pedometer, so the arms swing
-    // at your real cadence rather than an assumed one — and the camera bobs at it too.
-    const stride = strideLength(props.distance, props.steps ?? 0)
-    // prefers-reduced-motion overrides the setting unconditionally: that path renders
-    // discretely per distance tick with no rAF loop, so a bob there is a jolt, not motion.
-    const motion = cameraMotion(
-      d,
-      stride,
-      props.speed,
-      curvatureEased(d),
-      (props.motion ?? true) && !reducedMotion,
-    )
-    // Sway is a lateral offset in the world model's own terms, so it goes straight through
-    // trackPoint — and through the look-at point too, or swaying would yaw the view.
-    const p = trackPoint(d, motion.dx)
-    camera.position.set(p.x, EYE_HEIGHT + motion.dy, p.z)
-    const ahead = trackPoint(d + 10, motion.dx)
-    // The bob shifts the look-at target by the same dy: a pure vertical translation, which
-    // keeps the horizon where it is instead of pitching the camera at it.
-    camera.lookAt(ahead.x, EYE_HEIGHT + motion.dy - 0.2, ahead.z)
-    const bodyPhase = stepPhase(d, gaitCycleM(stride)) * Math.PI * 2
-    const bodySwing = Math.sin(bodyPhase) * 0.55
-    avatarBody.position.set(camera.position.x, 0, camera.position.z)
-    // Read the yaw BEFORE the roll below: rotateZ mixes into the XYZ euler decomposition,
-    // so camera.rotation.y stops being the heading the moment the camera is rolled.
-    avatarBody.rotation.y = camera.rotation.y
-    // rotateZ is applied AFTER lookAt every frame, and lookAt rebuilds the quaternion from
-    // scratch, so the roll replaces itself each frame rather than accumulating.
-    if (motion.roll !== 0) camera.rotateZ(motion.roll)
-    if (Math.abs(camera.fov - motion.fov) > FOV_EPSILON_DEG) {
-      camera.fov = motion.fov
-      camera.updateProjectionMatrix()
-    }
-    armL.rotation.x = bodySwing
-    armR.rotation.x = -bodySwing
+// Measured, not modelled: state.steps is the belt's own pedometer, so the arms swing
+// at your real cadence rather than an assumed one — and the camera bobs at it too.
+const stride = strideLength(props.distance, props.steps ?? 0)
+// prefers-reduced-motion overrides the setting unconditionally: that path renders
+// discretely per distance tick with no rAF loop, so a bob there is a jolt, not motion.
+const motion = cameraMotion(
+  d,
+  stride,
+  props.speed,
+  curvatureEased(d),
+  (props.motion ?? true) && !reducedMotion,
+)
+// Sway is a lateral offset in the world model's own terms, so it goes straight through
+// trackPoint — and through the look-at point too, or swaying would yaw the view.
+const p = trackPoint(d, motion.dx)
+camera.position.set(p.x, EYE_HEIGHT + motion.dy, p.z)
+const ahead = trackPoint(d + 10, motion.dx)
+// The bob shifts the look-at target by the same dy: a pure vertical translation, which
+// keeps the horizon where it is instead of pitching the camera at it.
+camera.lookAt(ahead.x, EYE_HEIGHT + motion.dy - 0.2, ahead.z)
+const bodyPhase = stepPhase(d, gaitCycleM(stride)) * Math.PI * 2
+const bodySwing = Math.sin(bodyPhase) * 0.55
+avatarBody.position.set(camera.position.x, 0, camera.position.z)
+// Read the yaw BEFORE the roll below: rotateZ mixes into the XYZ euler decomposition,
+// so camera.rotation.y stops being the heading the moment the camera is rolled.
+avatarBody.rotation.y = camera.rotation.y
+// rotateZ is applied AFTER lookAt every frame, and lookAt rebuilds the quaternion from
+// scratch, so the roll replaces itself each frame rather than accumulating.
+if (motion.roll !== 0) camera.rotateZ(motion.roll)
+if (Math.abs(camera.fov - motion.fov) > FOV_EPSILON_DEG) {
+  camera.fov = motion.fov
+  camera.updateProjectionMatrix()
+}
+armL.rotation.x = bodySwing
+armR.rotation.x = -bodySwing
 ```
 
 - [ ] **Step 5: Typecheck, lint, and build**
@@ -557,13 +557,13 @@ watch(scenicMotion, (v) => localStorage.setItem('walkfit.scenic.motion', v ? 'on
 On `<Scenic3D>`, after `:rabbit-distance="rabbitDistance"`:
 
 ```html
-          :motion="scenicMotion"
+:motion="scenicMotion"
 ```
 
 On `<SettingsSheet>`, after `v-model:scenic-quality="scenicQuality"`:
 
 ```html
-        v-model:scenic-motion="scenicMotion"
+v-model:scenic-motion="scenicMotion"
 ```
 
 - [ ] **Step 3: Add the control in `SettingsSheet.vue`**
@@ -577,24 +577,18 @@ const scenicMotion = defineModel<boolean>('scenicMotion', { required: true })
 and after the quality `set-row` in the `display` section:
 
 ```html
-        <div class="set-row">
-          <span>{{ t('settings.motion') }}</span>
-          <div class="set-actions">
-            <button
-              :class="scenicMotion ? 'btn primary sm' : 'btn ghost sm'"
-              @click="scenicMotion = true"
-            >
-              {{ t('settings.motionOn') }}
-            </button>
-            <button
-              :class="scenicMotion ? 'btn ghost sm' : 'btn primary sm'"
-              @click="scenicMotion = false"
-            >
-              {{ t('settings.motionOff') }}
-            </button>
-          </div>
-        </div>
-        <p class="set-note">{{ t('settings.motionNote') }}</p>
+<div class="set-row">
+  <span>{{ t('settings.motion') }}</span>
+  <div class="set-actions">
+    <button :class="scenicMotion ? 'btn primary sm' : 'btn ghost sm'" @click="scenicMotion = true">
+      {{ t('settings.motionOn') }}
+    </button>
+    <button :class="scenicMotion ? 'btn ghost sm' : 'btn primary sm'" @click="scenicMotion = false">
+      {{ t('settings.motionOff') }}
+    </button>
+  </div>
+</div>
+<p class="set-note">{{ t('settings.motionNote') }}</p>
 ```
 
 - [ ] **Step 4: Add the four keys to both locale tables**
@@ -628,7 +622,7 @@ Four edits:
 1. In the `localStorage` key list, after `` `walkfit.scenic.quality` (`auto` | `low` | `high`, 3D quality override), `` add:
    `` `walkfit.scenic.motion` (`on` | `off`, 3D head bob/sway/lean — on by default, and `prefers-reduced-motion` overrides it), ``
 2. In the scenic paragraph, replace `Comfort: fixed horizon, no bob;` with:
-   `Comfort: the camera bobs, sways and leans into the bends off walked distance (`cameraMotion` in scenicLife.ts, `curvatureEased` in scenic.ts) — reversing the original fixed-horizon choice now that there is something to look at. Settings → Display turns it off, and`
+   `Comfort: the camera bobs, sways and leans into the bends off walked distance (`cameraMotion`in scenicLife.ts,`curvatureEased` in scenic.ts) — reversing the original fixed-horizon choice now that there is something to look at. Settings → Display turns it off, and`
    so the sentence continues `` `prefers-reduced-motion` renders discretely per distance tick instead of a continuous rAF loop `` — then append to that sentence: `and forces the motion off regardless of the setting, because a bob applied per discrete tick is a jolt.`
 3. In the `src/scenicLife.ts` bullet, add to the list of what it exports: `` `cameraMotion` (bob/sway/roll/FOV, phased off walked distance, sharing the same `gaitCycleM` cadence the limbs use — the bob is twice the gait frequency, the sway exactly it) ``.
 4. In the `src/scenic.ts` mention (the Scenic (3D) paragraph), note that it also exports `` `curvatureAt`/`curvatureEased` — 0 on the straights and `+1/BEND_R` on BOTH bends, since a counterclockwise loop turns left twice and never right ``.

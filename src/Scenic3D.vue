@@ -26,11 +26,24 @@ import {
   waterfallPoints,
   laneDistanceToS,
   laneMeasurementO,
+  DOME_R,
+  CAMERA_FAR,
 } from './scenic'
 import type { Prop } from './scenic'
 import { pacers, stepPhase, strideLength, gaitCycleM } from './scenicLife'
 import type { Pacer } from './scenicLife'
-import { stadium, PART_SIZES, SKYLINE_R, GATE_S0, GATE_S1 } from './scenicVenue'
+import {
+  stadium,
+  PART_SIZES,
+  SKYLINE_R,
+  GATE_S0,
+  GATE_S1,
+  venueClearO,
+  STAND_ROWS,
+  STAND_ROW_DEPTH,
+  STAND_ROW_RISE,
+  STAND_ROOF_W,
+} from './scenicVenue'
 import type { VenuePart } from './scenicVenue'
 import {
   ribbonArrays,
@@ -83,7 +96,6 @@ const emit = defineEmits<{ unsupported: [] }>()
 const host = ref<HTMLDivElement | null>(null)
 
 const EYE_HEIGHT = 1.6
-const FOG_FAR = 230
 // The perimeter fence's height. Used in three places (ribbon vertex, chain-link texture
 // v-repeat, post length) — a single source so changing it can't silently smear the uv.
 const FENCE_H = 2
@@ -122,7 +134,7 @@ onMounted(() => {
   let probeDone = props.quality !== 'auto' && props.quality !== undefined
 
   const scene = new THREE.Scene()
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.3, FOG_FAR + 60)
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.3, CAMERA_FAR)
   // per-walk weather (#72): deterministic from the session seed
   const weather = weatherFor(props.weatherSeed ?? 0)
   const fogBand = WEATHER_FOG[weather]
@@ -182,7 +194,7 @@ onMounted(() => {
   // toneMapped:false is load-bearing — three.js applies fog AFTER tone mapping, so real
   // fogged geometry fades to the raw hex. If the dome were tone mapped it would no longer
   // match the fog it is painted to blend into, and the seam would come back.
-  const domeGeo = new THREE.SphereGeometry(260, 24, 12)
+  const domeGeo = new THREE.SphereGeometry(DOME_R, 24, 12)
   const domeColors = new THREE.Float32BufferAttribute(
     new Float32Array(domeGeo.attributes.position!.count * 3),
     3,
@@ -202,7 +214,7 @@ onMounted(() => {
   // Sky bodies: a sun/moon glow sprite each, a star field that fades in at night, and a
   // drifting cloud shell on the high tier. All four must dodge the static-world bake
   // below (see the `staticRoots` filter) or they get merged into a mesh and vanish.
-  const SKY_R = 250 // just inside the 260 dome
+  const SKY_R = 250 // just inside the DOME_R dome
   const glowTex = glowTexture(128)
   const sunSprite = new THREE.Sprite(
     new THREE.SpriteMaterial({
@@ -350,6 +362,11 @@ onMounted(() => {
     // buildVenue time) so a tier change, which swaps in a fresh chainLink texture
     // instance, keeps it.
     t.chainLink.repeat.set(1, FENCE_H / 4)
+    // The skyline canvas is transparent at the top and opaque at the bottom, and the
+    // cylinder's v spans exactly 0..1 — with RepeatWrapping the sampler blends the two
+    // across the seam and draws a dark hairline right around the sky at the rim.
+    t.skyline.wrapT = THREE.ClampToEdgeWrapping
+    t.skyline.needsUpdate = true
     return t
   }
   // Task 6 deliberately left this out because nothing read it yet; it has a reader now.
@@ -406,15 +423,19 @@ onMounted(() => {
     pitch: surface({ color: 0xffffff, map: tex.pitchLines, roughness: 1, side: THREE.DoubleSide }),
     sand: surface({ color: 0xffffff, map: tex.sand, roughness: 1, side: THREE.DoubleSide }),
     mat: surface({ color: 0x2f5fa8, roughness: 0.9, side: THREE.DoubleSide }),
+    // Dedicated rather than reusing mat.seating (FrontSide) — a flag needs to read from
+    // both sides, and flipping a shared material would also double-side the grandstand's
+    // seating. A ninth material; the flags are the only user.
+    flag: new THREE.MeshBasicMaterial({ color: 0xc23b3b, side: THREE.DoubleSide }),
   }
   // assertSameAttributes/mergeGeometries errors prefer material.name — without this every
   // merge batch reports as generic "MeshStandardMaterial", useless for diagnosing which one.
   Object.entries(mat).forEach(([k, m]) => (m.name = k))
 
   // A backdrop, not scenery: follows the camera like the dome, so it is always exactly
-  // SKYLINE_R away and always inside the dome (260) and the far plane (290). fog:false
-  // because at this distance linear fog would saturate and erase it — the tint applied in
-  // update() carries the depth cue instead, without the all-or-nothing.
+  // SKYLINE_R away and always inside the dome (DOME_R) and the far plane (CAMERA_FAR).
+  // fog:false because at this distance linear fog would saturate and erase it — the tint
+  // applied in update() carries the depth cue instead, without the all-or-nothing.
   const skylineGeo = new THREE.CylinderGeometry(SKYLINE_R, SKYLINE_R, 55, 48, 1, true)
   const skylineMat = new THREE.MeshBasicMaterial({
     map: tex.skyline,
@@ -501,24 +522,42 @@ onMounted(() => {
       disposables.push(m.geometry as THREE.BufferGeometry)
       return m
     }
+    // These reuse mat.track / mat.kerb, whose texture.repeat is tuned for the loop ribbons'
+    // UVs. A PlaneGeometry (or CircleGeometry) spans 0..1, so without this the tile is
+    // stretched tens of metres. Scaling the geometry's own uv attribute keeps the material
+    // shared — a material per part would multiply the bake's draw calls.
+    const tileUv = (g2: THREE.BufferGeometry, w: number, l: number, metresPerTile: number) => {
+      const uv = g2.getAttribute('uv')
+      for (let i = 0; i < uv.count; i++) {
+        uv.setXY(i, uv.getX(i) * (w / metresPerTile), uv.getY(i) * (l / metresPerTile))
+      }
+      uv.needsUpdate = true
+    }
 
     if (p.type === 'stand') {
       // Eight stepped rows swept along the home straight. Built as a box per row rather
       // than an extruded profile: the straight is straight, so boxes are exact here and
-      // far simpler than sampling the loop.
+      // far simpler than sampling the loop. Dimensions come from scenicVenue.ts's
+      // STAND_* constants (not local literals) — PART_SIZES.stand is derived from the
+      // same constants, so this build and the fence-clearance test can never disagree.
       const len = p.span!
-      const rows = 8
+      const rows = STAND_ROWS
       for (let r = 0; r < rows; r++) {
-        const step = keep(new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.45, len), mat.seating))
+        const step = keep(
+          new THREE.Mesh(new THREE.BoxGeometry(STAND_ROW_DEPTH, STAND_ROW_RISE, len), mat.seating),
+        )
         // set x directly rather than translateX — translate is applied in the object's
         // own rotated frame, and this group gets rotated to face the track below
-        step.position.set(r * 1.1, 0.22 + r * 0.45, 0)
+        step.position.set(r * STAND_ROW_DEPTH, 0.22 + r * STAND_ROW_RISE, 0)
         g.add(step)
       }
       const backWall = keep(new THREE.Mesh(new THREE.BoxGeometry(0.4, 4.2, len), mat.clubhouse))
-      backWall.position.set(rows * 1.1, 2.1, 0)
+      backWall.position.set(rows * STAND_ROW_DEPTH, 2.1, 0)
       g.add(backWall)
-      const roof = keep(new THREE.Mesh(new THREE.BoxGeometry(rows * 1.2, 0.25, len), mat.roof))
+      const roof = keep(new THREE.Mesh(new THREE.BoxGeometry(STAND_ROOF_W, 0.25, len), mat.roof))
+      // Not STAND_ROOF_W / 2 — the roof is offset from the terracing's midpoint, not
+      // centred on itself. Its outer edge (this position + half its width) is exactly
+      // STAND_DEPTH, which is what the fence-clearance test checks.
       roof.position.set(rows * 0.55, 5.4, 0)
       g.add(roof)
       for (let i = 0; i < 4; i++) {
@@ -575,6 +614,11 @@ onMounted(() => {
       const pole = keep(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 7, 5), mat.pole))
       pole.position.set(at.x, 3.5, at.z)
       g.add(pole)
+      const cloth = keep(new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.0), mat.flag))
+      cloth.position.set(at.x, 6.2, at.z)
+      cloth.rotation.y = Math.atan2(-at.tx, -at.tz)
+      cloth.translateX(0.8)
+      g.add(cloth)
     } else if (p.type === 'pitch') {
       const plane = keep(new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.pitch!), mat.pitch))
       plane.rotation.x = -Math.PI / 2
@@ -584,6 +628,7 @@ onMounted(() => {
       const run = keep(
         new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.jumpRunway!), mat.track),
       )
+      tileUv(run.geometry, PART_SIZES.jumpRunway![0], PART_SIZES.jumpRunway![1], REPEAT.track)
       run.rotation.x = -Math.PI / 2
       run.position.set(at.x, 0.012, at.z)
       run.rotation.z = Math.atan2(-at.tx, -at.tz)
@@ -598,6 +643,7 @@ onMounted(() => {
       const apron = keep(
         new THREE.Mesh(new THREE.PlaneGeometry(...PART_SIZES.highJump!), mat.track),
       )
+      tileUv(apron.geometry, PART_SIZES.highJump![0], PART_SIZES.highJump![1], REPEAT.track)
       apron.rotation.x = -Math.PI / 2
       apron.position.set(at.x, 0.012, at.z)
       const bed = keep(new THREE.Mesh(new THREE.BoxGeometry(5, 0.6, 3), mat.mat))
@@ -609,6 +655,7 @@ onMounted(() => {
       const ring = keep(
         new THREE.Mesh(new THREE.CircleGeometry(PART_SIZES.shotCircle![0] / 2, 20), mat.kerb),
       )
+      tileUv(ring.geometry, PART_SIZES.shotCircle![0], PART_SIZES.shotCircle![1], REPEAT.kerb)
       ring.rotation.x = -Math.PI / 2
       ring.position.set(at.x, 0.013, at.z)
       g.add(ring)
@@ -780,7 +827,7 @@ onMounted(() => {
     scene.add(board)
   }
 
-  for (const p of surroundings()) scene.add(buildProp(p))
+  for (const p of surroundings()) scene.add(buildProp({ ...p, o: venueClearO(p.o) }))
   for (const p of stadium()) {
     // the skyline is built above as a camera-following backdrop, not baked venue
     // furniture — baking it here would double it up in the static merge.

@@ -34,6 +34,22 @@ export interface VenuePart {
   span?: number // arc length, for parts swept along the track (stand, fence)
 }
 
+// The home straight runs s = 0 to STRAIGHT_M. The stand covers it, inset a little at
+// each end so it does not run into the bends.
+export const STAND_S0 = 4
+export const STAND_S1 = STRAIGHT_M - 4
+export const STAND_O = TRACK_OUT + 6
+
+// The grandstand's build dimensions live here, not in the renderer, because its across-track
+// depth is what has to clear the fence — and a renderer-side literal is a dimension no test
+// can see. PART_SIZES.stand is DERIVED from these, so changing the stand cannot silently
+// invalidate the clearance test.
+export const STAND_ROWS = 8
+export const STAND_ROW_DEPTH = 1.1
+export const STAND_ROW_RISE = 0.45
+export const STAND_ROOF_W = STAND_ROWS * 1.2
+export const STAND_DEPTH = STAND_ROWS * 0.55 + STAND_ROOF_W / 2 // roof edge, the outermost point
+
 // Footprint of each sized part, as [widthAcrossTrack, lengthAlongTrack] in metres. The
 // renderer builds meshes to these and scenicVenue.test.ts checks them against the kerb —
 // one table, so a resize cannot pass the test while changing what is drawn.
@@ -44,26 +60,34 @@ export const PART_SIZES: Partial<Record<VenueType, [number, number]>> = {
   highJump: [10, 8],
   shotCircle: [2.14, 2.14],
   // across-track depth x along-track span. The depth is what must clear the fence line.
-  stand: [9.2, 76.39],
+  stand: [STAND_DEPTH, STAND_S1 - STAND_S0],
 }
 
 // The midpoint of the back straight, directly opposite the stand. Derived from the track
 // geometry rather than hardcoded — an earlier slice shipped duplicated constants twice.
 const BACK_STRAIGHT_MID = STRAIGHT_M + Math.PI * BEND_R + STRAIGHT_M / 2
 
-// The home straight runs s = 0 to STRAIGHT_M. The stand covers it, inset a little at
-// each end so it does not run into the bends.
-export const STAND_S0 = 4
-export const STAND_S1 = STRAIGHT_M - 4
-export const STAND_O = TRACK_OUT + 6
 // Fence sits outside the stand, with a gate cut on the far side of the loop.
 export const FENCE_O = TRACK_OUT + 18 // 2.8 m clear of the stand's roof edge at 22.22
 export const GATE_S0 = BACK_STRAIGHT_MID + 10
 export const GATE_S1 = BACK_STRAIGHT_MID + 26
+// Scenery may not stand inside the perimeter — a tree in the terracing or a fence post
+// through a trunk reads as broken. surroundings() knows nothing about the venue (scenic.ts
+// cannot import this module), so the renderer maps each prop's offset through this on the
+// way in. Props inside the fence are reflected outward rather than deleted, which keeps the
+// ring's density instead of thinning it by half.
+export const SCENERY_MIN_O = FENCE_O + 2
+
+export function venueClearO(o: number): number {
+  return o < SCENERY_MIN_O ? SCENERY_MIN_O + (SCENERY_MIN_O - o) : o
+}
+
 // Radius of the skyline backdrop. It FOLLOWS THE CAMERA rather than sitting at the world
 // origin, so this is its distance from the walker, not from the infield: the camera wanders
 // up to 56 m off-centre, and any world-anchored radius that clears the sky dome on one side
-// pokes through it on the other. Must stay inside the dome (260) and the far plane (290).
+// pokes through it on the other. Must stay inside the sky dome and the camera's far plane —
+// DOME_R and CAMERA_FAR, hoisted into scenic.ts so scenicVenue.test.ts can assert against
+// them directly instead of duplicating the numbers here.
 export const SKYLINE_R = 240
 
 export function stadium(): VenuePart[] {

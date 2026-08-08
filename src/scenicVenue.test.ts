@@ -1,6 +1,26 @@
 import { describe, it, expect } from 'vitest'
-import { stadium, STAND_O, FENCE_O, GATE_S0, GATE_S1, SKYLINE_R, PART_SIZES } from './scenicVenue'
-import { TRACK_IN, TRACK_OUT, LAP_M, BEND_R, STRAIGHT_M, trackPoint } from './scenic'
+import {
+  stadium,
+  STAND_O,
+  FENCE_O,
+  GATE_S0,
+  GATE_S1,
+  SKYLINE_R,
+  PART_SIZES,
+  SCENERY_MIN_O,
+  venueClearO,
+} from './scenicVenue'
+import {
+  TRACK_IN,
+  TRACK_OUT,
+  LAP_M,
+  BEND_R,
+  STRAIGHT_M,
+  trackPoint,
+  surroundings,
+  DOME_R,
+  CAMERA_FAR,
+} from './scenic'
 
 describe('stadium', () => {
   it('is deterministic', () => {
@@ -70,19 +90,21 @@ describe('stadium', () => {
     )
   })
 
-  it('puts the skyline beyond every other part', () => {
-    for (const p of stadium()) {
-      if (p.type === 'skyline') continue
-      expect(SKYLINE_R).toBeGreaterThan(p.o)
-    }
+  it('keeps the skyline inside the dome and the far plane', () => {
+    // Outside either one it renders nothing at all — which is exactly what it did until a
+    // whole-branch review caught it. SKYLINE_R is a camera-relative distance, so comparing
+    // it against parts' lateral offsets (as the old test did) proves nothing.
+    expect(SKYLINE_R).toBeLessThan(DOME_R)
+    expect(SKYLINE_R).toBeLessThan(CAMERA_FAR)
   })
 
   it('the grandstand clears the fence line, roof included', () => {
     // The stand's depth is a renderer-side dimension no other test could see, and it
     // overhung the fence by 1.2 m — the netting ran underneath the terracing.
+    // PART_SIZES.stand[0] IS the roof edge (see STAND_DEPTH in scenicVenue.ts), so adding
+    // another overhang on top double-counts it.
     const [depth] = PART_SIZES.stand!
-    const ROOF_OVERHANG = 1.0 // the roof reaches a little past the back wall
-    const standOuter = STAND_O + depth + ROOF_OVERHANG
+    const standOuter = STAND_O + depth
     expect(`stand reaches ${standOuter.toFixed(2)}, fence at ${FENCE_O.toFixed(2)}`).toBe(
       standOuter < FENCE_O
         ? `stand reaches ${standOuter.toFixed(2)}, fence at ${FENCE_O.toFixed(2)}`
@@ -96,5 +118,22 @@ describe('stadium', () => {
       expect(p.span).toBeGreaterThan(0)
       expect(p.span).toBeLessThanOrEqual(LAP_M)
     }
+  })
+
+  it('keeps every scenery prop outside the perimeter fence', () => {
+    // 23 of 48 props used to sit inside the fence, five of them inside the grandstand
+    // itself — one tree came through the roof.
+    for (const p of surroundings()) {
+      const o = venueClearO(p.o)
+      expect(`${p.type} at o=${o.toFixed(2)}`).toBe(
+        o >= SCENERY_MIN_O ? `${p.type} at o=${o.toFixed(2)}` : `${p.type} must clear the fence`,
+      )
+    }
+  })
+
+  it('leaves props that were already outside the fence where they were', () => {
+    // the reflection must not disturb the ring's outer half
+    expect(venueClearO(SCENERY_MIN_O + 5)).toBe(SCENERY_MIN_O + 5)
+    expect(venueClearO(SCENERY_MIN_O)).toBe(SCENERY_MIN_O)
   })
 })

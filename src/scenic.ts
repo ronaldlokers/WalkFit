@@ -10,6 +10,13 @@ export function worldHash(seed: number): number {
   return x - Math.floor(x)
 }
 
+// Render distances the scenic view is built around. Here rather than in Scenic3D.vue so the
+// pure modules can assert against them — the skyline once sat outside both and rendered zero
+// pixels for an entire task.
+export const DOME_R = 260
+export const FOG_FAR = 230
+export const CAMERA_FAR = FOG_FAR + 60
+
 // --- 400 m track geometry ---
 // Standard stadium shape: two straights + two semicircular bends, sized so the lane-1
 // walking line measures exactly 400 m (IAAF straights, bend radius derived from that).

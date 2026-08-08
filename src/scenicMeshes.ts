@@ -427,7 +427,10 @@ export function sandTexture(size: number): THREE.CanvasTexture {
   const [c, ctx] = canvas(size)
   ctx.fillStyle = '#cbb68c'
   ctx.fillRect(0, 0, size, size)
-  for (let i = 0; i < size * size * 0.05; i++) {
+  // Capped the same way tartanTexture is: uncapped, the high tier's size * size * 0.05 is
+  // 52,428 iterations, which stalled applyTier's promotion by ~200 ms on the auto probe.
+  const speckles = Math.min(size * size * 0.05, 20000)
+  for (let i = 0; i < speckles; i++) {
     ctx.fillStyle = `rgba(150, 132, 96, ${0.1 + worldHash(i + 71) * 0.15})`
     ctx.fillRect(worldHash(i * 2 + 72) * size, worldHash(i * 2 + 73) * size, 2, 2)
   }

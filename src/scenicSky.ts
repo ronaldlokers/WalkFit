@@ -115,6 +115,20 @@ export function skyAt(phase: number, weather: WeatherId = 'clear'): SkyState {
   }
 }
 
+// Cloud shell tint. Clouds are lit by the same sun the ground is, so by day they read
+// BRIGHTER than the sky behind them; after dark they have no light of their own and must
+// sink back into the sky, or the shell doubles the night sky's luminance. Tinting the
+// shell to exactly `sky` (the first cut) made it invisible in daylight: the same colour
+// as its background, with only the texture's alpha to tell the two apart.
+// Keyed off the sun's ELEVATION, not sunIntensity: the pre-dawn keyframe carries a
+// deliberately large sunIntensity (3.2) that the interpolation is already ramping toward
+// while the sun is still underground, so an intensity-driven tint lit the clouds up in
+// the middle of the night.
+export function cloudColor(sky: SkyState, phase: number): number {
+  const lit = Math.max(0, Math.min(1, skyBodies(phase).sun.elevation / 0.08))
+  return lerpColor(lerpColor(sky.sky, sky.sunColor, 0.55 * lit), 0xffffff, 0.45 * lit)
+}
+
 // Night band (#72): floodlights switch on, path edges matter — shared so the component
 // and any future logic agree on what "night" means.
 export function isNight(phase: number): boolean {

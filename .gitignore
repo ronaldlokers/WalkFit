@@ -18,3 +18,7 @@ dist/
 
 # devpod runtime files
 .devcontainer/.devpod-internal/
+
+# local render harness (not shipped)
+dev/
+chrome/

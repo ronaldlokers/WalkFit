@@ -149,19 +149,42 @@ export function tartanTexture(size: number): THREE.CanvasTexture {
   return finish(c)
 }
 
-// grass / infield: value noise plus blade streaks. `hue` shifts the two green surfaces
-// apart so ground and infield do not read as one continuous plane.
+// One octave of value noise: random cells drawn small, then scaled up through the canvas's
+// own bilinear filter. Drawing the cells at full size instead (the first cut) left hard
+// square edges — at the infield's 10 m repeat those squares are 0.8 m across and read as
+// tiling blocks from ten metres away, which is what made the grass look like a checkerboard.
+function noiseLayer(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  cells: number,
+  salt: number,
+  paint: (v: number) => string,
+): void {
+  const [n, nctx] = canvas(cells)
+  for (let i = 0; i < cells * cells; i++) {
+    nctx.fillStyle = paint(worldHash(i * 7 + salt))
+    nctx.fillRect(i % cells, Math.floor(i / cells), 1, 1)
+  }
+  ctx.imageSmoothingEnabled = true
+  ctx.drawImage(n, 0, 0, size, size)
+}
+
+// grass / infield: two octaves of smooth value noise, mowing stripes, then blade streaks.
+// `hue` shifts the two green surfaces apart so ground and infield do not read as one
+// continuous plane.
 export function grassTexture(size: number, hue: number): THREE.CanvasTexture {
   const [c, ctx] = canvas(size)
-  ctx.fillStyle = `hsl(${hue}, 28%, 22%)`
+  ctx.fillStyle = `hsl(${hue}, 30%, 24%)`
   ctx.fillRect(0, 0, size, size)
-  const cells = Math.max(16, size / 8)
-  for (let i = 0; i < cells * cells; i++) {
-    const x = (i % cells) * (size / cells)
-    const y = Math.floor(i / cells) * (size / cells)
-    const v = worldHash(i * 7 + 11)
-    ctx.fillStyle = `hsla(${hue + (v - 0.5) * 14}, 30%, ${18 + v * 12}%, 0.7)`
-    ctx.fillRect(x, y, size / cells, size / cells)
+  // broad patchiness, then a finer break-up on top of it
+  noiseLayer(ctx, size, 16, 11, (v) => `hsla(${hue + (v - 0.5) * 16}, 32%, ${20 + v * 12}%, 0.85)`)
+  noiseLayer(ctx, size, 64, 23, (v) => `hsla(${hue + (v - 0.5) * 10}, 30%, ${20 + v * 10}%, 0.35)`)
+  // mowing stripes: the single strongest "this is a maintained sports ground" cue, and
+  // free — a groundsman's roller lays the blades in alternating directions, which reads as
+  // alternating lightness. Four bands per tile so the texture still tiles seamlessly.
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.055)' : 'rgba(0,0,0,0.05)'
+    ctx.fillRect(0, (i / 4) * size, size, size / 4)
   }
   ctx.strokeStyle = 'rgba(160,200,140,0.10)'
   for (let i = 0; i < Math.min(size * 1.5, 1200); i++) {
@@ -270,24 +293,47 @@ export function starPositions(count: number, radius: number): Float32Array {
   return out
 }
 
-// fbm-ish cloud alpha: a few octaves of blurred blobs, tiled
+// Cumulus alpha: soft-edged puffs gathered into a handful of clusters, with real gaps of
+// clear sky between them. The first cut stacked 70 hard-edged circles at low alpha across
+// the whole tile, which averaged out to a uniform haze — it read as the sky being milky
+// rather than as clouds, and left nowhere for the blue to show through.
 export function cloudTexture(size: number): THREE.CanvasTexture {
   const [c, ctx] = canvas(size)
   ctx.clearRect(0, 0, size, size)
-  for (let octave = 0; octave < 3; octave++) {
-    const blobs = 40 >> octave
-    const r = (size / 6) * (octave + 1)
-    ctx.globalAlpha = 0.16 / (octave + 1)
-    ctx.fillStyle = '#ffffff'
-    for (let i = 0; i < blobs; i++) {
-      const x = worldHash(i * 3 + octave * 97 + 501) * size
-      const y = worldHash(i * 3 + octave * 97 + 502) * size
-      ctx.beginPath()
-      ctx.arc(x, y, r * (0.4 + worldHash(i * 3 + octave * 97 + 503)), 0, Math.PI * 2)
-      ctx.fill()
+  const puff = (x: number, y: number, r: number, a: number) => {
+    // Drawn at every wrap offset it could straddle, so a cluster near an edge continues on
+    // the far side instead of being cut in half at the tile seam.
+    for (const ox of [-size, 0, size]) {
+      for (const oy of [-size, 0, size]) {
+        if (Math.abs(x + ox - size / 2) > size || Math.abs(y + oy - size / 2) > size) continue
+        const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r)
+        g.addColorStop(0, `rgba(255,255,255,${a})`)
+        g.addColorStop(0.55, `rgba(255,255,255,${a * 0.55})`)
+        g.addColorStop(1, 'rgba(255,255,255,0)')
+        ctx.fillStyle = g
+        ctx.beginPath()
+        // flattened: cumulus are wider than they are tall
+        ctx.ellipse(x + ox, y + oy, r, r * 0.62, 0, 0, Math.PI * 2)
+        ctx.fill()
+      }
     }
   }
-  ctx.globalAlpha = 1
+  const clusters = 7
+  for (let k = 0; k < clusters; k++) {
+    const cx = worldHash(k * 5 + 501) * size
+    const cy = worldHash(k * 5 + 502) * size
+    const spread = size * (0.06 + worldHash(k * 5 + 503) * 0.08)
+    const puffs = 5 + Math.floor(worldHash(k * 5 + 504) * 5)
+    for (let i = 0; i < puffs; i++) {
+      const h = (k * 37 + i) * 3
+      puff(
+        cx + (worldHash(h + 601) - 0.5) * spread * 2.4,
+        cy + (worldHash(h + 602) - 0.5) * spread,
+        size * (0.05 + worldHash(h + 603) * 0.07),
+        0.5 + worldHash(h + 604) * 0.4,
+      )
+    }
+  }
   const t = new THREE.CanvasTexture(c)
   t.wrapS = THREE.RepeatWrapping
   t.wrapT = THREE.RepeatWrapping
@@ -385,6 +431,13 @@ export function pitchLinesTexture(size: number): THREE.CanvasTexture {
   const [c, ctx] = canvas(size)
   ctx.fillStyle = '#2f5230'
   ctx.fillRect(0, 0, size, size)
+  // Mown stripes across the pitch, drawn before the markings so the lines sit on top of
+  // them the way paint does. This texture is not tiled (one copy over the whole pitch), so
+  // the band count is the stripe count a groundsman would actually cut.
+  for (let i = 0; i < 8; i++) {
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'
+    ctx.fillRect(0, (i / 8) * size, size, size / 8)
+  }
   ctx.strokeStyle = 'rgba(236, 242, 248, 0.8)'
   ctx.lineWidth = Math.max(2, size / 200)
   const m = size * 0.06
@@ -406,19 +459,117 @@ export function pitchLinesTexture(size: number): THREE.CanvasTexture {
 }
 
 // Rooftop silhouette for the distant ring — alpha above the roofline so sky shows through.
+//
+// Authored LIGHT on purpose. The mesh multiplies this by the current fog colour every
+// frame, so a light facade lands on the fog colour with its detail intact (distant
+// buildings in haze) while a dark one lands on near-black. The first cut painted one row
+// of 26 flat #39414f slabs spanning the full 1508 m circumference: each "building" was
+// 58 m wide, which is why it read as a wall rather than a skyline.
 export function skylineTexture(size: number): THREE.CanvasTexture {
   const [c, ctx] = canvas(size)
   ctx.clearRect(0, 0, size, size)
-  ctx.fillStyle = '#39414f'
-  let x = 0
-  let i = 0
-  while (x < size) {
-    const w = size * (0.02 + worldHash(i * 7 + 3) * 0.05)
-    const h = size * (0.25 + worldHash(i * 7 + 4) * 0.5)
-    ctx.fillRect(x, size - h, w, h)
-    x += w
-    i++
+  // two depth layers: a paler, taller row behind, a slightly darker row in front. The
+  // overlap is what stops the roofline reading as a single cut-out strip.
+  // Mid-tone, low-contrast: light enough that the fog multiply keeps the structure, dark
+  // enough that they still read as buildings. Painted near-white (the first attempt at
+  // fixing the multiply) they came out as a bank of ghostly slabs indistinguishable from
+  // the sky, and the window rows read as horizontal scratches.
+  const layers = [
+    { fill: '#98a3b4', win: 'rgba(72,82,98,0.22)', wMin: 0.012, wVar: 0.03, hMin: 0.3, hVar: 0.45 },
+    {
+      fill: '#828d9e',
+      win: 'rgba(62,72,88,0.26)',
+      wMin: 0.008,
+      wVar: 0.022,
+      hMin: 0.16,
+      hVar: 0.3,
+    },
+  ]
+  layers.forEach((L, li) => {
+    let x = 0
+    let i = 0
+    while (x < size) {
+      const w = size * (L.wMin + worldHash(i * 11 + li * 97 + 3) * L.wVar)
+      // Gaps of open sky. Without them every block abuts its neighbour and the row reads as
+      // one continuous wall no matter how the heights vary.
+      if (worldHash(i * 11 + li * 97 + 9) < 0.22) {
+        x += w * 0.7
+        i++
+        continue
+      }
+      const hv = worldHash(i * 11 + li * 97 + 4)
+      // squared, so most blocks are low and the occasional tower stands well clear
+      const h = size * (L.hMin + hv * hv * L.hVar * 1.6)
+      const top = size - h
+      ctx.fillStyle = L.fill
+      ctx.fillRect(x, top, w, h)
+      // window grid — spacing in texels, so it stays a grid at any generated size
+      const step = Math.max(3, size / 180)
+      ctx.fillStyle = L.win
+      for (let wy = top + step * 1.5; wy < size - step; wy += step * 2) {
+        for (let wx = x + step * 0.8; wx < x + w - step; wx += step * 2) {
+          if (worldHash(Math.round(wx * 3 + wy * 7 + li * 31)) < 0.22) continue // dark windows
+          ctx.fillRect(wx, wy, step, step)
+        }
+      }
+      // occasional roof furniture: a mast or a stepped-back top floor
+      const r = worldHash(i * 11 + li * 97 + 5)
+      if (r > 0.82) {
+        ctx.fillStyle = L.fill
+        ctx.fillRect(x + w * 0.45, top - h * 0.14, Math.max(1, w * 0.06), h * 0.14)
+      } else if (r < 0.16) {
+        ctx.fillStyle = L.fill
+        ctx.fillRect(x + w * 0.2, top - h * 0.08, w * 0.6, h * 0.08)
+      }
+      x += w
+      i++
+    }
+  })
+  // Aerial perspective: haze thickens toward the horizon, so wash the lower band out. Done
+  // with a white overlay rather than by fading alpha — dissolving the bases would leave the
+  // buildings floating with a gap under them.
+  const hz = ctx.createLinearGradient(0, size * 0.55, 0, size)
+  hz.addColorStop(0, 'rgba(255,255,255,0)')
+  hz.addColorStop(1, 'rgba(255,255,255,0.55)')
+  ctx.fillStyle = hz
+  ctx.globalCompositeOperation = 'source-atop' // only where a building already is
+  ctx.fillRect(0, size * 0.55, size, size * 0.45)
+  ctx.globalCompositeOperation = 'source-over'
+  return finish(c)
+}
+
+// Distant treeline: a silhouette ring between the venue fence and the skyline, so the world
+// does not end at a hard grass/sky edge. Alpha above the canopy, opaque below.
+//
+// `groundV` is where the world's y=0 lands in this texture's v — the caller derives it from
+// the cylinder's height and centre. The crowns are drawn tall in v and narrow in u because
+// the two axes have wildly different metres-per-texel: the ring is ~1000 m around and only
+// 26 m high, so a circular crown in texture space renders as a 0.5 m sliver in the world.
+// Drawn round, the whole ring came out as a single dark hairline on the horizon.
+export const TREELINE_GROUND_V = 0.73
+
+export function treeLineTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.clearRect(0, 0, size, size)
+  const base = size * TREELINE_GROUND_V
+  const crowns = 120
+  for (let i = 0; i < crowns; i++) {
+    const h = i * 5
+    const x = (i / crowns) * size + (worldHash(h + 811) - 0.5) * (size / crowns) * 1.6
+    const rx = size * (0.006 + worldHash(h + 812) * 0.012)
+    // in metres, not texels: v spans the ring's 26 m over the full canvas, so a crown has
+    // to be drawn very tall in v to come out 6-12 m tall in the world
+    const ry = size * (0.2 + worldHash(h + 813) * 0.16)
+    const top = base - ry * 0.9
+    ctx.fillStyle = `hsl(${94 + worldHash(h + 814) * 18}, 26%, ${15 + worldHash(h + 815) * 10}%)`
+    ctx.beginPath()
+    ctx.ellipse(x, top, rx, ry, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillRect(x - rx * 0.35, top, rx * 0.7, base - top)
   }
+  // solid ground band below the canopy so no sky leaks under the trees
+  ctx.fillStyle = 'hsl(100, 20%, 19%)'
+  ctx.fillRect(0, base - 1, size, size - base + 1)
   return finish(c)
 }
 

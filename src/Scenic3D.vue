@@ -76,6 +76,8 @@ import {
   seatingTexture,
   pitchLinesTexture,
   skylineTexture,
+  treeLineTexture,
+  TREELINE_GROUND_V,
   sandTexture,
 } from './scenicMeshes'
 import {
@@ -86,6 +88,7 @@ import {
   WEATHER_FOG,
   TIME_PHASES,
   isNight,
+  cloudColor,
 } from './scenicSky'
 import type { TimeOfDay } from './scenicSky'
 import { tierFromFrames, resolveTier, PROBE_FRAMES, TIER_BUDGET } from './scenicQuality'
@@ -289,6 +292,7 @@ onMounted(() => {
   }
   if (TIER_BUDGET[tier].clouds) addClouds()
 
+  const cFogTint = new THREE.Color()
   const cLo = new THREE.Color()
   const cHi = new THREE.Color()
   const cMix = new THREE.Color()
@@ -457,6 +461,38 @@ onMounted(() => {
   const skylineMesh = new THREE.Mesh(skylineGeo, skylineMat)
   scene.add(skylineMesh)
   disposables.push(skylineGeo)
+
+  // Treeline: the same trick one ring closer, filling the band between the venue fence and
+  // the buildings. Without it the ground simply stops at a hard grass/sky edge — the one
+  // place the world visibly ends. Nearer than the skyline, so it is tinted less strongly
+  // toward the fog colour and keeps more of its own green.
+  // Height and centre must satisfy TREELINE_GROUND_V: the texture's ground line is at
+  // v = 0.73, so with a 26 m cylinder the centre sits at 26 * (0.73 - 0.5) = 6 m.
+  const TREELINE_H = 26
+  const treeLineTex = treeLineTexture(1024)
+  treeLineTex.repeat.set(6, 1)
+  // v must NOT wrap: the texture's opaque ground band sits at the bottom, and with
+  // RepeatWrapping the linear filter samples it across the seam and paints a dark hairline
+  // along the cylinder's top rim — a line across the sky, right where nothing should be.
+  treeLineTex.wrapT = THREE.ClampToEdgeWrapping
+  const treeLineGeo = new THREE.CylinderGeometry(
+    SKYLINE_R * 0.72,
+    SKYLINE_R * 0.72,
+    TREELINE_H,
+    48,
+    1,
+    true,
+  )
+  const treeLineMat = new THREE.MeshBasicMaterial({
+    map: treeLineTex,
+    transparent: true,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+  })
+  const treeLineMesh = new THREE.Mesh(treeLineGeo, treeLineMat)
+  scene.add(treeLineMesh)
+  disposables.push(treeLineGeo)
 
   function buildProp(p: Prop): THREE.Object3D {
     const g = new THREE.Group()
@@ -856,7 +892,14 @@ onMounted(() => {
     // light aims at the origin instead of following the walker. The sun/moon sprites,
     // star points and cloud shell are all live-updated per frame too (see update() below)
     // — left in staticRoots they would get merged into a mesh and silently vanish.
-    const skyObjects: THREE.Object3D[] = [dome, sunSprite, moonSprite, stars, skylineMesh]
+    const skyObjects: THREE.Object3D[] = [
+      dome,
+      sunSprite,
+      moonSprite,
+      stars,
+      skylineMesh,
+      treeLineMesh,
+    ]
     if (clouds) skyObjects.push(clouds)
     const staticRoots = scene.children.filter(
       (c) => !skyObjects.includes(c) && !(c as THREE.Light).isLight && c !== sunTarget,
@@ -1014,6 +1057,13 @@ onMounted(() => {
   )
   labelSprite.scale.set(2.2, 0.55, 1)
   labelSprite.visible = false
+  // Range over which the nearest-pacer label fades out rather than being clipped off.
+  const LABEL_FADE_M = 14
+  const LABEL_MAX_M = 24
+  const smoothstep = (a: number, b: number, x: number) => {
+    const t = Math.max(0, Math.min(1, (x - a) / (b - a)))
+    return t * t * (3 - 2 * t)
+  }
   scene.add(labelSprite)
   let lastLabel = ''
   function drawLabel(text: string) {
@@ -1097,6 +1147,13 @@ onMounted(() => {
     skylineMesh.position.set(camera.position.x, 18, camera.position.z)
     // pull it toward the horizon colour so it recedes in fog and darkens at night
     skylineMat.color.setHex(sky.fog)
+    treeLineMesh.position.set(
+      camera.position.x,
+      TREELINE_H * (TREELINE_GROUND_V - 0.5),
+      camera.position.z,
+    )
+    // Half the fog pull the skyline gets: it is nearer, so it keeps more of its own colour.
+    treeLineMat.color.setHex(0xffffff).lerp(cFogTint.setHex(sky.fog), 0.35)
     sun.intensity = sky.sunIntensity
     sun.color.setHex(sky.sunColor)
     hemi.intensity = sky.ambient
@@ -1110,9 +1167,10 @@ onMounted(() => {
     if (clouds) {
       clouds.position.set(camera.position.x, 0, camera.position.z)
       clouds.rotation.y = d * 0.0004 // drift with walked distance, like everything else
-      // Tint from the sky, or a white shell doubles the night sky's luminance — the same
-      // "weather brightens the night" mistake, arriving by a different route.
-      ;(clouds.material as THREE.MeshBasicMaterial).color.setHex(sky.sky)
+      // Lit by the same sun the ground is (cloudColor), so the shell reads as cloud by day
+      // and sinks back into the sky after dark — a white shell would double the night sky's
+      // luminance, the "weather brightens the night" mistake by a different route.
+      ;(clouds.material as THREE.MeshBasicMaterial).color.setHex(cloudColor(sky, phase))
     }
     // Pacers: analytic positions, so no accumulated state to drift. Anything beyond the
     // current weather's fog distance is hidden rather than drawn — with eight on a 400 m
@@ -1204,10 +1262,14 @@ onMounted(() => {
       drawLabel(`${p.kind} · ${p.speed.toFixed(1)} km/h`)
       labelSprite.position.set(rig.group.position.x, 2.1, rig.group.position.z)
       // A Sprite shrinks with distance, so a fixed world size is unreadable at 30 m and
-      // overwhelming at 2 m. Grow it with range, clamped at both ends.
-      const s = Math.min(2.5, Math.max(0.6, nearestDist / 8))
+      // overwhelming at 2 m. Grow it with range, clamped at both ends. The upper clamp is
+      // deliberately modest: a label sized to stay crisp at 30 m projects onto the horizon
+      // line, where it reads as a billboard hanging in the sky rather than a name over
+      // someone's head. Past LABEL_FADE_M it fades out instead of growing further.
+      const s = Math.min(1.5, Math.max(0.6, nearestDist / 12))
       labelSprite.scale.set(2.2 * s, 0.55 * s, 1)
-      labelSprite.visible = true
+      labelSprite.material.opacity = 1 - smoothstep(LABEL_FADE_M, LABEL_MAX_M, nearestDist)
+      labelSprite.visible = labelSprite.material.opacity > 0.02
     } else {
       labelSprite.visible = false
     }
@@ -1429,6 +1491,8 @@ onMounted(() => {
     blobGeo.dispose()
     blobMat.dispose()
     skylineMat.dispose()
+    treeLineTex.dispose()
+    treeLineMat.dispose()
     Object.values(geo).forEach((g) => g.dispose())
     Object.values(mat).forEach((m) => m.dispose())
     Object.values(tex).forEach((t) => t.dispose())

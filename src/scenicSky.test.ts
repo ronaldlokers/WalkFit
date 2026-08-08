@@ -8,6 +8,7 @@ import {
   WEATHER_FOG,
   TIME_PHASES,
   skyBodies,
+  cloudColor,
 } from './scenicSky'
 
 const lumOf = (c: number) =>
@@ -172,5 +173,29 @@ describe('skyBodies', () => {
         expect(`${p.toFixed(3)}: ${b.starOpacity}`).toBe(`${p.toFixed(3)}: 0`)
       }
     }
+  })
+})
+
+describe('cloud tint', () => {
+  it('is brighter than the sky while the sun is up', () => {
+    // the whole point of the shell: tinted to exactly sky.sky it is invisible by day
+    for (const p of [TIME_PHASES.dawn, TIME_PHASES.day, TIME_PHASES.sunset]) {
+      const sky = skyAt(p)
+      expect(lumOf(cloudColor(sky, p))).toBeGreaterThan(lumOf(sky.sky) + 8)
+    }
+  })
+
+  it('sinks back into the sky at night', () => {
+    // a lit shell after dark doubles the night sky's luminance — the same mistake
+    // overcastify() guards against on the weather side
+    const sky = skyAt(TIME_PHASES.night)
+    expect(cloudColor(sky, TIME_PHASES.night)).toBe(sky.sky)
+  })
+
+  it('takes the sun colour, so sunset clouds are warm', () => {
+    const sunset = cloudColor(skyAt(TIME_PHASES.sunset), TIME_PHASES.sunset)
+    const red = (sunset >> 16) & 0xff
+    const blue = sunset & 0xff
+    expect(red).toBeGreaterThan(blue)
   })
 })

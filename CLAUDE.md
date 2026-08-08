@@ -146,7 +146,9 @@ Keep pinned Playwright version and image tag in sync.
   elapsed time rather than accumulated, `strideLength`/`stepPhase`/`gaitCycleM`/`cadenceHz`
   (cadence is MEASURED from the belt's own pedometer via `state.steps`, not modelled —
   `gaitCycleM` converts a footfall's `strideLength` into the two-footfall period `stepPhase`
-  actually swings limbs over), and `paceGap`. Unit-tested in `src/scenicLife.test.ts`.
+  actually swings limbs over), `paceGap`, and `cameraMotion` (bob/sway/roll/FOV, phased
+  off walked distance, sharing the same `gaitCycleM` cadence the limbs use — the bob is
+  twice the gait frequency, the sway exactly it). Unit-tested in `src/scenicLife.test.ts`.
 - `src/scenicVenue.ts` — **pure, three.js-free** club-track furniture: `stadium()` returns
   parts in the same shape `surroundings()` uses, so the component's prop builder and
   merge-by-material bake absorb them unchanged. `PART_SIZES` is the single source of truth
@@ -204,7 +206,8 @@ incremental sync cursors), `walkfit.view` (`track` | `scenic`),
 layout since #103: fullscreen visual, fading HUD pills, workout state in the
 `.imm-workout` ribbon; the big-numbers/kiosk option was removed), `walkfit.scenic.time`
 (3D time-of-day override), `walkfit.scenic.quality` (`auto` | `low` | `high`, 3D quality
-override),
+override), `walkfit.scenic.motion` (`on` | `off`, 3D head bob/sway/lean — on by default, and
+`prefers-reduced-motion` overrides it),
 `walkfit.capture` (raw BLE frame
 debug logging, off unless `'1'`), `walkfit.demo` (demo mode — src/demo.ts simulates the
 treadmill + HR strap behind the composable interfaces and seeds a fixture dataset;
@@ -294,7 +297,9 @@ read as lit at night because their heads are unlit MeshBasic. `distanceSigns()` 
 "100 m/200 m/300 m" signposts beside the track, and `laneStaggers()` computes the classic
 staggered start line per lane (lane k+1's lap is 2π·k·LANE_W longer, so its mark sits
 that far past the common finish — every lane's lap to the finish then measures exactly
-400 m; all staggers land on the home straight). `src/Scenic3D.vue` turns that into
+400 m; all staggers land on the home straight). It also exports `curvatureAt`/
+`curvatureEased` — 0 on the straights and `+1/BEND_R` on BOTH bends, since a
+counterclockwise loop turns left twice and never right. `src/Scenic3D.vue` turns that into
 three.js meshes, all **built once** (a loop world needs no streaming): the red track
 band, lane lines and start/finish line are closed loop-ribbons sampled every 2 m at
 lateral offsets — their materials are `DoubleSide` because travel direction reverses
@@ -302,9 +307,13 @@ halfway around the loop, so any fixed triangle winding backface-culls one straig
 lines sit 4 cm above the track surface (less separation z-fights into shimmer on the far
 side of the loop). A vertex-gradient sky dome (fog color at horizon → sky color
 overhead) kills the ground/sky seam, and the camera interpolates toward `state.distance`
-at belt speed (distance ticks in at ~4 Hz; naive snapping would stutter). Comfort: fixed
-horizon, no bob; `prefers-reduced-motion` renders discretely per distance tick instead
-of a continuous rAF loop; rAF pauses when the tab is hidden. **three.js is the one
+at belt speed (distance ticks in at ~4 Hz; naive snapping would stutter). Comfort: the
+camera bobs, sways and leans into the bends off walked distance (`cameraMotion` in
+scenicLife.ts, `curvatureEased` in scenic.ts) — reversing the original fixed-horizon
+choice now that there is something to look at. Settings → Display turns it off, and
+`prefers-reduced-motion` renders discretely per distance tick instead of a continuous
+rAF loop and forces the motion off regardless of the setting, because a bob applied per
+discrete tick is a jolt. rAF pauses when the tab is hidden. **three.js is the one
 runtime dependency**, and only the scenic view pays for it: `Scenic3D.vue` is a
 `defineAsyncComponent` so Vite splits it (+three) into a lazy chunk (~520 kB raw) that
 downloads on first open — the main bundle stays three-free. No WebGL (probed before any

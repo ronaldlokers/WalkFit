@@ -474,6 +474,11 @@ watch(scenicTime, (v) => localStorage.setItem('walkfit.scenic.time', v))
 // render-quality tier override for the 3D view (Settings → Display); 'auto' probes the device
 const scenicQuality = ref(localStorage.getItem('walkfit.scenic.quality') || 'auto')
 watch(scenicQuality, (v) => localStorage.setItem('walkfit.scenic.quality', v))
+// Head bob/sway/lean in the 3D view (#realism slice 4). Stored as on/off rather than a
+// bare boolean so the key reads the same as every other scenic preference; the component
+// takes a boolean, which is why this needs no `as never` cast on the way through.
+const scenicMotion = ref(localStorage.getItem('walkfit.scenic.motion') !== 'off')
+watch(scenicMotion, (v) => localStorage.setItem('walkfit.scenic.motion', v ? 'on' : 'off'))
 
 // --- live calorie counter ---
 // Integrated per-tick from actual speed (via metForSpeed), not a single average-speed
@@ -1414,6 +1419,7 @@ const pace = computed(() => {
           :quality="scenicQuality as never"
           :steps="state.steps"
           :rabbit-distance="rabbitDistance"
+          :motion="scenicMotion"
           @unsupported="scenicUnsupported"
         />
       </div>
@@ -1840,6 +1846,7 @@ const pace = computed(() => {
         v-model:goal-minutes="goals.minutes"
         v-model:scenic-time="scenicTime"
         v-model:scenic-quality="scenicQuality"
+        v-model:scenic-motion="scenicMotion"
         v-model:goal-weight="goalWeight"
         v-model:strava-auto-upload="stravaAutoUpload"
         :tm="{ state, connect, disconnect, forget: forgetTreadmill }"

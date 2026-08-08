@@ -214,6 +214,11 @@ const en = {
   'settings.qualityAuto': 'Auto (match this device)',
   'settings.qualityLow': 'Performance',
   'settings.qualityHigh': 'Quality',
+  'settings.motion': '3D head motion',
+  'settings.motionOn': 'On',
+  'settings.motionOff': 'Off',
+  'settings.motionNote':
+    'Head bob, sway and a lean into the bends. Always off when your system asks for reduced motion.',
   'settings.language': 'Language',
   'settings.connected': 'Connected',
   'settings.autoUpload': 'Auto-upload walks',
@@ -470,6 +475,11 @@ const nl: Record<MessageKey, string> = {
   'settings.qualityAuto': 'Auto (past bij dit apparaat)',
   'settings.qualityLow': 'Prestaties',
   'settings.qualityHigh': 'Kwaliteit',
+  'settings.motion': '3D-hoofdbeweging',
+  'settings.motionOn': 'Aan',
+  'settings.motionOff': 'Uit',
+  'settings.motionNote':
+    'Hoofdbeweging, zijwaartse zwaai en overhellen in de bochten. Altijd uit als je systeem om minder beweging vraagt.',
   'settings.language': 'Taal',
   'settings.connected': 'Verbonden',
   'settings.autoUpload': 'Wandelingen automatisch uploaden',

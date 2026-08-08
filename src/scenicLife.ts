@@ -6,7 +6,7 @@
 // Pacer positions are ANALYTIC functions of elapsed time — no accumulated state — so the
 // same second always produces the same scene, across reloads and in tests, without having
 // to simulate time forward.
-import { worldHash, LAP_M, TRACK_IN, LANE_W } from './scenic'
+import { worldHash, LAP_M, TRACK_IN, LANE_W, BEND_R } from './scenic'
 
 export type PacerKind = 'walker' | 'jogger' | 'runner' | 'intervals'
 
@@ -131,6 +131,60 @@ export function gaitCycleM(stride: number): number {
 
 export function cadenceHz(speedKmh: number, stride: number): number {
   return mps(speedKmh) / stride
+}
+
+// --- camera motion (slice 4) ---
+// The camera used to glide on rails, and the component's comments called the fixed horizon
+// a comfort choice. It was the right default when there was nothing else to look at; now
+// there is. Phase comes from WALKED DISTANCE, not wall clock, so it stays locked to the
+// belt, deterministic across reloads, and testable without a fake timer — the same choice
+// dayPhase and stepPhase already make.
+export const BOB_M = 0.03 // vertical, one dip per footfall
+export const SWAY_M = 0.015 // lateral, one full swing per gait cycle (alternating feet)
+export const ROLL_MAX_RAD = (1.2 * Math.PI) / 180
+export const FOV_BASE_DEG = 60
+export const FOV_MAX_DEG = 66
+export const FOV_SPEED_LO = 1 // km/h, mirrors the belt's SPEED_MIN
+export const FOV_SPEED_HI = 6 // km/h, mirrors the belt's SPEED_MAX
+// Below this the projection matrix is not worth rebuilding — nobody can see it.
+export const FOV_EPSILON_DEG = 0.05
+
+export interface CameraMotion {
+  dy: number // metres, vertical bob
+  dx: number // metres, lateral sway — a trackPoint() offset, so positive is outward
+  roll: number // radians, positive = head tilted left = leaning into a left-hand bend
+  fov: number // degrees
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+
+export function cameraMotion(
+  distance: number,
+  stride: number,
+  speed: number,
+  curvature: number, // signed 1/R at the current arc position, 0 on the straights
+  enabled: boolean,
+): CameraMotion {
+  // Same reasoning as strideLength: a NaN reaching camera.position blanks the scene, and
+  // `stride <= 0` cannot catch NaN because every comparison with NaN is false.
+  const still = Number.isFinite(speed) ? speed : 0
+  const fov =
+    FOV_BASE_DEG +
+    (FOV_MAX_DEG - FOV_BASE_DEG) *
+      clamp((still - FOV_SPEED_LO) / (FOV_SPEED_HI - FOV_SPEED_LO), 0, 1)
+  if (!enabled) return { dy: 0, dx: 0, roll: 0, fov: FOV_BASE_DEG }
+  if (!Number.isFinite(distance) || !Number.isFinite(stride) || stride <= 0) {
+    return { dy: 0, dx: 0, roll: 0, fov }
+  }
+  // One gait cycle = two footfalls (see gaitCycleM), so the once-per-foot bob runs at
+  // TWICE this frequency and the alternating-feet sway at exactly it. Swap those and every
+  // motion doubles — the slice-3 bug that survived eight review rounds, because a
+  // screenshot cannot show frequency.
+  const gait = stepPhase(distance, gaitCycleM(stride)) * Math.PI * 2
+  const dy = -BOB_M * Math.cos(2 * gait) // lowest at the footfall, highest mid-step
+  const dx = SWAY_M * Math.sin(gait)
+  const lean = Number.isFinite(curvature) ? clamp(curvature * BEND_R, -1, 1) : 0
+  return { dy, dx, roll: ROLL_MAX_RAD * lean, fov }
 }
 
 // Signed metres between you and the rabbit, positive when it is ahead. Deliberately NOT

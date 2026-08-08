@@ -14,8 +14,16 @@ import {
   gaitCycleM,
   cadenceHz,
   paceGap,
+  cameraMotion,
+  BOB_M,
+  SWAY_M,
+  ROLL_MAX_RAD,
+  FOV_BASE_DEG,
+  FOV_MAX_DEG,
+  FOV_SPEED_LO,
+  FOV_SPEED_HI,
 } from './scenicLife'
-import { TRACK_IN, LANE_W } from './scenic'
+import { TRACK_IN, LANE_W, BEND_R } from './scenic'
 import { TIER_BUDGET } from './scenicQuality'
 
 const LAP = 400 // scenic.ts LAP_M, restated so the test does not depend on the module it checks
@@ -243,5 +251,89 @@ describe('paceGap', () => {
   it('does not wrap at the lap boundary — it is a total-distance gap, not a lap position', () => {
     // you have run a full lap more than the rabbit; that is a 400 m lead, not level
     expect(paceGap(800, 400)).toBe(-400)
+  })
+})
+
+describe('cameraMotion (slice 4)', () => {
+  const STRIDE = 0.72
+  const GAIT = gaitCycleM(STRIDE)
+
+  it('stays within the stated amplitudes for any distance', () => {
+    for (let d = 0; d < 20; d += 0.013) {
+      const m = cameraMotion(d, STRIDE, 4.5, 0, true)
+      expect(Math.abs(m.dy)).toBeLessThanOrEqual(BOB_M + 1e-12)
+      expect(Math.abs(m.dx)).toBeLessThanOrEqual(SWAY_M + 1e-12)
+    }
+  })
+
+  it('bobs twice and sways once per gait cycle', () => {
+    // The gait cycle is TWO footfalls (see gaitCycleM). One dip per FOOT means the bob
+    // runs at twice the gait frequency and the alternating-feet sway at exactly it.
+    // Getting this backwards is the slice-3 2x-cadence bug, which no screenshot can catch.
+    const at = (d: number) => cameraMotion(d, STRIDE, 4.5, 0, true)
+    expect(at(GAIT).dy).toBeCloseTo(at(0).dy, 9)
+    expect(at(GAIT / 2).dy).toBeCloseTo(at(0).dy, 9) // bob repeats every half gait cycle
+    expect(at(GAIT).dx).toBeCloseTo(at(0).dx, 9)
+    expect(at(GAIT / 2).dx).toBeCloseTo(-at(0).dx, 9) // sway does NOT — it inverts
+    // and the sway genuinely swings to both sides within one cycle
+    expect(at(GAIT / 4).dx).toBeGreaterThan(0)
+    expect(at((3 * GAIT) / 4).dx).toBeLessThan(0)
+  })
+
+  it('is continuous across the lap wrap', () => {
+    // phase is total walked distance, so 400 m is not special — guard it anyway, because
+    // an implementation keyed off trackPoint's wrapped s would jump here
+    const a = cameraMotion(399.999, STRIDE, 4.5, 0, true)
+    const b = cameraMotion(400.001, STRIDE, 4.5, 0, true)
+    expect(Math.abs(b.dy - a.dy)).toBeLessThan(BOB_M / 20)
+    expect(Math.abs(b.dx - a.dx)).toBeLessThan(SWAY_M / 20)
+  })
+
+  it('leans into a bend and sits level on a straight', () => {
+    const straight = cameraMotion(10, STRIDE, 4.5, 0, true)
+    const bend = cameraMotion(10, STRIDE, 4.5, 1 / BEND_R, true)
+    expect(straight.roll).toBe(0)
+    expect(bend.roll).toBeCloseTo(ROLL_MAX_RAD, 9)
+    // both of the track's bends are left turns, so both produce the same lean; a
+    // right-turning curvature would mirror it
+    expect(cameraMotion(10, STRIDE, 4.5, -1 / BEND_R, true).roll).toBeCloseTo(-ROLL_MAX_RAD, 9)
+  })
+
+  it('clamps the lean on a curvature tighter than a track bend', () => {
+    expect(cameraMotion(10, STRIDE, 4.5, 10 / BEND_R, true).roll).toBeCloseTo(ROLL_MAX_RAD, 9)
+  })
+
+  it('widens the view with speed, monotonically and clamped at both ends', () => {
+    expect(cameraMotion(0, STRIDE, 0.2, 0, true).fov).toBe(FOV_BASE_DEG)
+    expect(cameraMotion(0, STRIDE, FOV_SPEED_LO, 0, true).fov).toBe(FOV_BASE_DEG)
+    expect(cameraMotion(0, STRIDE, FOV_SPEED_HI, 0, true).fov).toBe(FOV_MAX_DEG)
+    expect(cameraMotion(0, STRIDE, 99, 0, true).fov).toBe(FOV_MAX_DEG)
+    let prev = -Infinity
+    for (let v = 0; v <= 8; v += 0.1) {
+      const fov = cameraMotion(0, STRIDE, v, 0, true).fov
+      expect(fov).toBeGreaterThanOrEqual(prev)
+      prev = fov
+    }
+  })
+
+  it('is completely inert when disabled', () => {
+    const m = cameraMotion(12.3, STRIDE, 5.5, 1 / BEND_R, false)
+    expect(m).toEqual({ dy: 0, dx: 0, roll: 0, fov: FOV_BASE_DEG })
+  })
+
+  it('returns a still camera for NaN rather than poisoning the transform', () => {
+    // one NaN in camera.position blanks the whole scene until remount
+    for (const m of [
+      cameraMotion(NaN, STRIDE, 4.5, 0, true),
+      cameraMotion(10, NaN, 4.5, 0, true),
+      cameraMotion(10, 0, 4.5, 0, true),
+      cameraMotion(10, STRIDE, NaN, 0, true),
+      cameraMotion(10, STRIDE, 4.5, NaN, true),
+    ]) {
+      expect(Number.isFinite(m.dy)).toBe(true)
+      expect(Number.isFinite(m.dx)).toBe(true)
+      expect(Number.isFinite(m.roll)).toBe(true)
+      expect(Number.isFinite(m.fov)).toBe(true)
+    }
   })
 })

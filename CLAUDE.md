@@ -143,10 +143,18 @@ Keep pinned Playwright version and image tag in sync.
   unlit `MeshBasic`, so without it they are exactly as bright at midnight as at noon —
   floodlight heads are deliberately excluded, being lamps rather than paint). Unit-tested in
   `src/scenicSky.test.ts`.
-- `src/scenicQuality.ts` — adaptive quality tiers: a median-of-60-frames probe picks
-  `low`/`high`, `walkfit.scenic.quality` overrides it. Gates the shadow map, texture size,
-  star count and clouds. Every tier path must work in BOTH directions — enabling and
-  disabling — or picking Performance buys neither the saving nor the fallback.
+- `src/scenicQuality.ts` — adaptive quality tiers `low` / `high` / `ultra`, with
+  `walkfit.scenic.quality` overriding the probe. Gates texture size, star count, clouds,
+  the shadow map (size AND box half-width — ultra buys texels per metre, 4096 over a 40 m
+  box against 2048 over 60 m, which is what puts a crisp edge on a contact shadow without
+  CSM having to rewrite every material), derived normal maps, contact shading, the tuft
+  count and the post chain. Every tier path must work in BOTH directions — enabling and
+  disabling — or picking Performance buys neither the saving nor the fallback. The
+  median-of-60-frames probe deliberately tops out at `high`: vsync clamps frame time near
+  16.7 ms however much headroom the GPU has, so it cannot tell "can afford a fullscreen
+  post pass" from "exactly at 60 Hz". **Ultra is opt-in from Settings only**, and is
+  desktop-only by intent — a fullscreen pass at DPR 3 is the first thing that costs a
+  phone frames rather than watts.
 - `src/scenicMeshes.ts` — pure vertex/uv/index array builders plus the three.js mesh and
   procedural `CanvasTexture` factories, extracted from `Scenic3D.vue`. Every `REPEAT` value
   must divide `LAP_M` exactly, or the texture misaligns with itself at the start/finish seam.
@@ -327,8 +335,10 @@ band, lane lines and start/finish line are closed loop-ribbons sampled every 2 m
 lateral offsets — their materials are `DoubleSide` because travel direction reverses
 halfway around the loop, so any fixed triangle winding backface-culls one straight. Lane
 lines sit 4 cm above the track surface (less separation z-fights into shimmer on the far
-side of the loop). A vertex-gradient sky dome (fog color at horizon → sky color
-overhead) kills the ground/sky seam, and the camera interpolates toward `state.distance`
+side of the loop). A sky-shader dome (horizon-biased scattering ramp from fog colour to
+sky colour, plus a sun disc and Mie glow, evaluated per fragment) kills the ground/sky
+seam — the vertex-colour gradient it replaced banded across a clear sky and could not
+carry a halo at all, since the halo is a few degrees wide and landed between vertices, and the camera interpolates toward `state.distance`
 at belt speed (distance ticks in at ~4 Hz; naive snapping would stutter). Comfort: the
 camera bobs, sways and leans into the bends off walked distance (`cameraMotion` in
 scenicLife.ts, `curvatureEased` in scenic.ts) — reversing the original fixed-horizon
@@ -337,10 +347,23 @@ choice now that there is something to look at. Settings → Display turns it off
 rAF loop and forces the motion off regardless of the setting, because a bob applied per
 discrete tick is a jolt. rAF pauses when the tab is hidden. **three.js is the one
 runtime dependency**, and only the scenic view pays for it: `Scenic3D.vue` is a
-`defineAsyncComponent` so Vite splits it (+three) into a lazy chunk (~520 kB raw) that
-downloads on first open — the main bundle stays three-free. No WebGL (probed before any
+`defineAsyncComponent` so Vite splits it (+three, +the post-processing addons) into a
+lazy chunk (~585 kB raw) that downloads on first open — the main bundle stays three-free
+and the 250 kB guard covers only that main chunk. No WebGL (probed before any
 three setup) → the component emits `unsupported`, the app falls back to the 2D track
 view and disables the Scenic toggle.
+
+**Post-processing (ultra only)** runs bloom → `OutputPass` → colour grade. The grade goes
+**after** `OutputPass`, not before: everything upstream of it is scene-referred and linear,
+where a contrast pivot at 0.5 is meaningless — a night frame sits around 0.002-0.02, so
+`(c - 0.5) * k + 0.5` drove every pixel negative and the clamp turned the whole frame
+black (measured: mean frame luminance 23.6 → 1.5). The grade's strength is also driven from
+`daylight(phase)`, because contrast and a corner vignette both take from the darks and a
+night frame is almost nothing but darks. Note `ShaderPass` CLONES the uniform object it is
+handed, so per-frame writes must go to the pass's own `uniforms`, not to the shader
+definition. With a composer in play three skips tone mapping in the material shaders and
+`OutputPass` does it instead — which also means fog and the sky dome, which previously
+escaped it, now go through it too.
 
 The venue (`src/scenicVenue.ts`) is a **club track, not a stadium bowl**: one covered
 stand on the home straight, open horizon on the other three sides so the day/night sky

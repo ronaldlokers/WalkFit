@@ -8,6 +8,11 @@
 // motion stays smooth despite the ~4 Hz distance updates from the treadmill ticker.
 import { onMounted, onBeforeUnmount, watch, ref } from 'vue'
 import * as THREE from 'three'
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import {
   trackPoint,
@@ -97,6 +102,7 @@ import {
   cloudColor,
   backdropTint,
   paintLevel,
+  daylight,
 } from './scenicSky'
 import type { TimeOfDay } from './scenicSky'
 import { tierFromFrames, resolveTier, PROBE_FRAMES, TIER_BUDGET } from './scenicQuality'
@@ -115,6 +121,51 @@ const props = defineProps<{
 const emit = defineEmits<{ unsupported: [] }>()
 
 const host = ref<HTMLDivElement | null>(null)
+
+// Colour grade. This is the cheapest large step toward the look of a game that ships a
+// colour pipeline: a touch of saturation and contrast around mid grey, plus a corner
+// falloff. Kept deliberately mild — the palette is already authored for ACES, so this is a
+// finishing pass, not a rescue.
+const GRADE_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    uSaturation: { value: 1.28 },
+    uContrast: { value: 1.09 },
+    uVignette: { value: 0.22 },
+    // How much of the grade to apply, 0..1. Driven from the daylight factor: contrast
+    // around mid grey and a corner falloff both take away from the darks, and a night
+    // frame has almost nothing BUT darks — applied at full strength after sunset they
+    // crushed the track, the fence and the stand into one black field.
+    uGrade: { value: 1 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uSaturation;
+    uniform float uContrast;
+    uniform float uVignette;
+    uniform float uGrade;
+    varying vec2 vUv;
+    void main() {
+      vec4 tex = texture2D(tDiffuse, vUv);
+      vec3 c = tex.rgb;
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(l), c, mix(1.0, uSaturation, uGrade));
+      c = (c - 0.5) * mix(1.0, uContrast, uGrade) + 0.5;
+      // radial falloff from the centre, squared so the corners darken and the middle is
+      // left alone rather than the whole frame being dimmed
+      float d = distance(vUv, vec2(0.5));
+      c *= 1.0 - uVignette * uGrade * d * d * 2.0;
+      gl_FragColor = vec4(max(c, 0.0), tex.a);
+    }
+  `,
+}
 
 const EYE_HEIGHT = 1.6
 // The perimeter fence's height. Used in three places (ribbon vertex, chain-link texture
@@ -1122,6 +1173,52 @@ onMounted(() => {
     }
   }
 
+  // --- post-processing: bloom + grading, ultra tier only ---
+  // Built lazily, because the addons are only worth their bytes and their two extra
+  // fullscreen passes on a machine that asked for them. A phone never gets here: at DPR 3
+  // a fullscreen pass is the first thing that costs frames rather than watts.
+  //
+  // Colour handling note: three skips tone mapping in the material shaders whenever it is
+  // rendering into a render target, and OutputPass applies it at the end instead. Fog and
+  // the sky dome therefore still agree with each other — both arrive at OutputPass in the
+  // same space — so the ground/sky seam the dome exists to hide stays hidden.
+  let composer: EffectComposer | null = null
+  let bloomPass: UnrealBloomPass | null = null
+  // ShaderPass clones the uniform objects it is handed, so per-frame writes have to go to
+  // the PASS's own uniforms — writing to GRADE_SHADER.uniforms updates nothing.
+  let gradePass: ShaderPass | null = null
+  function buildComposer() {
+    if (composer) return
+    composer = new EffectComposer(renderer!)
+    composer.setPixelRatio(renderer!.getPixelRatio())
+    composer.setSize(el.clientWidth || 1, el.clientHeight || 1)
+    composer.addPass(new RenderPass(scene, camera))
+    bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(el.clientWidth || 1, el.clientHeight || 1),
+      0.2, // strength: a sheen on the brightest things, not a glow over everything
+      0.6, // radius
+      0.92, // threshold: only sunlit white and the floodlights clear this
+    )
+    composer.addPass(bloomPass)
+    // Tone mapping and the sRGB conversion both live here once a composer is in play, and
+    // the grade goes AFTER them, not before. Everything upstream of OutputPass is scene
+    // referred and linear, where a contrast pivot at 0.5 is meaningless: a night frame sits
+    // around 0.002-0.02, so (c - 0.5) * k + 0.5 drove every pixel of it negative and the
+    // clamp turned the whole thing black. Measured, not guessed — mean frame luminance fell
+    // from 23.6 to 1.5 with the pass in the wrong place.
+    composer.addPass(new OutputPass())
+    gradePass = new ShaderPass(GRADE_SHADER)
+    composer.addPass(gradePass)
+  }
+  function disposeComposer() {
+    composer?.dispose()
+    bloomPass?.dispose()
+    composer = null
+    bloomPass = null
+    gradePass = null
+  }
+  if (budget.post) buildComposer()
+
   // --- grass tufts: one InstancedMesh, added after the bake so it is never merged ---
   // Static geometry, but it animates (wind), so it cannot join the static world. One draw
   // call regardless of count.
@@ -1413,6 +1510,9 @@ onMounted(() => {
     // Less haze than the skyline gets — it is nearer, so it keeps more of its own colour —
     // but the same darkness handling, since neither backdrop is lit by the scene.
     treeLineMat.color.setHex(backdropTint(sky, phase, 0.35 + 0.5 * (1 - clarity)))
+    // 0.3 floor rather than 0: some saturation still helps a night frame, it is the
+    // contrast and the vignette that cannot be afforded there.
+    if (gradePass) gradePass.uniforms.uGrade!.value = 0.3 + 0.7 * daylight(phase)
     windUniform.value = sessionSeconds
     const level = paintLevel(phase)
     for (const [m, base] of painted) m.color.setHex(base).multiplyScalar(level)
@@ -1541,7 +1641,8 @@ onMounted(() => {
     } else {
       labelSprite.visible = false
     }
-    renderer!.render(scene, camera)
+    if (composer) composer.render()
+    else renderer!.render(scene, camera)
   }
 
   function applyTier(next: Tier) {
@@ -1613,6 +1714,8 @@ onMounted(() => {
     if (clouds) clouds.visible = budget.clouds
     // Built once at the largest count any tier asks for; a tier change only changes how
     // many of them draw, because an InstancedMesh cannot grow after construction.
+    if (budget.post) buildComposer()
+    else disposeComposer()
     if (budget.tufts) addTufts(MAX_TUFTS)
     if (tufts) {
       tufts.visible = budget.tufts > 0
@@ -1743,6 +1846,9 @@ onMounted(() => {
       starMat.size = 1.6 * dpr
     }
     renderer.setSize(w, h)
+    composer?.setPixelRatio(renderer.getPixelRatio())
+    composer?.setSize(w, h)
+    bloomPass?.setSize(w, h)
     camera.aspect = w / h
     camera.updateProjectionMatrix()
     update(display)
@@ -1772,6 +1878,7 @@ onMounted(() => {
       m.map?.dispose()
       m.dispose()
     })
+    disposeComposer()
     domeGeo.dispose()
     dome.material.dispose()
     glowTex.dispose()

@@ -143,6 +143,31 @@ test.describe('statistics', () => {
     await expect(page.locator('.weight-section')).toContainText('82.4')
     const stored = await page.evaluate(() => localStorage.getItem('walkfit.weight.log'))
     expect(JSON.parse(stored!)).toHaveLength(1)
+    // Correct and delete the weigh-in without touching localStorage by hand.
+    await page.locator('.weight-list').getByRole('button', { name: 'Edit' }).click()
+    await page.locator('.weight-list input').fill('81.9')
+    await page.locator('.weight-list').getByRole('button', { name: 'Save' }).click()
+    await expect(page.locator('.weight-list')).toContainText('81.9 kg')
+    expect(
+      JSON.parse((await page.evaluate(() => localStorage.getItem('walkfit.weight.log')))!)[0].kg,
+    ).toBe(81.9)
+    await page.locator('.weight-list').getByRole('button', { name: 'Delete' }).click()
+    expect(
+      JSON.parse((await page.evaluate(() => localStorage.getItem('walkfit.weight.log')))!),
+    ).toEqual([])
+
+    // Correct a walk's totals; its immutable date/identity and other metadata survive.
+    await page.locator('.walk-row').first().click()
+    await page.getByRole('button', { name: 'Edit walk' }).click()
+    await page.getByLabel('Distance (km)').fill('1.75')
+    await page.getByLabel('Duration (min)').fill('22.5')
+    await page.getByLabel('Calories').fill('80')
+    await page.locator('.walk-edit').getByRole('button', { name: 'Save' }).click()
+    await expect(page.locator('.walk-row').first()).toContainText('1.75 km')
+    const corrected = JSON.parse(
+      (await page.evaluate(() => localStorage.getItem('walkfit.history')))!,
+    ).at(-1)
+    expect(corrected).toMatchObject({ distance: 1750, duration: 1350, kcal: 80, avgHr: 112 })
 
     // week navigation: back changes the label, This week returns
     const label = await page.locator('.week-label span').innerText()

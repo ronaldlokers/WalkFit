@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { loadWeightLog, addWeighIn, mergeWeighIns } from './weight'
+import { loadWeightLog, addWeighIn, mergeWeighIns, updateWeighIn, removeWeighIn } from './weight'
 
 beforeEach(() => localStorage.clear())
 
@@ -49,6 +49,32 @@ describe('mergeWeighIns', () => {
       { date: '2026-07-01T07:00:00.000Z', kg: 82.5, source: 'manual' },
     ])
     expect(loadWeightLog()).toHaveLength(2)
+  })
+})
+
+describe('edit and delete weigh-ins', () => {
+  it('updates a manual entry without losing its identity', () => {
+    const entry = { date: '2026-07-01T07:00:00.000Z', kg: 82.6, source: 'manual' }
+    addWeighIn(entry)
+    expect(updateWeighIn(entry, 81.2)).toEqual([{ ...entry, kg: 81.2 }])
+  })
+
+  it('uses provider grpid when editing or deleting a timestamp-corrected reading', () => {
+    const stored = {
+      date: '2026-07-01T08:30:00.000Z',
+      kg: 82.6,
+      source: 'withings',
+      grpid: 9,
+    }
+    addWeighIn(stored)
+    expect(updateWeighIn({ ...stored, date: '2026-07-01T07:00:00.000Z' }, 81.9)[0]!.kg).toBe(81.9)
+    expect(removeWeighIn({ ...stored, date: '2026-07-01T07:00:00.000Z' })).toEqual([])
+  })
+
+  it('rejects implausible weights', () => {
+    const entry = { date: '2026-07-01T07:00:00.000Z', kg: 82.6, source: 'manual' }
+    addWeighIn(entry)
+    expect(updateWeighIn(entry, 821)).toEqual([entry])
   })
 })
 

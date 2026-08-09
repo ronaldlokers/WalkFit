@@ -136,6 +136,20 @@ export function removeSession(date: string): Session[] {
   return list
 }
 
+export function updateSession(
+  date: string,
+  changes: Pick<Session, 'distance' | 'duration' | 'kcal'>,
+): Session[] {
+  const list = loadStatistics()
+  const index = list.findIndex((session) => session.date === date)
+  if (index < 0) return list
+  const updated = sanitizeSession({ ...list[index], ...changes })
+  if (!updated) return list
+  list[index] = updated
+  localStorage.setItem(KEY, JSON.stringify(list))
+  return list
+}
+
 function isoWeekKey(date: Date): string {
   // ISO week (Mon-start), keyed as "YYYY-Www" so it sorts/groups correctly across year ends.
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))

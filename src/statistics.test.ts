@@ -13,10 +13,33 @@ import {
   loadGoals,
   saveGoals,
   DEFAULT_GOALS,
+  weekDistanceChallenge,
 } from './statistics'
 import type { Session } from './statistics'
 
 beforeEach(() => localStorage.clear())
+
+describe('weekDistanceChallenge', () => {
+  it('compares calendar weeks and ignores older sessions', () => {
+    const session = (date: string, distance: number): Session => ({
+      date,
+      distance,
+      duration: 600,
+      kcal: 40,
+      avgHr: null,
+    })
+    expect(
+      weekDistanceChallenge(
+        [
+          session('2026-08-04T10:00:00', 1200),
+          session('2026-07-29T10:00:00', 3000),
+          session('2026-07-20T10:00:00', 9999),
+        ],
+        new Date('2026-08-06T12:00:00'),
+      ),
+    ).toEqual({ currentM: 1200, previousM: 3000, remainingM: 1800 })
+  })
+})
 
 describe('addSession / loadStatistics', () => {
   it('persists entries across loads', () => {

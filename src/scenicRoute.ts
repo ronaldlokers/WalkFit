@@ -2,6 +2,8 @@
 // the hub (0..400 m); this extension is deliberately data-only until the renderer consumes
 // it, so route decisions can be tested without Three.js or a browser.
 
+import { BEND_R, STRAIGHT_M, TRACK_OUT } from './scenic'
+
 export const STADIUM_HUB_M = 400
 export const PARK_ROUTE_M = 400
 export const ROUTE_TOTAL_M = STADIUM_HUB_M + PARK_ROUTE_M
@@ -24,6 +26,29 @@ export interface RouteChunk {
   endM: number
   biome: RouteBiome
   landmarkId?: string
+}
+
+export interface RoutePoint {
+  x: number
+  z: number
+  tx: number
+  tz: number
+}
+
+// The park path leaves the outer edge of the home straight and sweeps into open space.
+// It is intentionally gentle and deterministic; later art passes can replace the control
+// curve without changing route distances, landmarks, or chunk IDs.
+export function routePoint(distanceM: number): RoutePoint | null {
+  if (!Number.isFinite(distanceM) || distanceM < STADIUM_HUB_M || distanceM > ROUTE_TOTAL_M)
+    return null
+  const local = Math.max(0, Math.min(PARK_ROUTE_M, distanceM - STADIUM_HUB_M))
+  const u = local / PARK_ROUTE_M
+  const x = BEND_R + TRACK_OUT + 3 + local * 0.32
+  const z = STRAIGHT_M / 2 - local * 0.2 + Math.sin(u * Math.PI * 2) * 14
+  const dx = 0.32
+  const dz = -0.2 + (Math.cos(u * Math.PI * 2) * (14 * Math.PI * 2)) / PARK_ROUTE_M
+  const length = Math.hypot(dx, dz)
+  return { x, z, tx: dx / length, tz: dz / length }
 }
 
 const CHUNK_BIOMES: readonly RouteBiome[] = ['gate', 'promenade', 'garden', 'pond', 'overlook']

@@ -8,6 +8,7 @@ import {
   ROUTE_POOL_CAP,
   ROUTE_TOTAL_M,
   routeChunkAt,
+  routePoint,
   RouteChunkPool,
   STADIUM_HUB_M,
 } from './scenicRoute'
@@ -28,6 +29,16 @@ describe('stadium-to-park route model', () => {
     expect(routeChunkAt(ROUTE_TOTAL_M - 0.01)).toEqual(ROUTE_CHUNKS.at(-1))
     expect(routeChunkAt(ROUTE_TOTAL_M)).toBeNull()
     expect(activeRouteChunks(640, 80).length).toBeLessThanOrEqual(ROUTE_POOL_CAP)
+  })
+
+  it('keeps the park path continuous and oriented along its authored sweep', () => {
+    const start = routePoint(STADIUM_HUB_M)
+    const end = routePoint(ROUTE_TOTAL_M)
+    expect(start).not.toBeNull()
+    expect(end).not.toBeNull()
+    expect(end!.x).toBeGreaterThan(start!.x)
+    expect(Math.hypot(start!.tx, start!.tz)).toBeCloseTo(1)
+    expect(routePoint(ROUTE_TOTAL_M + 1)).toBeNull()
   })
 
   it('exposes checkpoint and landmark distances', () => {

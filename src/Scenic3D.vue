@@ -50,6 +50,8 @@ import type { AvatarStyle, CameraView } from './scenicPlayer'
 import { loadScenicManifest } from './scenicAssets'
 import type { ScenicAssetCache as ScenicAssetCacheType } from './scenicAssetLoader'
 import { scenicParkPlacements } from './scenicPark'
+import { PARK_ROUTE_M, ROUTE_CHUNK_M, STADIUM_HUB_M, RouteChunkPool } from './scenicRoute'
+import { routeChunkGeometry } from './scenicRouteMeshes'
 import {
   stadium,
   PART_SIZES,
@@ -1233,6 +1235,37 @@ onMounted(() => {
     }
   }
 
+  // --- stadium-to-park route ribbon ---
+  // Route chunks are added after the stadium bake so each section remains independently
+  // disposable. The route preview follows the current 400 m hub lap until route selection
+  // is introduced; that keeps the first slice visible while preserving the pool contract.
+  const routeMaterial = new THREE.MeshStandardMaterial({
+    color: 0x8b7863,
+    roughness: 0.94,
+    metalness: 0,
+  })
+  const routePool = new RouteChunkPool()
+  const routeRoots = new Map<string, THREE.Mesh>()
+  function syncRouteChunks(distanceM: number) {
+    const local = ((distanceM % PARK_ROUTE_M) + PARK_ROUTE_M) % PARK_ROUTE_M
+    const routeDistance = STADIUM_HUB_M + local
+    const delta = routePool.update(routeDistance, ROUTE_CHUNK_M)
+    for (const chunk of delta.exited) {
+      const root = routeRoots.get(chunk.id)
+      if (!root) continue
+      scene.remove(root)
+      root.geometry.dispose()
+      routeRoots.delete(chunk.id)
+    }
+    for (const chunk of delta.entered) {
+      const root = new THREE.Mesh(routeChunkGeometry(chunk), routeMaterial)
+      root.castShadow = false
+      root.receiveShadow = true
+      routeRoots.set(chunk.id, root)
+      scene.add(root)
+    }
+  }
+
   // --- post-processing: bloom + grading, ultra tier only ---
   // Built lazily, because the addons are only worth their bytes and their two extra
   // fullscreen passes on a machine that asked for them. A phone never gets here: at DPR 3
@@ -1516,6 +1549,7 @@ onMounted(() => {
   let display = props.distance // smoothed distance the camera actually sits at
   let sessionSeconds = 0
   function update(d: number) {
+    syncRouteChunks(d)
     // Measured, not modelled: state.steps is the belt's own pedometer, so the arms swing
     // at your real cadence rather than an assumed one — and the camera bobs at it too.
     const stride = strideLength(props.distance, props.steps ?? 0)
@@ -1975,6 +2009,10 @@ onMounted(() => {
     renderer?.domElement.removeEventListener('webglcontextrestored', onContextRestored)
     ro.disconnect()
     scene.clear()
+    routePool.clear()
+    routeRoots.forEach((root) => root.geometry.dispose())
+    routeRoots.clear()
+    routeMaterial.dispose()
     disposables.forEach((g) => g.dispose())
     signMats.forEach((m) => {
       m.map?.dispose()

@@ -229,7 +229,7 @@ Settings → Display gains `Auto / Performance / Quality`, persisted at
    eyes on real hardware, in both day and night phases, with the HUD populated.
 3. **`wizard.png` may shift** from the scrim and vignette change. Regenerate once
    in the pinned Playwright container:
-   `docker run --rm -v "$PWD":/work -w /work -e CI=1 mcr.microsoft.com/playwright:v1.61.1-noble bash -c "npm ci && npm run e2e:update"`
+   `docker run --rm -v "$PWD":/work -w /work -e CI=1 mcr.microsoft.com/playwright:v1.62.1-noble bash -c "npm ci && npm run e2e:update"`
 4. **Tone mapping plus a bright palette can blow out the night phase** — night
    is lit almost entirely by ambient, and ACES will lift it. Check the night
    keyframe explicitly rather than assuming the day tuning carries.

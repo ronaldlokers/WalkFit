@@ -1929,7 +1929,7 @@ Run: `npm run e2e`
 If `wizard.png` fails, the scrim change reached the wizard screen. Regenerate in the pinned container — **never on the host or inside the devcontainer**, whose fonts differ from CI:
 
 ```bash
-docker run --rm -v "$PWD":/work -w /work -e CI=1 mcr.microsoft.com/playwright:v1.61.1-noble \
+docker run --rm -v "$PWD":/work -w /work -e CI=1 mcr.microsoft.com/playwright:v1.62.1-noble \
   bash -c "npm ci && npm run e2e:update"
 ```
 

@@ -141,7 +141,7 @@ is needed. The main chunk stays three-free and the 250 kB
 WebGL-agnostic and unaffected by any of this. The only real screenshot baseline
 is `wizard.png` (`e2e/smoke.spec.ts:7`), which slice 1's HUD scrim and vignette
 retune may shift. It is regenerated once, in slice 1, in the pinned
-`mcr.microsoft.com/playwright:v1.61.1-noble` container per CLAUDE.md.
+`mcr.microsoft.com/playwright:v1.62.1-noble` container per CLAUDE.md.
 
 ## Out of scope
 

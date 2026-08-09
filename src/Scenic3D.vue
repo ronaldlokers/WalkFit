@@ -1275,7 +1275,7 @@ onMounted(() => {
     right.position.x = 1.95
     beam.position.y = 3.05
     arch.add(left, right, beam)
-    arch.position.set(point.x, 0, point.z)
+    arch.position.set(point.x, point.y, point.z)
     arch.rotation.y = Math.atan2(point.tx, point.tz)
     arch.traverse((object) => {
       const mesh = object as THREE.Mesh
@@ -1326,6 +1326,24 @@ onMounted(() => {
           scene.add(checkpoint)
         }
       }
+    }
+  }
+
+  type ScenicWorldPoint = {
+    x: number
+    y: number
+    z: number
+    tx: number
+    tz: number
+  }
+  function worldPoint(distanceM: number, lateral = 0): ScenicWorldPoint {
+    const wrapped = ((distanceM % ROUTE_TOTAL_M) + ROUTE_TOTAL_M) % ROUTE_TOTAL_M
+    if (wrapped < STADIUM_HUB_M) return { ...trackPoint(wrapped, lateral), y: 0 }
+    const point = routePoint(wrapped, props.routeId ?? 'stadium-park')!
+    return {
+      ...point,
+      x: point.x - point.tz * lateral,
+      z: point.z + point.tx * lateral,
     }
   }
 
@@ -1659,15 +1677,15 @@ onMounted(() => {
     // Sway is a lateral offset in the world model's own terms, so it goes straight through
     // every trackPoint. Third person follows from behind on the same surveyed path; this
     // gives collision-safe framing on the open lane without a renderer-side physics system.
-    const avatarAt = trackPoint(d, motion.dx)
-    const cameraAt = trackPoint(d - view.followM, motion.dx)
+    const avatarAt = worldPoint(d, motion.dx)
+    const cameraAt = worldPoint(d - view.followM, motion.dx)
     const cameraBob = motion.dy * view.motionScale
-    camera.position.set(cameraAt.x, view.heightM + cameraBob, cameraAt.z)
-    const ahead = trackPoint(d + view.lookAheadM, motion.dx)
-    camera.lookAt(ahead.x, view.targetHeightM + cameraBob, ahead.z)
+    camera.position.set(cameraAt.x, view.heightM + cameraBob + cameraAt.y, cameraAt.z)
+    const ahead = worldPoint(d + view.lookAheadM, motion.dx)
+    camera.lookAt(ahead.x, view.targetHeightM + cameraBob + ahead.y, ahead.z)
     const gait = playerGait(props.active ?? false, props.speed)
     const swing = limbSwing(d, stride)
-    avatarGroup.position.set(avatarAt.x, 0, avatarAt.z)
+    avatarGroup.position.set(avatarAt.x, avatarAt.y, avatarAt.z)
     avatarGroup.rotation.y = Math.atan2(-avatarAt.tx, -avatarAt.tz)
     avatarHead.visible = view.showAvatar
     avatarArmL.visible = view.showAvatar

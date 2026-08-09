@@ -42,6 +42,15 @@ describe('stadium-to-park route model', () => {
     expect(routePoint(ROUTE_TOTAL_M + 1)).toBeNull()
   })
 
+  it('gives each route variant a distinct deterministic world profile', () => {
+    const stadium = routePoint(620, 'stadium-park')!
+    const river = routePoint(620, 'river-greenway')!
+    const hill = routePoint(620, 'hill-gardens')!
+    expect(river.z).not.toBe(stadium.z)
+    expect(hill.z).not.toBe(stadium.z)
+    expect(hill.y).toBeGreaterThan(0)
+  })
+
   it('exposes checkpoint and landmark distances', () => {
     expect(landmarkAt(640)?.kind).toBe('checkpoint')
     expect(landmarkAt(640.9, 0.5)).toBeNull()

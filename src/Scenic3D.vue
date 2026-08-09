@@ -1486,6 +1486,36 @@ onMounted(() => {
     pacerRigs.push({ group, armL, armR, legL, legR, kit })
   }
 
+  // Small spectator pocket by the hub grandstand. These reuse the player proportions but
+  // stay deliberately sparse (six rigs, one draw per mesh) so the inhabited-world cue does
+  // not consume the route's mobile budget. They idle with a phase offset rather than adding
+  // another animation system or a networked crowd.
+  interface SpectatorRig {
+    group: THREE.Group
+    phase: number
+    kit: THREE.MeshStandardMaterial
+  }
+  const spectatorRigs: SpectatorRig[] = []
+  for (let i = 0; i < 6; i++) {
+    const kit = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL((i * 0.17 + 0.08) % 1, 0.58, 0.52),
+      roughness: 0.84,
+    })
+    const group = new THREE.Group()
+    const body = new THREE.Mesh(pacerBodyGeo, kit)
+    const head = new THREE.Mesh(pacerHeadGeo, skinMat)
+    body.castShadow = true
+    head.castShadow = true
+    group.add(body, head)
+    const at = trackPoint(74 + i * 4.5, TRACK_IN - 9 - (i % 2) * 1.2)
+    group.position.set(at.x, 0, at.z)
+    group.rotation.y = Math.atan2(-at.tx, -at.tz)
+    group.scale.setScalar(0.82 + (i % 3) * 0.05)
+    group.visible = budget.pacers > 0
+    scene.add(group)
+    spectatorRigs.push({ group, phase: i * 0.9, kit })
+  }
+
   // --- target-pace rabbit (live, never baked) ---
   // Same split-limb rig as the pacers above — a limb short enough to read as an arm
   // cannot reach the ground from the hip, hence separate pacerArmGeo/pacerLegGeo rather
@@ -1726,6 +1756,12 @@ onMounted(() => {
     // loop, typically three or four are actually visible.
     const wanted = TIER_BUDGET[tier].pacers
     const list = pacers(sessionSeconds, wanted)
+    for (const spectator of spectatorRigs) {
+      spectator.group.rotation.z = Math.sin(sessionSeconds * 0.7 + spectator.phase) * 0.025
+      spectator.group.position.y =
+        Math.max(0, Math.sin(sessionSeconds * 1.4 + spectator.phase)) * 0.015
+      spectator.group.visible = wanted > 0
+    }
     // Forward direction in the xz plane, from the same point the camera is looking at.
     // Used to reject pacers behind the walker — labelling someone you have already
     // overtaken puts a name tag on empty screen.
@@ -2116,6 +2152,7 @@ onMounted(() => {
     pacerArmGeo.dispose()
     pacerLegGeo.dispose()
     pacerRigs.forEach((r) => r.kit.dispose())
+    spectatorRigs.forEach((r) => r.kit.dispose())
     rabbitKit.dispose()
     avatarKit.dispose()
     armGeo.dispose()

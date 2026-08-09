@@ -136,6 +136,20 @@ export function removeSession(date: string): Session[] {
   return list
 }
 
+export function weekDistanceChallenge(sessions: Session[], now = new Date()) {
+  const currentStart = weekStart(now).getTime()
+  const previousStart = new Date(currentStart)
+  previousStart.setDate(previousStart.getDate() - 7)
+  let currentM = 0
+  let previousM = 0
+  for (const session of sessions) {
+    const time = new Date(session.date).getTime()
+    if (time >= currentStart) currentM += session.distance
+    else if (time >= previousStart.getTime()) previousM += session.distance
+  }
+  return { currentM, previousM, remainingM: Math.max(0, previousM - currentM) }
+}
+
 export function updateSession(
   date: string,
   changes: Pick<Session, 'distance' | 'duration' | 'kcal'>,

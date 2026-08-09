@@ -20,6 +20,7 @@ import {
   loadGoals,
   saveGoals,
   dailyTotals,
+  weekDistanceChallenge,
 } from './statistics'
 import type { Session } from './statistics'
 import { mmss } from './format'
@@ -786,6 +787,15 @@ const todayGoalPct = computed(() => {
   ]
   return Math.round((pcts.reduce((a, b) => a + b, 0) / 3) * 100)
 })
+const weekChallenge = computed(() => {
+  const challenge = weekDistanceChallenge(sessions.value)
+  const liveM = state.running || pausedWalk.value ? sessionTotals().distance : 0
+  return {
+    ...challenge,
+    currentM: challenge.currentM + liveM,
+    remainingM: Math.max(0, challenge.previousM - challenge.currentM - liveM),
+  }
+})
 // Announce each goal once, the moment it ticks over mid-walk — not on every tick after.
 const goalsAnnouncedToday = reactive({ kcal: false, steps: false, minutes: false })
 watch(
@@ -1377,6 +1387,17 @@ const pace = computed(() => {
         </div>
       </div>
     </header>
+    <div v-if="weekChallenge.previousM > 0" class="weekly-nudge">
+      <template v-if="weekChallenge.remainingM > 0">
+        {{
+          t('challenge.beatLastWeek', {
+            current: (weekChallenge.currentM / 1000).toFixed(1),
+            remaining: (weekChallenge.remainingM / 1000).toFixed(1),
+          })
+        }}
+      </template>
+      <template v-else>{{ t('challenge.beaten') }}</template>
+    </div>
 
     <p v-if="!state.secure" class="warn">
       <b>{{ t('warn.insecureTitle') }}</b> {{ t('warn.insecure', { origin }) }}
@@ -1916,6 +1937,24 @@ header {
   gap: 12px;
   margin-bottom: 8px;
   flex-wrap: wrap; /* narrow screens: the stat strip wraps to its own row */
+}
+.weekly-nudge {
+  position: fixed;
+  z-index: 18;
+  top: 76px;
+  left: 50%;
+  max-width: calc(100vw - 32px);
+  padding: 7px 13px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 999px;
+  background: rgba(232, 247, 255, 0.88);
+  box-shadow: 0 6px 20px rgba(23, 50, 77, 0.1);
+  color: #315d7e;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  backdrop-filter: blur(12px);
 }
 .brand {
   display: flex;

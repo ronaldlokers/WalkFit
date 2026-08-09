@@ -472,6 +472,76 @@ export function runnerParts(): {
   return { body, head, arm, leg }
 }
 
+// Alpha for a clump of grass blades: transparent everywhere except the blades, so the
+// silhouette is real rather than a textured rectangle. Alpha-TESTED, never blended — a
+// dense field of blended quads is the classic way to stall a mobile GPU on overdraw.
+export function tuftTexture(size: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.clearRect(0, 0, size, size)
+  const blades = 22
+  for (let i = 0; i < blades; i++) {
+    const h = i * 6
+    const x = size * (0.12 + worldHash(h + 1301) * 0.76)
+    const w = size * (0.018 + worldHash(h + 1302) * 0.022)
+    const top = size * (0.08 + worldHash(h + 1303) * 0.5)
+    const lean = (worldHash(h + 1304) - 0.5) * size * 0.22
+    const v = worldHash(h + 1305)
+    // muted to sit against the mown ground texture — a saturated blade reads as a plastic
+    // shrub dropped on the pitch rather than as grass growing out of it
+    ctx.fillStyle = `hsl(${98 + v * 14}, ${30 + v * 14}%, ${36 + v * 16}%)`
+    ctx.beginPath()
+    ctx.moveTo(x - w, size)
+    ctx.lineTo(x + w, size)
+    ctx.quadraticCurveTo(x + w + lean * 0.4, (size + top) / 2, x + lean, top)
+    ctx.quadraticCurveTo(x - w + lean * 0.4, (size + top) / 2, x - w, size)
+    ctx.fill()
+  }
+  const t = finish(c)
+  // clamped in v: the blades stand ON the bottom edge, and a wrapped sampler bleeds the
+  // opaque roots across the seam into the tips
+  t.wrapT = THREE.ClampToEdgeWrapping
+  return t
+}
+
+// Two quads crossed through the vertical axis, pivoting at the ground so an instance
+// matrix places the ROOT rather than the centre. Non-indexed, matching everything else the
+// bake handles.
+export function tuftGeometry(w = 0.3, h = 0.2): THREE.BufferGeometry {
+  const a = new THREE.PlaneGeometry(w, h).translate(0, h / 2, 0)
+  const b = a.clone().rotateY(Math.PI / 2)
+  const merged = mergeGeometries([a, b])!
+  a.dispose()
+  b.dispose()
+  return merged.toNonIndexed()
+}
+
+// Contact darkening, written into a merged geometry's vertex colours.
+//
+// Real ambient occlusion means tracing rays from every vertex, which for ~50k vertices at
+// eight rays each is 400k intersection tests in JavaScript at mount — seconds, not
+// milliseconds. This is the cheap stand-in and is named honestly: ambient light reaching a
+// point near the ground is blocked by the ground itself, so darkening with proximity to
+// y = 0 reproduces the one occlusion cue the eye actually reads — the dark seam where an
+// object meets the floor. It costs one pass over the vertex buffer and nothing per frame.
+//
+// `fadeM` is the height over which the darkening lifts; `strength` is how dark the contact
+// gets. Ground planes must NOT get this — every one of their vertices sits at y = 0, so
+// they would come out uniformly dark rather than shaded.
+export function contactShade(g: THREE.BufferGeometry, fadeM = 1.6, strength = 0.45): void {
+  const pos = g.getAttribute('position')
+  const colors = new Float32Array(pos.count * 3)
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i)
+    const t = Math.max(0, Math.min(1, y / fadeM))
+    // smoothstep, so the seam eases out instead of ending on a visible band
+    const shade = 1 - strength * (1 - t * t * (3 - 2 * t))
+    colors[i * 3] = shade
+    colors[i * 3 + 1] = shade
+    colors[i * 3 + 2] = shade
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+}
+
 // Always Standard: material class cannot change after the bake (materials are the merge
 // keys), so a tier-dependent class meant the auto-probed upgrade silently kept Lambert
 // and left every roughness value inert. The tier still gates what actually costs —

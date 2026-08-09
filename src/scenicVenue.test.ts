@@ -6,6 +6,9 @@ import {
   GATE_S0,
   GATE_S1,
   SKYLINE_R,
+  grassTufts,
+  TUFT_INNER,
+  TUFT_OUTER,
   PART_SIZES,
   SCENERY_MIN_O,
   venueClearO,
@@ -150,5 +153,35 @@ describe('stadium', () => {
         `flood at o=${p.o.toFixed(2)}`,
       )
     }
+  })
+})
+
+describe('grass tufts', () => {
+  it('never puts a tuft on the running surface', () => {
+    // the same rule the venue parts obey: TRACK_IN..TRACK_OUT is where people run
+    for (const t of grassTufts(3000)) {
+      const onTrack = t.o > TRACK_IN && t.o < TRACK_OUT
+      expect(`${t.o.toFixed(2)} on track: ${onTrack}`).toBe(`${t.o.toFixed(2)} on track: false`)
+    }
+  })
+
+  it('stays inside the perimeter fence and off the kerb', () => {
+    for (const t of grassTufts(2000)) {
+      expect(t.o).toBeLessThan(FENCE_O)
+      expect(t.o).toBeGreaterThan(TUFT_INNER[0] - 0.001)
+    }
+  })
+
+  it('is deterministic, so the instanced field is identical every mount', () => {
+    expect(grassTufts(50)).toEqual(grassTufts(50))
+  })
+
+  it('crowds toward the track edge rather than spreading evenly', () => {
+    // the far half of each band is mostly beyond the fog; an even spread spends most of
+    // the instance budget where nothing can be seen
+    const outer = grassTufts(2000).filter((t) => t.o > TRACK_OUT)
+    const mid = (TUFT_OUTER[0] + TUFT_OUTER[1]) / 2
+    const near = outer.filter((t) => t.o < mid).length
+    expect(near).toBeGreaterThan(outer.length * 0.6)
   })
 })

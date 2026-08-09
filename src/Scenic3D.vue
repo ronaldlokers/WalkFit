@@ -45,6 +45,7 @@ import {
   stadium,
   PART_SIZES,
   SKYLINE_R,
+  grassTufts,
   GATE_S0,
   GATE_S1,
   venueClearO,
@@ -78,6 +79,9 @@ import {
   pitchLinesTexture,
   skylineTexture,
   normalFromTexture,
+  tuftGeometry,
+  tuftTexture,
+  contactShade,
   treeLineTexture,
   TREELINE_GROUND_V,
   sandTexture,
@@ -598,6 +602,17 @@ onMounted(() => {
     dimsWithLight(m)
   }
 
+  // Surfaces that lie flat on the ground: every vertex is at y = 0, so contact shading
+  // would darken the whole thing uniformly instead of shading it.
+  const FLAT_ON_GROUND = new Set<THREE.Material>([
+    mat.grass,
+    mat.infield,
+    mat.track,
+    mat.kerb,
+    mat.pitch,
+    mat.sand,
+  ])
+
   // Double-sided materials that must still cast (see the bake's castShadow rule).
   const castsDespiteTwoSided = new Set<THREE.Material>([mat.crown1, mat.crown2])
 
@@ -1049,6 +1064,17 @@ onMounted(() => {
           `scenic merge: mergeGeometries returned null for "${material.name || material.type}"`,
         )
       }
+      // Contact darkening, baked once into the merged buffer. Skipped for the ground
+      // surfaces (their vertices all sit at y = 0, so they would come out uniformly dark
+      // rather than shaded) and for anything unlit, which ignores vertex colours anyway.
+      const std = material as THREE.MeshStandardMaterial
+      if (budget.contactShading && std.isMeshStandardMaterial && !FLAT_ON_GROUND.has(material)) {
+        contactShade(merged)
+        if (!std.vertexColors) {
+          std.vertexColors = true
+          std.needsUpdate = true
+        }
+      }
       disposables.push(merged)
       const m = new THREE.Mesh(merged, material)
       if (material === blobMat) {
@@ -1071,6 +1097,68 @@ onMounted(() => {
       scene.add(m)
     }
   }
+
+  // --- grass tufts: one InstancedMesh, added after the bake so it is never merged ---
+  // Static geometry, but it animates (wind), so it cannot join the static world. One draw
+  // call regardless of count.
+  let tufts: THREE.InstancedMesh | null = null
+  let tuftGeo: THREE.BufferGeometry | null = null
+  let tuftTex: THREE.CanvasTexture | null = null
+  const windUniform = { value: 0 }
+  // An InstancedMesh's instance count is fixed at construction, so allocate for the
+  // hungriest tier and draw a prefix of it — `tufts.count` is what actually gets rendered.
+  const MAX_TUFTS = Math.max(...Object.values(TIER_BUDGET).map((b) => b.tufts))
+  function addTufts(count: number) {
+    if (tufts || !count) return
+    tuftGeo = tuftGeometry()
+    tuftTex = tuftTexture(256)
+    const m = new THREE.MeshStandardMaterial({
+      map: tuftTex,
+      alphaTest: 0.45,
+      side: THREE.DoubleSide,
+      roughness: 1,
+      metalness: 0,
+    })
+    // Wind, injected rather than written as a custom shader: this keeps three's own
+    // lighting, fog and shadow chunks, which a from-scratch ShaderMaterial would have to
+    // reimplement. Sway scales with uv.y so the roots stay planted and only the tips move.
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.uWind = windUniform
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uWind;')
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+           #ifdef USE_INSTANCING
+             vec3 iPos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+           #else
+             vec3 iPos = vec3(0.0);
+           #endif
+           float gust = sin(uWind * 1.7 + iPos.x * 0.35 + iPos.z * 0.29)
+                      + 0.4 * sin(uWind * 3.1 + iPos.z * 0.7);
+           transformed.x += gust * 0.09 * uv.y;
+           transformed.z += gust * 0.05 * uv.y;`,
+        )
+    }
+    tufts = new THREE.InstancedMesh(tuftGeo, m, count)
+    tufts.castShadow = false // a blade's own shadow is not worth a depth pass
+    tufts.receiveShadow = true
+    const mtx = new THREE.Matrix4()
+    const q = new THREE.Quaternion()
+    const scl = new THREE.Vector3()
+    const pos = new THREE.Vector3()
+    grassTufts(count).forEach((t, i) => {
+      const at = trackPoint(t.s, t.o)
+      pos.set(at.x, 0, at.z)
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.seed * Math.PI * 2)
+      scl.setScalar(0.65 + t.scale * 0.5)
+      tufts!.setMatrixAt(i, mtx.compose(pos, q, scl))
+    })
+    tufts.instanceMatrix.needsUpdate = true
+    tufts.count = TIER_BUDGET[tier].tufts
+    scene.add(tufts)
+  }
+  if (budget.tufts) addTufts(MAX_TUFTS)
 
   // --- pacers (live, never baked) ---
   // scene.add here runs AFTER the bake block above, so these are never swept into
@@ -1296,6 +1384,7 @@ onMounted(() => {
     // Less haze than the skyline gets — it is nearer, so it keeps more of its own colour —
     // but the same darkness handling, since neither backdrop is lit by the scene.
     treeLineMat.color.setHex(backdropTint(sky, phase, 0.35 + 0.5 * (1 - clarity)))
+    windUniform.value = sessionSeconds
     const level = paintLevel(phase)
     for (const [m, base] of painted) m.color.setHex(base).multiplyScalar(level)
     sun.intensity = sky.sunIntensity
@@ -1491,6 +1580,13 @@ onMounted(() => {
     // as the shadow-disable bug fixed previously: a tier path written one-way).
     if (budget.clouds) addClouds()
     if (clouds) clouds.visible = budget.clouds
+    // Built once at the largest count any tier asks for; a tier change only changes how
+    // many of them draw, because an InstancedMesh cannot grow after construction.
+    if (budget.tufts) addTufts(MAX_TUFTS)
+    if (tufts) {
+      tufts.visible = budget.tufts > 0
+      tufts.count = budget.tufts
+    }
     starGeo.setAttribute(
       'position',
       new THREE.BufferAttribute(starPositions(budget.stars, SKY_R), 3),

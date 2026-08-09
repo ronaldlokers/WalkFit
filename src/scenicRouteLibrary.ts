@@ -1,6 +1,5 @@
-// Local route catalogue. Only the first route is wired to the current renderer; the other
-// entries make the forward-compatible identifiers and metadata explicit without pretending
-// that an unbuilt route is playable.
+// Local route catalogue. All three routes share the bounded chunk/asset pipeline but use
+// distinct deterministic path profiles, so each is playable offline without a server.
 
 export interface ScenicRouteDefinition {
   id: string
@@ -28,17 +27,17 @@ export const ROUTE_LIBRARY: readonly ScenicRouteDefinition[] = [
   {
     id: 'river-greenway',
     name: 'River Greenway',
-    distanceM: 1200,
+    distanceM: 800,
     scenery: 'waterfront · reeds · footbridge',
-    available: false,
+    available: true,
     badgeId: 'river-greenway-complete',
   },
   {
     id: 'hill-gardens',
     name: 'Hill Gardens',
-    distanceM: 1600,
+    distanceM: 800,
     scenery: 'terraces · woodland · skyline',
-    available: false,
+    available: true,
     badgeId: 'hill-gardens-complete',
   },
 ]

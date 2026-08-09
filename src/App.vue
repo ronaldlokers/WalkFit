@@ -1071,6 +1071,10 @@ const timeToNext = computed(() =>
 // that already knows the workout's target speed. Weight-loss plans only — an HR target
 // defines a heart rate, not a pace, so there is no pace to chase.
 const rabbitDistance = ref<number | null>(null)
+const paceGapM = computed(() => {
+  if (rabbitDistance.value === null) return null
+  return Math.round(state.distance - rabbitDistance.value)
+})
 // The rabbit's own elapsed clock, tracked separately from the watcher's (now, prev)
 // diff — skipSegment() jumps state.elapsed by whole minutes in one tick, and diffing
 // watcher args would credit the rabbit with the entire skipped span as real distance.
@@ -1553,6 +1557,9 @@ const pace = computed(() => {
             <span v-else-if="activeRouteCompletion.personalBestM"
               >PB {{ Math.round(activeRouteCompletion.personalBestM) }} m</span
             >
+            <span v-if="paceGapM !== null">
+              {{ Math.abs(paceGapM) }} m {{ t(paceGapM >= 0 ? 'route.ahead' : 'route.behind') }}
+            </span>
           </div>
           <div class="route-ribbon" role="progressbar" :aria-valuenow="routeDistanceM">
             <span

@@ -40,6 +40,8 @@ const en = {
   'route.park': 'park route',
   'route.next': 'next',
   'route.checkpoint': 'checkpoint',
+  'route.ahead': 'ahead',
+  'route.behind': 'behind',
 
   // action row + controls
   'actions.start': 'Start',
@@ -342,6 +344,8 @@ const nl: Record<MessageKey, string> = {
   'route.park': 'parkroute',
   'route.next': 'volgende',
   'route.checkpoint': 'checkpoint',
+  'route.ahead': 'voor',
+  'route.behind': 'achter',
 
   'actions.start': 'Start',
   'actions.resume': 'Hervat',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { t } from './i18n'
 import { SPEED_MAX } from './treadmill'
 import { workoutStats, timeline, hrTargetRange } from './workouts'
@@ -23,6 +23,7 @@ const props = withDefaults(
     closable?: boolean
     lastWorkout?: Workout | null // most recently completed plan, for "Repeat" (#142)
     initialPreview?: Workout | null // PWA shortcut can open directly on the repeat preview
+    kcalRemaining?: number
   }>(),
   {
     connected: false,
@@ -33,6 +34,7 @@ const props = withDefaults(
     customWorkouts: () => [],
     lastWorkout: null,
     initialPreview: null,
+    kcalRemaining: 0,
   },
 )
 const emit = defineEmits<{
@@ -46,6 +48,17 @@ const emit = defineEmits<{
 
 const tab = ref<'plans' | 'hr'>(props.startTab)
 const preview = ref<Workout | null>(props.initialPreview) // weight-loss workout shown in detail
+const suggestedWorkout = computed(() => {
+  if (props.kcalRemaining <= 0) return null
+  const candidates = [...props.workouts, ...props.customWorkouts]
+    .map((workout) => ({ workout, kcal: workoutStats(workout, props.weightKg).kcal }))
+    .sort((a, b) => a.kcal - b.kcal)
+  return (
+    candidates.find((candidate) => candidate.kcal >= props.kcalRemaining) ??
+    candidates[candidates.length - 1] ??
+    null
+  )
+})
 
 // --- custom workout builder (#68) ---
 const building = ref(false)
@@ -157,6 +170,18 @@ function segDur(min: number) {
     </div>
 
     <div v-else-if="!preview && tab === 'plans'" class="tlist">
+      <button
+        v-if="suggestedWorkout"
+        class="goal-suggestion"
+        @click="preview = suggestedWorkout.workout"
+      >
+        {{
+          t('picker.goalSuggestion', {
+            remaining: Math.ceil(kcalRemaining),
+            name: suggestedWorkout.workout.name,
+          })
+        }}
+      </button>
       <!-- Repeat last workout (#142): reuses the same preview→Start flow as any card,
            just pre-picks the last plan you actually finished -->
       <button v-if="lastWorkout" class="repeat-chip" @click="preview = lastWorkout">
@@ -359,6 +384,18 @@ function segDur(min: number) {
   border-radius: 12px;
   padding: 10px 12px;
   margin-bottom: 10px;
+  cursor: pointer;
+}
+.goal-suggestion {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid rgba(46, 213, 115, 0.4);
+  border-radius: 12px;
+  background: rgba(46, 213, 115, 0.12);
+  color: #276448;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
   cursor: pointer;
 }
 .repeat-icon {

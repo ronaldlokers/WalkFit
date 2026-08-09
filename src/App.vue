@@ -47,6 +47,7 @@ import {
   ROUTE_TOTAL_M,
   STADIUM_HUB_M,
 } from './scenicRoute'
+import type { ScenicRouteId } from './scenicRoute'
 import { loadProgression, recordCompletedWalk, saveProgression } from './scenicProgression'
 import { routeCompletion, ROUTE_LIBRARY } from './scenicRouteLibrary'
 
@@ -600,8 +601,17 @@ watch(
 const MIN_SESSION_DISTANCE = 50 // metres — filters out accidental/blip starts
 const sessions = ref(loadStatistics())
 const progression = ref(loadProgression())
-const activeRoute = ROUTE_LIBRARY.find((route) => route.available) ?? ROUTE_LIBRARY[0]
-const activeRouteCompletion = computed(() => routeCompletion(activeRoute, progression.value))
+const storedRouteId = localStorage.getItem('walkfit.scenic.route')
+const selectedRouteId = ref<ScenicRouteId>(
+  storedRouteId === 'river-greenway' || storedRouteId === 'hill-gardens'
+    ? storedRouteId
+    : 'stadium-park',
+)
+watch(selectedRouteId, (id) => localStorage.setItem('walkfit.scenic.route', id))
+const activeRoute = computed(
+  () => ROUTE_LIBRARY.find((route) => route.id === selectedRouteId.value) ?? ROUTE_LIBRARY[0]!,
+)
+const activeRouteCompletion = computed(() => routeCompletion(activeRoute.value, progression.value))
 const statisticsOpen = ref(false)
 // Daily activity goals for the rings (#43); edits in Settings persist via the watcher.
 const goals = reactive(loadGoals())
@@ -781,7 +791,7 @@ function finalizeSession() {
       distanceM: session.distance,
       activeMinutes: session.duration / 60,
       workoutCompleted: !!sessionWorkoutName,
-      routeId: 'stadium-park',
+      routeId: activeRoute.value.id,
       routeDistanceM: Math.min(session.distance, 800),
     })
     saveProgression(progression.value)
@@ -1592,7 +1602,17 @@ const pace = computed(() => {
       <div v-else class="scene3d-wrap">
         <div class="route-hud" data-testid="route-hud" aria-live="polite">
           <div class="route-hud-copy">
-            <span class="route-section">{{ activeRoute.name }} · {{ routeSectionLabel }}</span>
+            <select v-model="selectedRouteId" class="route-select" aria-label="Route">
+              <option
+                v-for="route in ROUTE_LIBRARY"
+                :key="route.id"
+                :value="route.id"
+                :disabled="!route.available"
+              >
+                {{ route.name }}
+              </option>
+            </select>
+            <span class="route-section">{{ routeSectionLabel }}</span>
             <span class="route-next"
               >{{ t('route.next') }} · {{ nextRouteLandmark.name }} ·
               {{ Math.round(nextRouteDistanceM) }} m</span
@@ -1634,6 +1654,7 @@ const pace = computed(() => {
           :motion="scenicMotion"
           :camera-view="scenicCamera"
           :avatar-style="avatarStyle"
+          :route-id="selectedRouteId"
           @unsupported="scenicUnsupported"
         />
       </div>
@@ -2288,6 +2309,17 @@ code {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.route-select {
+  pointer-events: auto;
+  max-width: 150px;
+  border: 0;
+  color: #72e2d8;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 .route-next {

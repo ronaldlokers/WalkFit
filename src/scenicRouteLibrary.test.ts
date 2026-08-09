@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { routeCompletion, ROUTE_LIBRARY } from './scenicRouteLibrary'
 
 describe('scenic route library', () => {
-  it('keeps stable forward-compatible route identifiers and one playable route', () => {
+  it('keeps stable route identifiers with three playable local routes', () => {
     expect(new Set(ROUTE_LIBRARY.map((route) => route.id)).size).toBe(ROUTE_LIBRARY.length)
-    expect(ROUTE_LIBRARY.filter((route) => route.available)).toHaveLength(1)
+    expect(ROUTE_LIBRARY.filter((route) => route.available)).toHaveLength(3)
     expect(ROUTE_LIBRARY[0].distanceM).toBe(800)
   })
 

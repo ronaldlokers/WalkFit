@@ -57,7 +57,9 @@ import {
   STADIUM_HUB_M,
   RouteChunkPool,
   routePoint,
+  routeColor,
 } from './scenicRoute'
+import type { ScenicRouteId } from './scenicRoute'
 import { routeChunkGeometry } from './scenicRouteMeshes'
 import {
   stadium,
@@ -134,6 +136,7 @@ const props = defineProps<{
   motion?: boolean // head bob / sway / bend lean (#realism slice 4); omitted = on
   cameraView?: CameraView // Scenic v3 player camera; omitted preserves first person
   avatarStyle?: AvatarStyle // local outfit palette; omitted uses sky
+  routeId?: ScenicRouteId // local route library selection
 }>()
 const emit = defineEmits<{ unsupported: [] }>()
 
@@ -1261,7 +1264,7 @@ onMounted(() => {
   })
   const checkpointRoots = new Map<string, THREE.Group>()
   function buildCheckpoint(distanceM: number): THREE.Group | null {
-    const point = routePoint(distanceM)
+    const point = routePoint(distanceM, props.routeId ?? 'stadium-park')
     if (!point) return null
     const arch = new THREE.Group()
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.28, 3.2, 0.28), checkpointMaterial)
@@ -1286,6 +1289,7 @@ onMounted(() => {
   function syncRouteChunks(distanceM: number) {
     const wrapped = ((distanceM % ROUTE_TOTAL_M) + ROUTE_TOTAL_M) % ROUTE_TOTAL_M
     const routeDistance = wrapped < STADIUM_HUB_M ? STADIUM_HUB_M - 1 : wrapped
+    routeMaterial.color.setHex(routeColor(props.routeId ?? 'stadium-park'))
     const delta = routePool.update(routeDistance, ROUTE_CHUNK_M)
     for (const chunk of delta.exited) {
       const root = routeRoots.get(chunk.id)
@@ -1306,7 +1310,10 @@ onMounted(() => {
       }
     }
     for (const chunk of delta.entered) {
-      const root = new THREE.Mesh(routeChunkGeometry(chunk), routeMaterial)
+      const root = new THREE.Mesh(
+        routeChunkGeometry(chunk, 3.2, props.routeId ?? 'stadium-park'),
+        routeMaterial,
+      )
       root.castShadow = false
       root.receiveShadow = true
       routeRoots.set(chunk.id, root)

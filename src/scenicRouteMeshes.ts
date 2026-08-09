@@ -1,27 +1,31 @@
 import * as THREE from 'three'
-import { routePoint, type RouteChunk } from './scenicRoute'
+import { routePoint, type RouteChunk, type ScenicRouteId } from './scenicRoute'
 
 // A modest ribbon is enough for the first route slice. Chunk geometry is intentionally
 // independent: RouteChunkPool can dispose and recreate one section without touching its
 // neighbours or the surveyed stadium bake.
-export function routeChunkGeometry(chunk: RouteChunk, widthM = 3.2): THREE.BufferGeometry {
+export function routeChunkGeometry(
+  chunk: RouteChunk,
+  widthM = 3.2,
+  routeId: ScenicRouteId = 'stadium-park',
+): THREE.BufferGeometry {
   const samples = 10
   const positions: number[] = []
   const uvs: number[] = []
   const indices: number[] = []
   for (let i = 0; i <= samples; i++) {
     const distance = chunk.startM + (i / samples) * (chunk.endM - chunk.startM)
-    const point = routePoint(distance)
+    const point = routePoint(distance, routeId)
     if (!point) throw new Error(`route chunk point outside route: ${chunk.id}`)
     const nx = -point.tz
     const nz = point.tx
     const half = widthM / 2
     positions.push(
       point.x - nx * half,
-      0.025,
+      point.y + 0.025,
       point.z - nz * half,
       point.x + nx * half,
-      0.025,
+      point.y + 0.025,
       point.z + nz * half,
     )
     const u = i / samples

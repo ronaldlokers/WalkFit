@@ -11,6 +11,7 @@ export const ROUTE_CHUNK_M = 80
 export const ROUTE_POOL_CAP = 3
 
 export type RouteBiome = 'gate' | 'promenade' | 'garden' | 'pond' | 'overlook'
+export type ScenicRouteId = 'stadium-park' | 'river-greenway' | 'hill-gardens'
 
 export interface RouteLandmark {
   id: string
@@ -30,6 +31,7 @@ export interface RouteChunk {
 
 export interface RoutePoint {
   x: number
+  y: number
   z: number
   tx: number
   tz: number
@@ -38,17 +40,31 @@ export interface RoutePoint {
 // The park path leaves the outer edge of the home straight and sweeps into open space.
 // It is intentionally gentle and deterministic; later art passes can replace the control
 // curve without changing route distances, landmarks, or chunk IDs.
-export function routePoint(distanceM: number): RoutePoint | null {
+export function routePoint(
+  distanceM: number,
+  routeId: ScenicRouteId = 'stadium-park',
+): RoutePoint | null {
   if (!Number.isFinite(distanceM) || distanceM < STADIUM_HUB_M || distanceM > ROUTE_TOTAL_M)
     return null
   const local = Math.max(0, Math.min(PARK_ROUTE_M, distanceM - STADIUM_HUB_M))
   const u = local / PARK_ROUTE_M
-  const x = BEND_R + TRACK_OUT + 3 + local * 0.32
-  const z = STRAIGHT_M / 2 - local * 0.2 + Math.sin(u * Math.PI * 2) * 14
-  const dx = 0.32
-  const dz = -0.2 + (Math.cos(u * Math.PI * 2) * (14 * Math.PI * 2)) / PARK_ROUTE_M
+  const profile =
+    routeId === 'river-greenway'
+      ? { x: 0.28, z: -0.28, wave: 22, rise: 0 }
+      : routeId === 'hill-gardens'
+        ? { x: 0.34, z: -0.16, wave: 9, rise: 0.06 }
+        : { x: 0.32, z: -0.2, wave: 14, rise: 0 }
+  const x = BEND_R + TRACK_OUT + 3 + local * profile.x
+  const z = STRAIGHT_M / 2 - local * profile.z + Math.sin(u * Math.PI * 2) * profile.wave
+  const y = u * profile.rise
+  const dx = profile.x
+  const dz = -profile.z + (Math.cos(u * Math.PI * 2) * (profile.wave * Math.PI * 2)) / PARK_ROUTE_M
   const length = Math.hypot(dx, dz)
-  return { x, z, tx: dx / length, tz: dz / length }
+  return { x, y, z, tx: dx / length, tz: dz / length }
+}
+
+export function routeColor(routeId: ScenicRouteId): number {
+  return routeId === 'river-greenway' ? 0x6e9f9c : routeId === 'hill-gardens' ? 0x9b8361 : 0x8b7863
 }
 
 const CHUNK_BIOMES: readonly RouteBiome[] = ['gate', 'promenade', 'garden', 'pond', 'overlook']

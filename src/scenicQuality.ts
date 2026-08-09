@@ -5,8 +5,8 @@
 //
 // Pure and DOM-free so it can be unit-tested; Scenic3D.vue owns the sampling.
 
-export type Tier = 'low' | 'high'
-export type QualitySetting = 'auto' | 'low' | 'high'
+export type Tier = 'low' | 'high' | 'ultra'
+export type QualitySetting = 'auto' | 'low' | 'high' | 'ultra'
 
 export const PROBE_FRAMES = 60
 // median frame time at or below this counts as "this machine can afford the trimmings"
@@ -17,12 +17,61 @@ export interface TierBudget {
   pacers: number // slice 3
   stars: number
   clouds: boolean
-  shadowMap: boolean
+  /** Shadow map resolution, or 0 for none (the blob-shadow discs stand in instead). */
+  shadowMapSize: number
+  /** Half-width of the shadow box in metres. Smaller box + same map = sharper contact. */
+  shadowBoxM: number
+  /** Derived normal maps on the surface materials. */
+  normalMaps: boolean
+  /** Contact darkening baked into the static world's vertex colours. */
+  contactShading: boolean
+  /** Instanced grass tufts along the track edge. */
+  tufts: number
+  /** Bloom + colour grading. Desktop only — a fullscreen pass at DPR 3 is what a phone
+   * cannot afford, and it is the first thing to cost frames rather than watts. */
+  post: boolean
 }
 
 export const TIER_BUDGET: Record<Tier, TierBudget> = {
-  low: { textureSize: 256, pacers: 3, stars: 200, clouds: false, shadowMap: false },
-  high: { textureSize: 1024, pacers: 8, stars: 800, clouds: true, shadowMap: true },
+  low: {
+    textureSize: 512,
+    pacers: 3,
+    stars: 200,
+    clouds: false,
+    shadowMapSize: 0,
+    shadowBoxM: 60,
+    normalMaps: false,
+    contactShading: false,
+    tufts: 0,
+    post: false,
+  },
+  high: {
+    textureSize: 1024,
+    pacers: 8,
+    stars: 800,
+    clouds: true,
+    shadowMapSize: 2048,
+    shadowBoxM: 60,
+    normalMaps: true,
+    contactShading: true,
+    tufts: 900,
+    post: false,
+  },
+  ultra: {
+    textureSize: 1024,
+    pacers: 8,
+    stars: 1200,
+    clouds: true,
+    // 4096 over a 80 m box is 51 texels/m, against 17 at high — that ratio is what puts a
+    // crisp edge on contact shadows instead of a soft smear. A tighter box does the same
+    // job as a second cascade here, without CSM having to rewrite every material.
+    shadowMapSize: 4096,
+    shadowBoxM: 40,
+    normalMaps: true,
+    contactShading: true,
+    tufts: 2200,
+    post: true,
+  },
 }
 
 export function tierFromFrames(frameMs: number[]): Tier {

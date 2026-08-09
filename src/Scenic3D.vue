@@ -77,6 +77,7 @@ import {
   seatingTexture,
   pitchLinesTexture,
   skylineTexture,
+  normalFromTexture,
   treeLineTexture,
   TREELINE_GROUND_V,
   sandTexture,
@@ -145,7 +146,7 @@ onMounted(() => {
   // Start on the cheap tier and upgrade once if the machine turns out to be fast. Never
   // downgrade mid-session: a tier flip during a walk is more jarring than a few dropped
   // frames, and the walker cannot do anything about it either way.
-  let tier: Tier = props.quality === 'high' ? 'high' : 'low'
+  let tier: Tier = props.quality === 'high' || props.quality === 'ultra' ? props.quality : 'low'
   const probeSamples: number[] = []
   let probeDone = props.quality !== 'auto' && props.quality !== undefined
 
@@ -174,19 +175,24 @@ onMounted(() => {
   sun.target = sunTarget
   const SUN_DIST = 120
 
-  // Fixed-size shadow box re-centred on the walker each frame. Fitting it to the whole
-  // 400 m loop would spend nearly all the map's resolution on geometry behind you.
-  const SHADOW_BOX = 60 // metres either side of the camera
-  function enableShadows() {
+  // Shadow box re-centred on the walker each frame, sized by the tier. Fitting it to the
+  // whole 400 m loop would spend nearly all the map's resolution on geometry behind you —
+  // and shrinking the box is the cheapest way to buy texels per metre, which is what makes
+  // a contact edge crisp rather than a soft smear.
+  function enableShadows(size: number, boxM: number) {
     renderer!.shadowMap.enabled = true
-    renderer!.shadowMap.type = THREE.PCFShadowMap
+    renderer!.shadowMap.type = THREE.PCFSoftShadowMap
     sun.castShadow = true
-    sun.shadow.mapSize.set(2048, 2048)
+    sun.shadow.mapSize.set(size, size)
+    // three keeps the depth target until the map is disposed, so a tier change that only
+    // changes mapSize would otherwise keep rendering at the old resolution.
+    sun.shadow.map?.dispose()
+    sun.shadow.map = null
     const cam = sun.shadow.camera
-    cam.left = -SHADOW_BOX
-    cam.right = SHADOW_BOX
-    cam.top = SHADOW_BOX
-    cam.bottom = -SHADOW_BOX
+    cam.left = -boxM
+    cam.right = boxM
+    cam.top = boxM
+    cam.bottom = -boxM
     // Tight near/far around the sun's fixed distance (not 1..SUN_DIST*2): every bias unit
     // spends its precision on the box that actually matters instead of empty space, so a
     // much smaller bias still clears the self-shadow acne below.
@@ -350,7 +356,7 @@ onMounted(() => {
   // memoized here so a tier change reuses the same texture object instead of pointlessly
   // regenerating an identical 1024 copy every toggle.
   let pitchLinesTex: THREE.CanvasTexture | null = null
-  function makeTextures(size: number) {
+  function makeTextures(size: number, withNormals: boolean) {
     const aniso = Math.min(4, renderer!.capabilities.getMaxAnisotropy())
     pitchLinesTex ??= pitchLinesTexture(1024)
     const t = {
@@ -393,14 +399,30 @@ onMounted(() => {
     // across the seam and draws a dark hairline right around the sky at the rim.
     t.skyline.wrapT = THREE.ClampToEdgeWrapping
     t.skyline.needsUpdate = true
-    return t
+    // Normal maps come LAST so each one inherits its source's final repeat — derived
+    // before the repeats above are set, every normal would tile at 1:1 while its colour map
+    // tiled at 80:1, and the lighting would slide across the surface it belongs to.
+    // Only the surfaces with real microrelief get one; a chain-link alpha or a painted
+    // marking has no height to encode.
+    const normals = withNormals
+      ? {
+          tartan: normalFromTexture(t.tartan, 2.5),
+          infield: normalFromTexture(t.infield, 1.6),
+          grass: normalFromTexture(t.grass, 1.6),
+          concrete: normalFromTexture(t.concrete, 2),
+          seating: normalFromTexture(t.seating, 2),
+          sand: normalFromTexture(t.sand, 2.5),
+        }
+      : null
+    if (normals) for (const n of Object.values(normals)) n.anisotropy = aniso
+    return { ...t, normals }
   }
   // Task 6 deliberately left this out because nothing read it yet; it has a reader now.
   let budget = TIER_BUDGET[tier]
   // an explicit quality: 'high' setting must get shadows immediately — the probe that
   // would otherwise call this (via applyTier) never runs when the tier isn't 'auto'.
-  if (budget.shadowMap && !renderer!.shadowMap.enabled) enableShadows()
-  let tex = makeTextures(budget.textureSize)
+  if (budget.shadowMapSize) enableShadows(budget.shadowMapSize, budget.shadowBoxM)
+  let tex = makeTextures(budget.textureSize, budget.normalMaps)
 
   const mat = {
     trunk: surface({ color: 0xffffff, map: tex.bark, roughness: 0.95 }),
@@ -430,31 +452,46 @@ onMounted(() => {
     kerb: surface({
       color: 0xffffff,
       map: tex.concrete,
+      normalMap: tex.normals?.concrete,
       roughness: 0.9,
       side: THREE.DoubleSide,
     }),
     breakLine: new THREE.MeshBasicMaterial({ color: 0x3ba55d, side: THREE.DoubleSide }),
     relay: new THREE.MeshBasicMaterial({ color: 0xd8b638, side: THREE.DoubleSide }),
     hurdle: new THREE.MeshBasicMaterial({ color: 0x2e7d4f, side: THREE.DoubleSide }),
-    grass: surface({ color: 0xffffff, map: tex.grass, roughness: 1 }),
+    grass: surface({
+      color: 0xffffff,
+      map: tex.grass,
+      normalMap: tex.normals?.grass,
+      normalScale: 0.6,
+      roughness: 1,
+    }),
     // The loop ribbons reverse travel direction halfway around, so a fixed triangle
     // winding faces down on one straight and up on the other — DoubleSide instead of
     // per-segment winding gymnastics (they're flat strips only ever seen from above).
     infield: surface({
       color: 0xffffff,
       map: tex.infield,
+      normalMap: tex.normals?.infield,
+      normalScale: 0.6,
       roughness: 1,
       side: THREE.DoubleSide,
     }),
     track: surface({
       color: 0xffffff,
       map: tex.tartan,
+      normalMap: tex.normals?.tartan,
       roughness: 0.85,
       side: THREE.DoubleSide,
     }),
     laneLine: new THREE.MeshBasicMaterial({ color: 0xdfe4ea, side: THREE.DoubleSide }),
     finish: new THREE.MeshBasicMaterial({ color: 0xf2f5f9, side: THREE.DoubleSide }),
-    seating: surface({ color: 0xffffff, map: tex.seating, roughness: 0.9 }),
+    seating: surface({
+      color: 0xffffff,
+      map: tex.seating,
+      normalMap: tex.normals?.seating,
+      roughness: 0.9,
+    }),
     fence: new THREE.MeshBasicMaterial({
       map: tex.chainLink,
       transparent: true,
@@ -469,7 +506,13 @@ onMounted(() => {
     // is there to bounce light back down onto the seats.
     soffit: surface({ color: 0xcfc6b4, roughness: 0.95 }),
     pitch: surface({ color: 0xffffff, map: tex.pitchLines, roughness: 1, side: THREE.DoubleSide }),
-    sand: surface({ color: 0xffffff, map: tex.sand, roughness: 1, side: THREE.DoubleSide }),
+    sand: surface({
+      color: 0xffffff,
+      map: tex.sand,
+      normalMap: tex.normals?.sand,
+      roughness: 1,
+      side: THREE.DoubleSide,
+    }),
     mat: surface({ color: 0x2f5fa8, roughness: 0.9, side: THREE.DoubleSide }),
     // Dedicated rather than reusing mat.seating (FrontSide) — a flag needs to read from
     // both sides, and flipping a shared material would also double-side the grandstand's
@@ -1012,7 +1055,7 @@ onMounted(() => {
         blobMesh = m
         // Session may mount straight onto Quality (shadows on) — hide the fake ground
         // contact discs immediately instead of waiting for a later applyTier() call.
-        blobMesh.visible = !budget.shadowMap
+        blobMesh.visible = !budget.shadowMapSize
       }
       // DoubleSide surfaces must not cast: three flips shadowSide for them, so these flat
       // ribbons and painted markings write their own depth into the map and self-shadow
@@ -1387,7 +1430,7 @@ onMounted(() => {
     // regenerate at the new resolution and swap the maps in place — the materials and
     // meshes stay, only the texture objects change, so the baked geometry is untouched
     const old = tex
-    tex = makeTextures(budget.textureSize)
+    tex = makeTextures(budget.textureSize, budget.normalMaps)
     const remap: [THREE.Material, THREE.Texture][] = [
       [mat.trunk, tex.bark],
       [mat.crown1, tex.canopy1],
@@ -1410,19 +1453,38 @@ onMounted(() => {
       mm.map = t
       mm.needsUpdate = true
     }
+    // Normal maps follow their colour map through the tier change, and must be cleared when
+    // the new tier has none — left pointing at the disposed set, the surface renders with a
+    // dead texture; left pointing at the OLD tier's set, a downgrade keeps paying for it.
+    const normalRemap: [THREE.Material, THREE.Texture | null][] = [
+      [mat.track, tex.normals?.tartan ?? null],
+      [mat.infield, tex.normals?.infield ?? null],
+      [mat.grass, tex.normals?.grass ?? null],
+      [mat.kerb, tex.normals?.concrete ?? null],
+      [mat.seating, tex.normals?.seating ?? null],
+      [mat.sand, tex.normals?.sand ?? null],
+    ]
+    for (const [m, n] of normalRemap) {
+      const mm = m as THREE.MeshStandardMaterial
+      mm.normalMap = n
+      mm.needsUpdate = true
+    }
     // pitchLines is excluded here too — old.pitchLines and tex.pitchLines are the SAME
     // memoized object (see makeTextures), so disposing it would kill the texture
     // mat.pitch is still using.
     Object.entries(old).forEach(([k, t]) => {
-      if (k !== 'pitchLines') t.dispose()
+      if (k === 'pitchLines' || t === null) return
+      if (k === 'normals')
+        Object.values(t as Record<string, THREE.Texture>).forEach((n) => n.dispose())
+      else (t as THREE.Texture).dispose()
     })
-    if (budget.shadowMap && !renderer!.shadowMap.enabled) enableShadows()
-    else if (!budget.shadowMap && renderer!.shadowMap.enabled) {
+    if (budget.shadowMapSize) enableShadows(budget.shadowMapSize, budget.shadowBoxM)
+    else if (renderer!.shadowMap.enabled) {
       // downgrade: stop paying for the depth pre-pass, and bring the blobs back
       renderer!.shadowMap.enabled = false
       sun.castShadow = false
     }
-    if (blobMesh) blobMesh.visible = !budget.shadowMap
+    if (blobMesh) blobMesh.visible = !budget.shadowMapSize
     // addClouds() is idempotent, so this pair is safe on repeated toggles either way —
     // without the visible=false half, a Quality->Performance downgrade left the drifting
     // cloud shell on forever, contradicting "on Performance there are none" (same shape
@@ -1600,7 +1662,11 @@ onMounted(() => {
     treeLineMat.dispose()
     Object.values(geo).forEach((g) => g.dispose())
     Object.values(mat).forEach((m) => m.dispose())
-    Object.values(tex).forEach((t) => t.dispose())
+    Object.values(tex).forEach((t) => {
+      if (!t) return
+      if (t instanceof THREE.Texture) t.dispose()
+      else Object.values(t).forEach((n) => n.dispose())
+    })
     pacerBodyGeo.dispose()
     pacerHeadGeo.dispose()
     skinMat.dispose()

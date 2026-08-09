@@ -136,6 +136,49 @@ function finish(c: HTMLCanvasElement): THREE.CanvasTexture {
   return t
 }
 
+// Derive a tangent-space normal map from a colour texture's own luminance, treating it as a
+// height field: central differences give the surface slope, which becomes the xy of the
+// normal. Every surface here is generated into a canvas, so the height field is free — no
+// authored maps, no extra downloads.
+//
+// This is what separates "a photo of tartan" from "tartan": with a colour map alone the
+// track, the concrete and the seating are perfectly flat planes that happen to be patterned,
+// and no light direction ever changes how they look.
+export function normalFromTexture(src: THREE.CanvasTexture, strength = 1): THREE.CanvasTexture {
+  const img = src.image as HTMLCanvasElement
+  const size = img.width
+  const sctx = img.getContext('2d')!
+  const height = sctx.getImageData(0, 0, size, size).data
+  const [c, ctx] = canvas(size)
+  const out = ctx.createImageData(size, size)
+  // luminance at (x, y), wrapping — these textures tile, so the derivative has to tile too
+  const lum = (x: number, y: number) => {
+    const i = (((y + size) % size) * size + ((x + size) % size)) * 4
+    return (0.2126 * height[i]! + 0.7152 * height[i + 1]! + 0.0722 * height[i + 2]!) / 255
+  }
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = (lum(x + 1, y) - lum(x - 1, y)) * strength
+      const dy = (lum(x, y + 1) - lum(x, y - 1)) * strength
+      // normalise (-dx, -dy, 1) into the 0..255 encoding three expects
+      const len = Math.hypot(dx, dy, 1)
+      const i = (y * size + x) * 4
+      out.data[i] = Math.round(((-dx / len) * 0.5 + 0.5) * 255)
+      out.data[i + 1] = Math.round(((-dy / len) * 0.5 + 0.5) * 255)
+      out.data[i + 2] = Math.round((1 / len) * 0.5 * 255 + 127.5)
+      out.data[i + 3] = 255
+    }
+  }
+  ctx.putImageData(out, 0, 0)
+  const t = new THREE.CanvasTexture(c)
+  t.wrapS = THREE.RepeatWrapping
+  t.wrapT = THREE.RepeatWrapping
+  // A normal map is data, not colour: sRGB decoding it bends every slope it encodes.
+  t.colorSpace = THREE.NoColorSpace
+  t.repeat.copy(src.repeat)
+  return t
+}
+
 // red tartan: base colour, fine rubber granules, faint roll marks along the lap
 export function tartanTexture(size: number): THREE.CanvasTexture {
   const [c, ctx] = canvas(size)
@@ -436,6 +479,9 @@ export function runnerParts(): {
 export function surface(opts: {
   color: number
   map?: THREE.Texture
+  normalMap?: THREE.Texture | null
+  normalScale?: number
+  vertexColors?: boolean
   roughness?: number
   side?: THREE.Side
   flatShading?: boolean
@@ -446,8 +492,14 @@ export function surface(opts: {
     flatShading: opts.flatShading ?? false,
     roughness: opts.roughness ?? 0.9,
     metalness: 0,
+    vertexColors: opts.vertexColors ?? false,
   }
   if (opts.map) base.map = opts.map
+  if (opts.normalMap) {
+    base.normalMap = opts.normalMap
+    const k = opts.normalScale ?? 1
+    base.normalScale = new THREE.Vector2(k, k)
+  }
   return new THREE.MeshStandardMaterial(base)
 }
 

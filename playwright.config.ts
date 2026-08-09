@@ -17,7 +17,24 @@ export default defineConfig({
   // generated in the same Playwright container image CI uses (see e2e workflow), so
   // fonts/rendering match.
   expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.01 } },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+      testIgnore: '**/device-matrix.spec.ts',
+    },
+    {
+      name: 'iphone-device-matrix',
+      // Chromium-only CI image: emulate the iPhone viewport without requiring WebKit.
+      use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 844 } },
+      testMatch: '**/device-matrix.spec.ts',
+    },
+    {
+      name: 'android-device-matrix',
+      use: { ...devices['Pixel 5'] },
+      testMatch: '**/device-matrix.spec.ts',
+    },
+  ],
   webServer: {
     command: `npm run build && npm run preview -- --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,

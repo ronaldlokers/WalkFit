@@ -38,6 +38,8 @@ import SettingsSheet from './SettingsSheet.vue'
 import type { TimeOfDay } from './scenicSky'
 import type { QualitySetting } from './scenicQuality'
 import type { CameraView, AvatarStyle } from './scenicPlayer'
+import { ambientProfile, type AmbientKind } from './scenicAudio'
+import { dayPhase, TIME_PHASES, weatherFor } from './scenicSky'
 import {
   crossedLandmarks,
   ROUTE_CHUNKS,
@@ -129,6 +131,9 @@ watch(debugOn, (v) => localStorage.setItem('walkfit.debug', v ? '1' : '0'))
 const audioOn = ref(localStorage.getItem('walkfit.audio') !== '0') // default on
 watch(audioOn, (v) => localStorage.setItem('walkfit.audio', v ? '1' : '0'))
 let audioCtx: AudioContext | null = null
+let ambientOscillator: OscillatorNode | null = null
+let ambientGain: GainNode | null = null
+let ambientKind: AmbientKind | null = null
 function beep(freq = 880, ms = 120) {
   if (!audioOn.value) return
   try {
@@ -157,6 +162,48 @@ function speak(text: string) {
     speechSynthesis.speak(u)
   } catch {
     // speech synthesis unavailable — cues are best-effort
+  }
+}
+
+function stopAmbient() {
+  if (ambientOscillator) {
+    try {
+      ambientOscillator.stop()
+    } catch {
+      // already stopped
+    }
+  }
+  ambientOscillator = null
+  ambientGain?.disconnect()
+  ambientGain = null
+  ambientKind = null
+}
+
+function syncAmbient() {
+  if (!audioOn.value || !state.running) {
+    stopAmbient()
+    return
+  }
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext!)()
+    const phase =
+      scenicTime.value === 'auto'
+        ? dayPhase(state.distance)
+        : TIME_PHASES[scenicTime.value as Exclude<TimeOfDay, 'auto'>]
+    const profile = ambientProfile(phase, weatherFor(weatherSeed))
+    if (ambientKind === profile.kind && ambientOscillator) return
+    stopAmbient()
+    ambientOscillator = audioCtx.createOscillator()
+    ambientGain = audioCtx.createGain()
+    ambientKind = profile.kind
+    ambientOscillator.type = profile.kind === 'rain' ? 'sawtooth' : 'sine'
+    ambientOscillator.frequency.value = profile.frequencyHz
+    ambientGain.gain.value = profile.gain
+    ambientOscillator.connect(ambientGain)
+    ambientGain.connect(audioCtx.destination)
+    ambientOscillator.start()
+  } catch {
+    stopAmbient()
   }
 }
 
@@ -498,6 +545,7 @@ const scenicTime = ref<TimeOfDay>(
     : 'auto',
 )
 watch(scenicTime, (v) => localStorage.setItem('walkfit.scenic.time', v))
+watch(() => [audioOn.value, state.running, state.distance, scenicTime.value], syncAmbient)
 // render-quality tier override for the 3D view (Settings → Display); 'auto' probes the device
 const storedScenicQuality = localStorage.getItem('walkfit.scenic.quality')
 const scenicQuality = ref<QualitySetting>(

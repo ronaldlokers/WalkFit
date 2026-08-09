@@ -49,6 +49,7 @@ import { avatarStyleConfig, cameraViewConfig, playerGait } from './scenicPlayer'
 import type { AvatarStyle, CameraView } from './scenicPlayer'
 import { loadScenicManifest } from './scenicAssets'
 import type { ScenicAssetCache as ScenicAssetCacheType } from './scenicAssetLoader'
+import { scenicParkPlacements } from './scenicPark'
 import {
   stadium,
   PART_SIZES,
@@ -195,7 +196,6 @@ onMounted(() => {
   // deliberately leave the procedural venue intact; an art/CDN/cache failure must never
   // blank treadmill controls or force the 2D fallback reserved for missing WebGL.
   let assetCache: ScenicAssetCacheType | null = null
-  let parkTree: THREE.Object3D | null = null
   void loadScenicManifest(document.baseURI)
     .then(async (manifest) => {
       if (disposed || !manifest.assets.some((asset) => asset.path.endsWith('.glb'))) return
@@ -210,19 +210,46 @@ onMounted(() => {
         return
       }
       assetCache = cache
-      if (!tree) return
-      parkTree = tree.scene
-      const at = trackPoint(52, TRACK_OUT + 8)
-      parkTree.position.set(at.x, 0, at.z)
-      parkTree.scale.setScalar(3.2)
-      parkTree.traverse((object) => {
-        const mesh = object as THREE.Mesh
-        if (mesh.isMesh) {
-          mesh.castShadow = true
-          mesh.receiveShadow = true
+      if (tree) {
+        // Keep the first asset compatible with manifests produced before the placement
+        // list existed; the data-driven list below is authoritative for new kits.
+        const placement = scenicParkPlacements().find(
+          (candidate) => candidate.assetId === 'kenney-tree-detailed',
+        )
+        if (placement) {
+          const at = trackPoint(placement.s, placement.o)
+          tree.scene.position.set(at.x, 0, at.z)
+          tree.scene.rotation.y = placement.rotation
+          tree.scene.scale.setScalar(placement.scale)
+          tree.scene.traverse((object) => {
+            const mesh = object as THREE.Mesh
+            if (mesh.isMesh) {
+              mesh.castShadow = true
+              mesh.receiveShadow = true
+            }
+          })
+          scene.add(tree.scene)
         }
-      })
-      scene.add(parkTree)
+      }
+      // Each clone shares the cache's source GPU resources. A failed or missing asset is
+      // simply skipped, leaving the procedural venue visible and interactive.
+      for (const placement of scenicParkPlacements()) {
+        if (placement.assetId === 'kenney-tree-detailed') continue
+        const instance = await cache.instantiate(placement.assetId)
+        if (!instance || disposed) continue
+        const at = trackPoint(placement.s, placement.o)
+        instance.scene.position.set(at.x, 0, at.z)
+        instance.scene.rotation.y = placement.rotation
+        instance.scene.scale.setScalar(placement.scale)
+        instance.scene.traverse((object) => {
+          const mesh = object as THREE.Mesh
+          if (mesh.isMesh) {
+            mesh.castShadow = true
+            mesh.receiveShadow = true
+          }
+        })
+        scene.add(instance.scene)
+      }
     })
     .catch(() => {})
   // WebGL probe before any three.js setup — no WebGL (e.g. jsdom, old machines) means

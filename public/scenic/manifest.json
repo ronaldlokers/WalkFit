@@ -11,6 +11,17 @@
       "license": "CC0-1.0",
       "source": "https://kenney.nl/assets/nature-kit",
       "attribution": "Kenney, Nature Kit 2.1 (CC0 1.0)"
+    },
+    {
+      "id": "kenney-bush-detailed",
+      "kind": "prop",
+      "path": "scenic/bush-detailed.glb",
+      "bytes": 9896,
+      "triangles": 104,
+      "tier": "all",
+      "license": "CC0-1.0",
+      "source": "https://kenney.nl/assets/nature-kit",
+      "attribution": "Kenney, Nature Kit 2.1 (CC0 1.0)"
     }
   ]
 }

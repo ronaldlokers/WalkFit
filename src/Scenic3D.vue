@@ -48,6 +48,7 @@ import type { Pacer } from './scenicLife'
 import { avatarStyleConfig, cameraViewConfig, playerGait } from './scenicPlayer'
 import type { AvatarStyle, CameraView } from './scenicPlayer'
 import { loadScenicManifest } from './scenicAssets'
+import type { ScenicAssetCache as ScenicAssetCacheType } from './scenicAssetLoader'
 import {
   stadium,
   PART_SIZES,
@@ -193,14 +194,35 @@ onMounted(() => {
   // Start the Scenic v3 asset boundary even while the manifest is empty. Loading failures
   // deliberately leave the procedural venue intact; an art/CDN/cache failure must never
   // blank treadmill controls or force the 2D fallback reserved for missing WebGL.
-  let assetCache: { dispose: () => Promise<void> } | null = null
+  let assetCache: ScenicAssetCacheType | null = null
+  let parkTree: THREE.Object3D | null = null
   void loadScenicManifest(document.baseURI)
     .then(async (manifest) => {
       if (disposed || !manifest.assets.some((asset) => asset.path.endsWith('.glb'))) return
       // GLTFLoader and SkeletonUtils add ~70 kB minified. Keep them in their own dynamic
       // chunk and do not parse it until a manifest actually contains a model.
       const { ScenicAssetCache } = await import('./scenicAssetLoader')
-      if (!disposed) assetCache = new ScenicAssetCache(manifest, document.baseURI)
+      if (disposed) return
+      const cache = new ScenicAssetCache(manifest, document.baseURI)
+      const tree = await cache.instantiate('kenney-tree-detailed')
+      if (disposed) {
+        await cache.dispose()
+        return
+      }
+      assetCache = cache
+      if (!tree) return
+      parkTree = tree.scene
+      const at = trackPoint(52, TRACK_OUT + 8)
+      parkTree.position.set(at.x, 0, at.z)
+      parkTree.scale.setScalar(3.2)
+      parkTree.traverse((object) => {
+        const mesh = object as THREE.Mesh
+        if (mesh.isMesh) {
+          mesh.castShadow = true
+          mesh.receiveShadow = true
+        }
+      })
+      scene.add(parkTree)
     })
     .catch(() => {})
   // WebGL probe before any three.js setup — no WebGL (e.g. jsdom, old machines) means

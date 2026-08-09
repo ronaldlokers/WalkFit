@@ -4,6 +4,21 @@
 
 export type CameraView = 'first' | 'third'
 export type AvatarStyle = 'sky' | 'coral' | 'lime' | 'violet'
+export type PlayerGait = 'idle' | 'walk' | 'brisk' | 'jog'
+
+export interface PlayerGaitConfig {
+  state: PlayerGait
+  legSwing: number
+  armSwing: number
+}
+
+export function playerGait(active: boolean, speedKmh: number): PlayerGaitConfig {
+  const speed = Number.isFinite(speedKmh) ? speedKmh : 0
+  if (!active || speed <= 0) return { state: 'idle', legSwing: 0, armSwing: 0 }
+  if (speed < 3.5) return { state: 'walk', legSwing: 0.42, armSwing: 0.28 }
+  if (speed < 5.5) return { state: 'brisk', legSwing: 0.58, armSwing: 0.42 }
+  return { state: 'jog', legSwing: 0.74, armSwing: 0.58 }
+}
 
 export interface AvatarStyleConfig {
   id: AvatarStyle

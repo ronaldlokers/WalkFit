@@ -97,6 +97,20 @@ export function landmarkAt(distanceM: number, toleranceM = 1): RouteLandmark | n
   )
 }
 
+export function crossedLandmarks(previousM: number, currentM: number): RouteLandmark[] {
+  if (!Number.isFinite(previousM) || !Number.isFinite(currentM) || currentM <= previousM) return []
+  const firstLap = Math.floor(previousM / ROUTE_TOTAL_M)
+  const lastLap = Math.floor(currentM / ROUTE_TOTAL_M)
+  const crossed: RouteLandmark[] = []
+  for (let lap = firstLap; lap <= lastLap; lap++) {
+    for (const landmark of ROUTE_LANDMARKS) {
+      const absolute = lap * ROUTE_TOTAL_M + landmark.distanceM
+      if (absolute > previousM && absolute <= currentM) crossed.push(landmark)
+    }
+  }
+  return crossed
+}
+
 export interface RoutePoolDelta {
   active: RouteChunk[]
   entered: RouteChunk[]

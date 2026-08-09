@@ -2011,6 +2011,7 @@ const pace = computed(() => {
         :strava="strava"
         :providers="healthProviders"
         :scenic-supported="scenicSupported"
+        :progression-unlocks="progression.cosmeticUnlocks"
         @close="settingsOpen = false"
         @weight-changed="weightSettingChanged"
         @sync-provider="syncHealth"

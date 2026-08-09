@@ -92,7 +92,10 @@ export function initialProgression(): ProgressionState {
     lastActiveDate: null,
     routeBadges: [],
     personalBestsM: {},
-    cosmeticUnlocks: ['sky'],
+    // The original four palettes shipped before Scenic v3 and remain available for
+    // backwards compatibility; future palettes can be added to UNLOCKS without locking
+    // an existing preference after an update.
+    cosmeticUnlocks: ['sky', 'coral', 'lime', 'violet'],
     daily: { id: '', progress: 0, claimed: false },
     weekly: { id: '', progress: 0, claimed: false },
   }

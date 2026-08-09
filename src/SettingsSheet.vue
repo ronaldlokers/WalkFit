@@ -32,6 +32,7 @@ const props = defineProps<{
   }
   providers: HealthProvider[]
   scenicSupported: boolean
+  progressionUnlocks: string[]
 }>()
 import { exportData, exportCsv, importData } from './backup'
 import { ref } from 'vue'
@@ -95,6 +96,7 @@ const scenicQuality = defineModel<QualitySetting>('scenicQuality', { required: t
 const scenicMotion = defineModel<boolean>('scenicMotion', { required: true })
 const scenicCamera = defineModel<CameraView>('scenicCamera', { required: true })
 const avatarStyle = defineModel<AvatarStyle>('avatarStyle', { required: true })
+const isStyleUnlocked = (id: string) => props.progressionUnlocks.includes(id)
 const viewMode = defineModel<'track' | 'scenic'>('viewMode', { required: true })
 const goalKcal = defineModel<number>('goalKcal', { required: true })
 const goalSteps = defineModel<number>('goalSteps', { required: true })
@@ -362,8 +364,14 @@ function confirmForgetNow() {
         <div class="set-row">
           <span>{{ t('settings.avatarStyle') }}</span>
           <select v-model="avatarStyle" class="set-select">
-            <option v-for="style in AVATAR_STYLES" :key="style.id" :value="style.id">
-              {{ t(`settings.avatarStyle.${style.id}`) }}
+            <option
+              v-for="style in AVATAR_STYLES"
+              :key="style.id"
+              :value="style.id"
+              :disabled="!isStyleUnlocked(style.id)"
+            >
+              {{ t(`settings.avatarStyle.${style.id}`)
+              }}{{ isStyleUnlocked(style.id) ? '' : ' 🔒' }}
             </option>
           </select>
         </div>

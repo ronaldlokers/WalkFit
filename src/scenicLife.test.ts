@@ -12,6 +12,7 @@ import {
   strideLength,
   stepPhase,
   gaitCycleM,
+  limbSwing,
   cadenceHz,
   paceGap,
   cameraMotion,
@@ -216,6 +217,15 @@ describe('gaitCycleM', () => {
     expect(stepPhase(0, cycle)).toBeCloseTo(stepPhase(2 * stride, cycle), 6)
     // and NOT over one stride — that would be the 2x-cadence bug
     expect(Math.abs(stepPhase(stride, cycle) - stepPhase(0, cycle))).toBeGreaterThan(0.4)
+  })
+})
+
+describe('limbSwing', () => {
+  it('completes one limb cycle per two footfalls, not one', () => {
+    const stride = 0.72
+    expect(limbSwing(0, stride)).toBeCloseTo(limbSwing(2 * stride, stride), 9)
+    expect(limbSwing(stride / 2, stride)).toBeCloseTo(1, 9)
+    expect(limbSwing((3 * stride) / 2, stride)).toBeCloseTo(-1, 9)
   })
 })
 

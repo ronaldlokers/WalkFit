@@ -133,7 +133,9 @@ export function daylight(phase: number): number {
 }
 
 export function cloudColor(sky: SkyState, phase: number): number {
-  const lit = daylight(phase)
+  // The sky starts illuminating clouds at the horizon, before direct sunlight has climbed
+  // high enough for daylight() to affect the ground-facing unlit surfaces.
+  const lit = isNight(phase) ? 0 : Math.max(0.08, daylight(phase))
   return lerpColor(lerpColor(sky.sky, sky.sunColor, 0.55 * lit), 0xffffff, 0.45 * lit)
 }
 
@@ -215,7 +217,10 @@ function sunElevation(p: number): number {
     // continuing from before the wrap (p + 1) so it's continuous with the p -> 1 tail.
     return nightElevation(p + 1)
   }
-  if (p <= SUN_PEAK_PHASE) return Math.sin((Math.PI / 2) * (p / SUN_PEAK_PHASE)) * MAX_ELEVATION
+  if (p <= SUN_PEAK_PHASE) {
+    const daylightPhase = (p - NIGHT_DAWN_EDGE) / (SUN_PEAK_PHASE - NIGHT_DAWN_EDGE)
+    return Math.sin((Math.PI / 2) * daylightPhase) * MAX_ELEVATION
+  }
   if (p <= SUN_SET_PHASE) {
     return (
       Math.sin((Math.PI / 2) * ((SUN_SET_PHASE - p) / (SUN_SET_PHASE - SUN_PEAK_PHASE))) *

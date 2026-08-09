@@ -129,6 +129,13 @@ export function gaitCycleM(stride: number): number {
   return stride * 2
 }
 
+// Signed limb position for the split-limb rigs. Keeping the gait-cycle conversion here
+// prevents renderer-only code from feeding a one-footfall stride to stepPhase and silently
+// doubling the animation cadence.
+export function limbSwing(distance: number, stride: number): number {
+  return Math.sin(stepPhase(distance, gaitCycleM(stride)) * Math.PI * 2)
+}
+
 export function cadenceHz(speedKmh: number, stride: number): number {
   return mps(speedKmh) / stride
 }

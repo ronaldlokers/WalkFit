@@ -63,6 +63,7 @@ import {
   REPEAT,
   tartanTexture,
   grassTexture,
+  canopyTexture,
   barkTexture,
   foliageTexture,
   concreteTexture,
@@ -161,7 +162,10 @@ onMounted(() => {
   renderer.toneMappingExposure = 1.0
   el.appendChild(renderer.domElement)
 
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x30363f, 0.9)
+  // The ground half is a stand-in for bounce light off the infield and the track, so it is
+  // warm and well clear of black — at 0x30363f every underside in the scene (the grandstand
+  // roof above all) rendered as a flat black void with no shape in it at all.
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x6b6455, 0.9)
   const sun = new THREE.DirectionalLight(0xffffff, 1)
   const sunTarget = new THREE.Object3D()
   scene.add(hemi, sun, sunTarget)
@@ -271,7 +275,7 @@ onMounted(() => {
   function addClouds() {
     if (clouds) return
     cloudTex = cloudTexture(512)
-    cloudTex.repeat.set(3, 2)
+    cloudTex.repeat.set(4, 2)
     // thetaLength must reach past 90deg: at 81.8deg the shell's lower rim floated 8.2deg
     // above the horizon as a hard edge across the sky. Past vertical it tucks behind the
     // ground plane, which is opaque and depth-writing, so the seam is simply occluded.
@@ -281,7 +285,7 @@ onMounted(() => {
       new THREE.MeshBasicMaterial({
         map: cloudTex,
         transparent: true,
-        opacity: 0.5,
+        opacity: 0.62,
         side: THREE.BackSide,
         depthWrite: false,
         fog: false,
@@ -320,7 +324,10 @@ onMounted(() => {
   // --- shared geometries/materials ---
   const geo = {
     trunk: new THREE.CylinderGeometry(0.12, 0.18, 1, 5),
-    crown: new THREE.IcosahedronGeometry(0.9, 0),
+    crown: new THREE.IcosahedronGeometry(0.9, 0), // bushes only — trees use canopy cards
+    // non-indexed to match the icosahedron bushes: mergeGeometries returns null for a
+    // batch that mixes indexed and non-indexed geometry, and both share mat.crown2
+    canopy: new THREE.PlaneGeometry(3.4, 3.4).toNonIndexed(),
     cone: new THREE.ConeGeometry(0.8, 1.4, 6),
     rock: new THREE.IcosahedronGeometry(0.5, 0),
     pole: new THREE.CylinderGeometry(0.09, 0.12, 1, 6),
@@ -348,6 +355,8 @@ onMounted(() => {
     const t = {
       tartan: tartanTexture(size),
       grass: grassTexture(size, 108),
+      canopy1: canopyTexture(size, 104),
+      canopy2: canopyTexture(size, 84),
       infield: grassTexture(size, 96),
       bark: barkTexture(size),
       foliage: foliageTexture(size),
@@ -392,8 +401,25 @@ onMounted(() => {
 
   const mat = {
     trunk: surface({ color: 0xffffff, map: tex.bark, roughness: 0.95 }),
-    crown1: surface({ color: 0xffffff, map: tex.foliage, roughness: 1, flatShading: true }),
-    crown2: surface({ color: 0xc8e0a8, map: tex.foliage, roughness: 1, flatShading: true }),
+    // alphaTest rather than transparent: an alpha-tested material still writes depth, so
+    // crossed quads inside one canopy sort correctly against each other without the
+    // per-fragment ordering artefacts a blended material would show from every angle.
+    crown1: new THREE.MeshStandardMaterial({
+      map: tex.canopy1,
+      alphaTest: 0.5,
+      side: THREE.DoubleSide,
+      shadowSide: THREE.DoubleSide,
+      roughness: 1,
+      metalness: 0,
+    }),
+    crown2: new THREE.MeshStandardMaterial({
+      map: tex.canopy2,
+      alphaTest: 0.5,
+      side: THREE.DoubleSide,
+      shadowSide: THREE.DoubleSide,
+      roughness: 1,
+      metalness: 0,
+    }),
     pine: surface({ color: 0x8fb890, map: tex.foliage, roughness: 1, flatShading: true }),
     rock: surface({ color: 0x777d87, roughness: 0.85, flatShading: true }),
     pole: surface({ color: 0x4a505b, roughness: 0.6 }),
@@ -433,7 +459,12 @@ onMounted(() => {
       depthWrite: false, // a mesh fence must not occlude what is behind it
     }),
     clubhouse: surface({ color: 0xd8cfc0, roughness: 0.85 }),
-    roof: surface({ color: 0x7a4b3a, roughness: 0.8 }),
+    roof: surface({ color: 0x8d5a45, roughness: 0.8 }),
+    // The soffit is its own material: the roof's underside is the one large surface in the
+    // venue that never sees the sun, so lit by the hemisphere term alone it renders as a
+    // black slot over the terracing. A pale underside is also what real stands have — it
+    // is there to bounce light back down onto the seats.
+    soffit: surface({ color: 0xcfc6b4, roughness: 0.95 }),
     pitch: surface({ color: 0xffffff, map: tex.pitchLines, roughness: 1, side: THREE.DoubleSide }),
     sand: surface({ color: 0xffffff, map: tex.sand, roughness: 1, side: THREE.DoubleSide }),
     mat: surface({ color: 0x2f5fa8, roughness: 0.9, side: THREE.DoubleSide }),
@@ -494,16 +525,27 @@ onMounted(() => {
   scene.add(treeLineMesh)
   disposables.push(treeLineGeo)
 
+  // Double-sided materials that must still cast (see the bake's castShadow rule).
+  const castsDespiteTwoSided = new Set<THREE.Material>([mat.crown1, mat.crown2])
+
   function buildProp(p: Prop): THREE.Object3D {
     const g = new THREE.Group()
     if (p.type === 'tree') {
       const trunk = new THREE.Mesh(geo.trunk, mat.trunk)
       trunk.scale.set(1, 2.2, 1)
       trunk.position.y = 1.1
-      const crown = new THREE.Mesh(geo.crown, p.seed < 0.5 ? mat.crown1 : mat.crown2)
-      crown.position.y = 2.6
-      crown.scale.setScalar(1.4)
-      g.add(trunk, crown)
+      g.add(trunk)
+      // Crossed billboards, not a solid crown: three quads through the same axis, each
+      // carrying the canopy alpha. A convex mesh reads as a faceted ball from every angle
+      // — the ragged outline is what makes a tree look like a tree, and only alpha can
+      // give one. Fixed (not camera-facing) so the world can still be baked once.
+      const canopy = p.seed < 0.5 ? mat.crown1 : mat.crown2
+      for (let i = 0; i < 3; i++) {
+        const card = new THREE.Mesh(geo.canopy, canopy)
+        card.position.y = 2.7
+        card.rotation.y = (i / 3) * Math.PI
+        g.add(card)
+      }
     } else if (p.type === 'pine') {
       const trunk = new THREE.Mesh(geo.trunk, mat.trunk)
       trunk.scale.set(1, 1.6, 1)
@@ -601,11 +643,16 @@ onMounted(() => {
       backWall.position.set(rows * STAND_ROW_DEPTH, 2.1, 0)
       g.add(backWall)
       const roof = keep(new THREE.Mesh(new THREE.BoxGeometry(STAND_ROOF_W, 0.25, len), mat.roof))
+      const soffit = keep(
+        new THREE.Mesh(new THREE.PlaneGeometry(STAND_ROOF_W, len).toNonIndexed(), mat.soffit),
+      )
+      soffit.rotation.x = Math.PI / 2 // faces down
       // Not STAND_ROOF_W / 2 — the roof is offset from the terracing's midpoint, not
       // centred on itself. Its outer edge (this position + half its width) is exactly
       // STAND_DEPTH, which is what the fence-clearance test checks.
       roof.position.set(rows * 0.55, 5.4, 0)
-      g.add(roof)
+      soffit.position.set(rows * 0.55, 5.27, 0)
+      g.add(roof, soffit)
       for (let i = 0; i < 4; i++) {
         const col = keep(
           new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 5.3, 6), mat.clubhouse),
@@ -940,7 +987,11 @@ onMounted(() => {
       // into acne. Deriving this from `side` rather than a hand-kept list means a new
       // marking cannot silently reintroduce it.
       const twoSided = (material as THREE.Material).side === THREE.DoubleSide
-      m.castShadow = !twoSided
+      // ...except the alpha-tested foliage cards, which are double-sided because a flat
+      // quad has to be seen from behind, not because they are ground markings. Excluded
+      // from the rule they would otherwise fall into, a tree stopped casting any shadow at
+      // all the moment its crown became a billboard.
+      m.castShadow = !twoSided || castsDespiteTwoSided.has(material)
       m.receiveShadow = true
       scene.add(m)
     }
@@ -1285,8 +1336,8 @@ onMounted(() => {
     tex = makeTextures(budget.textureSize)
     const remap: [THREE.Material, THREE.Texture][] = [
       [mat.trunk, tex.bark],
-      [mat.crown1, tex.foliage],
-      [mat.crown2, tex.foliage],
+      [mat.crown1, tex.canopy1],
+      [mat.crown2, tex.canopy2],
       [mat.pine, tex.foliage],
       [mat.kerb, tex.concrete],
       [mat.grass, tex.grass],

@@ -154,7 +154,11 @@ export interface SkyBodies {
 
 export const SUN_PEAK_PHASE = 0.45 // the "day" palette keyframe
 export const SUN_SET_PHASE = 0.8 // sun reaches the horizon shortly after the sunset keyframe
-const MAX_ELEVATION = Math.PI * 0.42 // just shy of straight overhead
+// Deliberately NOT straight overhead. At the old 0.42pi (76 deg) the midday sun cast
+// shadows barely a quarter of an object's height, so the whole scene rendered flat and
+// unmodelled — nothing on the track had a shadow to sit in. A ~50 deg peak keeps shadows
+// roughly as long as the things casting them, which is what gives the ground depth.
+const MAX_ELEVATION = Math.PI * 0.28
 // isNight()'s dawn edge (phase < 0.02). Elevation must stay negative right up to this
 // edge — see the p < NIGHT_DAWN_EDGE branch in sunElevation below.
 const NIGHT_DAWN_EDGE = 0.02

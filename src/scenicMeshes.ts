@@ -104,6 +104,18 @@ export function assertSameAttributes(geoms: THREE.BufferGeometry[], label: strin
       throw new Error(`scenic merge: attribute mismatch for "${label}" — ${key(g)} vs ${first}`)
     }
   }
+  // Indexing has to agree too, and this one is easy to hit by accident: three's primitives
+  // disagree among themselves (PlaneGeometry is indexed, IcosahedronGeometry is not), and
+  // the only symptom is mergeGeometries quietly returning null.
+  const indexed = geoms[0]!.getIndex() !== null
+  for (const g of geoms) {
+    if ((g.getIndex() !== null) !== indexed) {
+      throw new Error(
+        `scenic merge: "${label}" mixes indexed and non-indexed geometry — ` +
+          'call toNonIndexed() on the indexed ones',
+      )
+    }
+  }
 }
 
 // Every surface texture is generated at runtime into a canvas — no asset files, so the
@@ -195,6 +207,46 @@ export function grassTexture(size: number, hue: number): THREE.CanvasTexture {
     ctx.lineTo(x + (worldHash(i * 5 + 33) - 0.5) * 3, y - 3)
     ctx.stroke()
   }
+  return finish(c)
+}
+
+// Canopy alpha for crossed-billboard foliage: an irregular cluster of leaf clumps with a
+// ragged edge, transparent outside it. A convex primitive (the icosahedron this replaces)
+// reads as a faceted ball no matter how it is textured — the silhouette is the whole tell,
+// and a silhouette is exactly what a solid mesh cannot fake.
+export function canopyTexture(size: number, hue: number): THREE.CanvasTexture {
+  const [c, ctx] = canvas(size)
+  ctx.clearRect(0, 0, size, size)
+  const cx = size / 2
+  const cy = size * 0.46
+  // main mass, then clumps around its edge to break the outline up
+  const clumps = 26
+  for (let i = 0; i < clumps; i++) {
+    const h = i * 4
+    const a = worldHash(h + 301) * Math.PI * 2
+    const rad = size * 0.3 * Math.sqrt(worldHash(h + 302))
+    const x = cx + Math.cos(a) * rad
+    const y = cy + Math.sin(a) * rad * 0.86
+    const r = size * (0.07 + worldHash(h + 303) * 0.09)
+    const v = worldHash(h + 304)
+    ctx.fillStyle = `hsl(${hue + (v - 0.5) * 18}, ${34 + v * 16}%, ${20 + v * 20}%)`
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  // leaf speckle inside the mass so it is not a flat colour when close
+  for (let i = 0; i < size * 3; i++) {
+    const h = i * 3
+    const a = worldHash(h + 401) * Math.PI * 2
+    const rad = size * 0.34 * Math.sqrt(worldHash(h + 402))
+    const x = cx + Math.cos(a) * rad
+    const y = cy + Math.sin(a) * rad * 0.86
+    const v = worldHash(h + 403)
+    ctx.globalCompositeOperation = 'source-atop' // only where canopy already is
+    ctx.fillStyle = `hsla(${hue + (v - 0.5) * 14}, 40%, ${18 + v * 26}%, 0.5)`
+    ctx.fillRect(x, y, 2, 2)
+  }
+  ctx.globalCompositeOperation = 'source-over'
   return finish(c)
 }
 
@@ -410,18 +462,38 @@ export function chainLinkTexture(size: number): THREE.CanvasTexture {
   return finish(c)
 }
 
-// Stepped terracing with seat rows — read at a distance, so bands rather than seats.
+// Stepped terracing with seat rows — read at a distance, so bands rather than seats, but
+// with the detail that makes a stand look occupied rather than moulded: individual seat
+// divisions, a scattering of spectators, and a shaded gap under each row's lip.
 export function seatingTexture(size: number): THREE.CanvasTexture {
   const [c, ctx] = canvas(size)
   ctx.fillStyle = '#8d93a0'
   ctx.fillRect(0, 0, size, size)
   const rows = 8
+  const rowH = size / rows
+  const seatW = Math.max(3, size / 64)
   for (let r = 0; r < rows; r++) {
-    const y = (r / rows) * size
+    const y = r * rowH
     ctx.fillStyle = r % 2 === 0 ? '#3f6fa8' : '#4a7cb8'
-    ctx.fillRect(0, y, size, (size / rows) * 0.62)
-    ctx.fillStyle = 'rgba(30, 36, 46, 0.35)'
-    ctx.fillRect(0, y + (size / rows) * 0.62, size, Math.max(1, size / 128))
+    ctx.fillRect(0, y, size, rowH * 0.62)
+    // seat divisions: a dark hairline every seatW, so the band is a row of seats
+    ctx.fillStyle = 'rgba(22, 30, 44, 0.30)'
+    for (let x = 0; x < size; x += seatW) ctx.fillRect(x, y, Math.max(1, seatW * 0.14), rowH * 0.62)
+    // a sparse crowd — never full, and never evenly spread
+    for (let x = 0; x < size; x += seatW) {
+      const h = Math.round(x * 3 + r * 131)
+      if (worldHash(h + 701) > 0.26) continue
+      const v = worldHash(h + 702)
+      ctx.fillStyle = `hsl(${Math.round(v * 360)}, ${40 + v * 30}%, ${40 + v * 25}%)`
+      ctx.fillRect(x + seatW * 0.18, y + rowH * 0.1, seatW * 0.6, rowH * 0.42)
+      ctx.fillStyle = 'rgba(60, 44, 34, 0.75)' // head
+      ctx.fillRect(x + seatW * 0.3, y + rowH * 0.02, seatW * 0.36, rowH * 0.12)
+    }
+    // shaded gap under the row's lip, and the tread edge itself
+    ctx.fillStyle = 'rgba(18, 24, 34, 0.45)'
+    ctx.fillRect(0, y + rowH * 0.62, size, Math.max(1, rowH * 0.16))
+    ctx.fillStyle = 'rgba(214, 220, 230, 0.35)'
+    ctx.fillRect(0, y + rowH * 0.78, size, Math.max(1, size / 200))
   }
   return finish(c)
 }

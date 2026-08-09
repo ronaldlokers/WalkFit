@@ -125,7 +125,10 @@ describe('skyBodies', () => {
     const deg = (r: number) => (r * 180) / Math.PI
     expect(deg(skyBodies(TIME_PHASES.dawn).sun.elevation)).toBeLessThan(15)
     expect(deg(skyBodies(TIME_PHASES.sunset).sun.elevation)).toBeLessThan(30)
-    expect(deg(skyBodies(TIME_PHASES.day).sun.elevation)).toBeGreaterThan(60)
+    // high, but well short of vertical — a near-overhead sun leaves nothing casting a
+    // readable shadow, which is the specific flatness this bound exists to prevent
+    expect(deg(skyBodies(TIME_PHASES.day).sun.elevation)).toBeGreaterThan(40)
+    expect(deg(skyBodies(TIME_PHASES.day).sun.elevation)).toBeLessThan(60)
   })
 
   it('the moon is up exactly when the sun is below the horizon', () => {

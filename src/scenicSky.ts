@@ -69,7 +69,7 @@ const SKY_KEYS: SkyKey[] = [
   { at: 0.45, sky: 0x6ba8e8, fog: 0xb9d4ee, sunIntensity: 2.6, sunColor: 0xffffff, ambient: 1.2 }, // day
   { at: 0.62, sky: 0x6b8fc4, fog: 0xc0a9a8, sunIntensity: 2.1, sunColor: 0xffe0b0, ambient: 1.0 }, // late
   { at: 0.75, sky: 0x6d4270, fog: 0xc4707a, sunIntensity: 2.6, sunColor: 0xff9a5c, ambient: 0.55 }, // sunset
-  { at: 0.87, sky: 0x161a2e, fog: 0x24283c, sunIntensity: 0.2, sunColor: 0x9ab0ff, ambient: 0.3 }, // night
+  { at: 0.87, sky: 0x161a2e, fog: 0x24283c, sunIntensity: 0.2, sunColor: 0x9ab0ff, ambient: 0.45 }, // night
   { at: 1.0, sky: 0x54486a, fog: 0xa8788a, sunIntensity: 3.2, sunColor: 0xffb08a, ambient: 0.4 }, // wraps to pre-dawn
 ]
 

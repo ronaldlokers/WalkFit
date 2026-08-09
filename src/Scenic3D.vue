@@ -223,21 +223,58 @@ onMounted(() => {
   // toneMapped:false is load-bearing — three.js applies fog AFTER tone mapping, so real
   // fogged geometry fades to the raw hex. If the dome were tone mapped it would no longer
   // match the fog it is painted to blend into, and the seam would come back.
-  const domeGeo = new THREE.SphereGeometry(DOME_R, 24, 12)
-  const domeColors = new THREE.Float32BufferAttribute(
-    new Float32Array(domeGeo.attributes.position!.count * 3),
-    3,
-  )
-  domeGeo.setAttribute('color', domeColors)
-  const dome = new THREE.Mesh(
-    domeGeo,
-    new THREE.MeshBasicMaterial({
-      vertexColors: true,
-      side: THREE.BackSide,
-      fog: false,
-      toneMapped: false,
-    }),
-  )
+  const domeGeo = new THREE.SphereGeometry(DOME_R, 32, 16)
+  // The gradient is evaluated per FRAGMENT, not interpolated between ~350 vertices. A
+  // vertex gradient on a 24x12 sphere bands visibly across a clear sky, and it cannot carry
+  // a sun halo at all: the halo is a few degrees wide and would land between vertices.
+  const domeUniforms = {
+    uSky: { value: new THREE.Color(0x6ba8e8) },
+    uFog: { value: new THREE.Color(0xb9d4ee) },
+    uSunColor: { value: new THREE.Color(0xffffff) },
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    uSunUp: { value: 1 }, // 0 below the horizon: no halo on a night sky
+  }
+  const domeMat = new THREE.ShaderMaterial({
+    uniforms: domeUniforms,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+    // toneMapped:false is load-bearing — three applies fog AFTER tone mapping, so real
+    // fogged geometry fades to the raw hex. Tone mapping the dome would stop it matching
+    // the fog it exists to blend into, and the ground/sky seam would come back.
+    toneMapped: false,
+    vertexShader: `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uSky;
+      uniform vec3 uFog;
+      uniform vec3 uSunColor;
+      uniform vec3 uSunDir;
+      uniform float uSunUp;
+      varying vec3 vDir;
+      void main() {
+        vec3 dir = normalize(vDir);
+        // Rayleigh-ish: the horizon is the longest path through the atmosphere, so it
+        // carries the most scattering. pow() biases the ramp toward the horizon rather
+        // than putting the midpoint at 45 degrees, which is what a linear ramp does and
+        // why the old dome read as a flat backdrop.
+        float h = pow(clamp(dir.y, 0.0, 1.0), 0.42);
+        vec3 col = mix(uFog, uSky, h);
+        // Mie: a tight disc for the sun itself and a broad glow around it, both fading out
+        // as the sun sets so a set sun cannot leave a bright patch on the horizon.
+        float c = max(dot(dir, normalize(uSunDir)), 0.0);
+        float halo = pow(c, 220.0) * 0.55 + pow(c, 12.0) * 0.22 + pow(c, 3.0) * 0.06;
+        col += uSunColor * halo * uSunUp;
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `,
+  })
+  const dome = new THREE.Mesh(domeGeo, domeMat)
   scene.add(dome)
 
   // Sky bodies: a sun/moon glow sprite each, a star field that fades in at night, and a
@@ -308,20 +345,7 @@ onMounted(() => {
   }
   if (TIER_BUDGET[tier].clouds) addClouds()
 
-  const cLo = new THREE.Color()
-  const cHi = new THREE.Color()
-  const cMix = new THREE.Color()
-  function paintDome(skyHex: number, fogHex: number) {
-    cHi.setHex(skyHex)
-    cLo.setHex(fogHex)
-    const pos = domeGeo.attributes.position!
-    for (let i = 0; i < pos.count; i++) {
-      const t = Math.min(1, Math.max(0, pos.getY(i) / 140))
-      cMix.copy(cLo).lerp(cHi, t)
-      domeColors.setXYZ(i, cMix.r, cMix.g, cMix.b)
-    }
-    domeColors.needsUpdate = true
-  }
+  const cAmbient = new THREE.Color()
   // Hoisted out of update() (Fix 4): that function runs every rendered frame, so a
   // closure declared inside it was a fresh allocation per frame.
   const place = (o: THREE.Object3D, b: { azimuth: number; elevation: number }) => {
@@ -1314,7 +1338,6 @@ onMounted(() => {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   let display = props.distance // smoothed distance the camera actually sits at
   let sessionSeconds = 0
-  let lastDomeKey = -1 // repaint the ~350 dome vertex colors only when the sky changed (#62)
   function update(d: number) {
     // Measured, not modelled: state.steps is the belt's own pedometer, so the arms swing
     // at your real cadence rather than an assumed one — and the camera bobs at it too.
@@ -1366,11 +1389,17 @@ onMounted(() => {
     )
     const sky = skyAt(phase, weather)
     scene.fog!.color.setHex(sky.fog)
-    const domeKey = sky.sky * 0x1000000 + sky.fog
-    if (domeKey !== lastDomeKey) {
-      lastDomeKey = domeKey
-      paintDome(sky.sky, sky.fog)
-    }
+    domeUniforms.uSky.value.setHex(sky.sky)
+    domeUniforms.uFog.value.setHex(sky.fog)
+    domeUniforms.uSunColor.value.setHex(sky.sunColor)
+    domeUniforms.uSunDir.value.set(
+      Math.cos(bodies.sun.azimuth) * Math.cos(bodies.sun.elevation),
+      Math.sin(bodies.sun.elevation),
+      Math.sin(bodies.sun.azimuth) * Math.cos(bodies.sun.elevation),
+    )
+    // Fades over the last few degrees rather than switching off, or the halo pops out at
+    // the exact frame the sun crosses the horizon.
+    domeUniforms.uSunUp.value = Math.max(0, Math.min(1, bodies.sun.elevation / 0.12))
     dome.position.set(camera.position.x, 0, camera.position.z)
     skylineMesh.position.set(camera.position.x, 30, camera.position.z)
     // pull it toward the horizon colour so it recedes in fog and darkens at night
@@ -1392,8 +1421,10 @@ onMounted(() => {
     hemi.intensity = sky.ambient
     // Ambient comes FROM the sky, so it carries the sky's colour: warm at dawn and sunset,
     // blue at midday. Pinned to white it lit a dawn track with noon-coloured fill, which is
-    // what left the ground looking grey under a pink sky.
-    hemi.color.setHex(sky.fog)
+    // what left the ground looking grey under a pink sky. Only PART of the way, though —
+    // taking the fog colour outright multiplies the fill by a colour that has almost no
+    // luminance at night, and the whole ground went black.
+    hemi.color.setHex(0xffffff).lerp(cAmbient.setHex(sky.fog), 0.55)
     place(sunSprite, bodies.sun)
     place(moonSprite, bodies.moon)
     sunSprite.visible = bodies.sun.visible

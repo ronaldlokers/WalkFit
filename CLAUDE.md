@@ -71,12 +71,12 @@ baseline. Baselines (`e2e/*-snapshots/*.png`) committed, MUST get generated in s
 container CI uses, else font differences fail diff:
 
 ```bash
-# regenerate baselines to match CI (Playwright pinned to 1.61.1)
-docker run --rm -v "$PWD":/work -w /work -e CI=1 mcr.microsoft.com/playwright:v1.61.1-noble \
+# regenerate baselines to match CI (Playwright pinned to 1.62.1)
+docker run --rm -v "$PWD":/work -w /work -e CI=1 mcr.microsoft.com/playwright:v1.62.1-noble \
   bash -c "npm ci && npm run e2e:update"
 ```
 
-`E2E` workflow runs `npm run e2e` inside `mcr.microsoft.com/playwright:v1.61.1-noble`.
+`E2E` workflow runs `npm run e2e` inside `mcr.microsoft.com/playwright:v1.62.1-noble`.
 Keep pinned Playwright version and image tag in sync.
 
 ## Layout

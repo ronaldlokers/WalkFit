@@ -29,6 +29,17 @@ describe('exportData (#69)', () => {
     localStorage.setItem('walkfit.strava', '{"accessToken":"secret"}')
     expect(JSON.parse(exportData(true)).data['walkfit.strava']).toContain('secret')
   })
+
+  it('carries local progression through the normal JSON backup path', () => {
+    localStorage.setItem(
+      'walkfit.progression',
+      JSON.stringify({ version: 1, xp: 240, routeBadges: ['stadium-park'] }),
+    )
+    const backup = exportData()
+    localStorage.clear()
+    expect(importData(backup)).toBe(1)
+    expect(JSON.parse(localStorage.getItem('walkfit.progression')!).xp).toBe(240)
+  })
 })
 
 describe('exportCsv (#147)', () => {

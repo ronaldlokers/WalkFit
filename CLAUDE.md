@@ -183,6 +183,11 @@ Keep pinned Playwright version and image tag in sync.
   camera/outfit choices and their renderer configuration. Settings imports its outfit list at
   runtime, so importing `scenic.ts` here would unnecessarily pull the world model into the main
   bundle. Unit-tested in `src/scenicPlayer.test.ts`.
+- `src/scenicAssets.ts` — Scenic v3 asset-manifest policy and tier selection. Actual files live
+  under `public/scenic/`; every binary needs exact bytes, triangle count, source, attribution and
+  an accepted licence in `manifest.json`. `npm run assets:check` enforces the manifest/files and
+  CI runs it. The PWA precache includes GLB/WebP/KTX2/Ogg; see
+  `docs/scenic-v3-art-direction.md` before importing art.
 - `src/scenicVenue.ts` — **pure, three.js-free** club-track furniture: `stadium()` returns
   parts in the same shape `surroundings()` uses, so the component's prop builder and
   merge-by-material bake absorb them unchanged. `PART_SIZES` is the single source of truth

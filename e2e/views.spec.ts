@@ -256,6 +256,13 @@ test.describe('settings', () => {
     await expect
       .poll(() => page.evaluate(() => localStorage.getItem('walkfit.scenic.camera')))
       .toBe('third')
+    await page
+      .locator('.set-row', { hasText: 'Player outfit' })
+      .locator('select')
+      .selectOption('coral')
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem('walkfit.scenic.avatar')))
+      .toBe('coral')
   })
 })
 

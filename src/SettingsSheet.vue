@@ -6,7 +6,8 @@ import type { StravaState } from './strava'
 import type { HealthProvider } from './health'
 import type { TimeOfDay } from './scenicSky'
 import type { QualitySetting } from './scenicQuality'
-import type { CameraView } from './scenicLife'
+import { AVATAR_STYLES } from './scenicPlayer'
+import type { CameraView, AvatarStyle } from './scenicPlayer'
 
 // The composable objects are passed through whole (their `state` is reactive); methods
 // are called directly on them — only actions that mutate App-owned state (the weight
@@ -93,6 +94,7 @@ const scenicTime = defineModel<TimeOfDay>('scenicTime', { required: true })
 const scenicQuality = defineModel<QualitySetting>('scenicQuality', { required: true })
 const scenicMotion = defineModel<boolean>('scenicMotion', { required: true })
 const scenicCamera = defineModel<CameraView>('scenicCamera', { required: true })
+const avatarStyle = defineModel<AvatarStyle>('avatarStyle', { required: true })
 const viewMode = defineModel<'track' | 'scenic'>('viewMode', { required: true })
 const goalKcal = defineModel<number>('goalKcal', { required: true })
 const goalSteps = defineModel<number>('goalSteps', { required: true })
@@ -355,6 +357,14 @@ function confirmForgetNow() {
           <select v-model="scenicCamera" class="set-select">
             <option value="first">{{ t('settings.cameraFirst') }}</option>
             <option value="third">{{ t('settings.cameraThird') }}</option>
+          </select>
+        </div>
+        <div class="set-row">
+          <span>{{ t('settings.avatarStyle') }}</span>
+          <select v-model="avatarStyle" class="set-select">
+            <option v-for="style in AVATAR_STYLES" :key="style.id" :value="style.id">
+              {{ t(`settings.avatarStyle.${style.id}`) }}
+            </option>
           </select>
         </div>
         <div class="set-row">

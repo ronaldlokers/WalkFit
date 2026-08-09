@@ -184,7 +184,7 @@ function noiseLayer(
 // grass / infield: two octaves of smooth value noise, mowing stripes, then blade streaks.
 // `hue` shifts the two green surfaces apart so ground and infield do not read as one
 // continuous plane.
-export function grassTexture(size: number, hue: number): THREE.CanvasTexture {
+export function grassTexture(size: number, hue: number, mown = true): THREE.CanvasTexture {
   const [c, ctx] = canvas(size)
   ctx.fillStyle = `hsl(${hue}, 30%, 24%)`
   ctx.fillRect(0, 0, size, size)
@@ -194,9 +194,11 @@ export function grassTexture(size: number, hue: number): THREE.CanvasTexture {
   // mowing stripes: the single strongest "this is a maintained sports ground" cue, and
   // free — a groundsman's roller lays the blades in alternating directions, which reads as
   // alternating lightness. Four bands per tile so the texture still tiles seamlessly.
-  for (let i = 0; i < 4; i++) {
-    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.055)' : 'rgba(0,0,0,0.05)'
-    ctx.fillRect(0, (i / 4) * size, size, size / 4)
+  if (mown) {
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.055)' : 'rgba(0,0,0,0.05)'
+      ctx.fillRect(0, (i / 4) * size, size, size / 4)
+    }
   }
   ctx.strokeStyle = 'rgba(160,200,140,0.10)'
   for (let i = 0; i < Math.min(size * 1.5, 1200); i++) {
@@ -547,7 +549,7 @@ export function skylineTexture(size: number): THREE.CanvasTexture {
   // fixing the multiply) they came out as a bank of ghostly slabs indistinguishable from
   // the sky, and the window rows read as horizontal scratches.
   const layers = [
-    { fill: '#98a3b4', win: 'rgba(72,82,98,0.22)', wMin: 0.012, wVar: 0.03, hMin: 0.3, hVar: 0.45 },
+    { fill: '#74808f', win: 'rgba(52,60,74,0.24)', wMin: 0.012, wVar: 0.03, hMin: 0.3, hVar: 0.45 },
     {
       fill: '#828d9e',
       win: 'rgba(62,72,88,0.26)',
@@ -602,7 +604,7 @@ export function skylineTexture(size: number): THREE.CanvasTexture {
   // buildings floating with a gap under them.
   const hz = ctx.createLinearGradient(0, size * 0.55, 0, size)
   hz.addColorStop(0, 'rgba(255,255,255,0)')
-  hz.addColorStop(1, 'rgba(255,255,255,0.55)')
+  hz.addColorStop(1, 'rgba(255,255,255,0.4)')
   ctx.fillStyle = hz
   ctx.globalCompositeOperation = 'source-atop' // only where a building already is
   ctx.fillRect(0, size * 0.55, size, size * 0.45)

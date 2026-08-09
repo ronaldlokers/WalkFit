@@ -90,6 +90,8 @@ import {
   TIME_PHASES,
   isNight,
   cloudColor,
+  backdropTint,
+  paintLevel,
 } from './scenicSky'
 import type { TimeOfDay } from './scenicSky'
 import { tierFromFrames, resolveTier, PROBE_FRAMES, TIER_BUDGET } from './scenicQuality'
@@ -354,7 +356,9 @@ onMounted(() => {
     pitchLinesTex ??= pitchLinesTexture(1024)
     const t = {
       tartan: tartanTexture(size),
-      grass: grassTexture(size, 108),
+      // rough ground outside the fence is not a mown pitch, and at 60 repeats over the
+      // 700 m plane its stripes tiled every 11.7 m into visible banding
+      grass: grassTexture(size, 108, false),
       canopy1: canopyTexture(size, 104),
       canopy2: canopyTexture(size, 84),
       infield: grassTexture(size, 96),
@@ -481,7 +485,9 @@ onMounted(() => {
   // SKYLINE_R away and always inside the dome (DOME_R) and the far plane (CAMERA_FAR).
   // fog:false because at this distance linear fog would saturate and erase it — the tint
   // applied in update() carries the depth cue instead, without the all-or-nothing.
-  const skylineGeo = new THREE.CylinderGeometry(SKYLINE_R, SKYLINE_R, 55, 48, 1, true)
+  // Tall enough to stand clearly above the treeline in front of it: at 55 m the roofline
+  // sat level with the trees at 173 m, so the two rings read as one confused band.
+  const skylineGeo = new THREE.CylinderGeometry(SKYLINE_R, SKYLINE_R, 82, 48, 1, true)
   const skylineMat = new THREE.MeshBasicMaterial({
     map: tex.skyline,
     transparent: true,
@@ -524,6 +530,26 @@ onMounted(() => {
   const treeLineMesh = new THREE.Mesh(treeLineGeo, treeLineMat)
   scene.add(treeLineMesh)
   disposables.push(treeLineGeo)
+
+  // Unlit painted surfaces, with the colour they are authored at — update() scales them by
+  // the scene's light level every frame (see paintLevel). mat.floodOn is deliberately NOT
+  // here: it is a lamp, not paint, and switching it on after dark is the whole point.
+  const painted: [THREE.MeshBasicMaterial, number][] = []
+  const dimsWithLight = (m: THREE.MeshBasicMaterial) => {
+    painted.push([m, m.color.getHex()])
+    return m
+  }
+  for (const m of [
+    mat.breakLine,
+    mat.relay,
+    mat.hurdle,
+    mat.laneLine,
+    mat.finish,
+    mat.fence,
+    mat.flag,
+  ]) {
+    dimsWithLight(m)
+  }
 
   // Double-sided materials that must still cast (see the bake's castShadow rule).
   const castsDespiteTwoSided = new Set<THREE.Material>([mat.crown1, mat.crown2])
@@ -874,7 +900,9 @@ onMounted(() => {
   const numberMats: THREE.MeshBasicMaterial[] = []
   for (const ln of laneNumbers()) {
     const p = trackPoint(ln.s, ln.o)
-    const m = new THREE.MeshBasicMaterial({ map: digitTexture(ln.lane), transparent: true })
+    const m = dimsWithLight(
+      new THREE.MeshBasicMaterial({ map: digitTexture(ln.lane), transparent: true }),
+    )
     numberMats.push(m)
     const digit = new THREE.Mesh(numberGeo, m)
     digit.rotation.x = -Math.PI / 2 // lie flat on the track, texture-up toward -z
@@ -909,7 +937,7 @@ onMounted(() => {
     post.scale.set(0.6, 2.4, 0.6)
     post.position.set(at.x, 1.2, at.z)
     scene.add(post)
-    const boardMat = new THREE.MeshBasicMaterial({ map: signTexture(sign.label) })
+    const boardMat = dimsWithLight(new THREE.MeshBasicMaterial({ map: signTexture(sign.label) }))
     signMats.push(boardMat)
     const board = new THREE.Mesh(geo.head, boardMat)
     board.scale.set(0.9, 1.5, 0.5)
@@ -1195,7 +1223,7 @@ onMounted(() => {
       paintDome(sky.sky, sky.fog)
     }
     dome.position.set(camera.position.x, 0, camera.position.z)
-    skylineMesh.position.set(camera.position.x, 18, camera.position.z)
+    skylineMesh.position.set(camera.position.x, 30, camera.position.z)
     // pull it toward the horizon colour so it recedes in fog and darkens at night
     skylineMat.color.setHex(sky.fog)
     treeLineMesh.position.set(
@@ -1203,8 +1231,11 @@ onMounted(() => {
       TREELINE_H * (TREELINE_GROUND_V - 0.5),
       camera.position.z,
     )
-    // Half the fog pull the skyline gets: it is nearer, so it keeps more of its own colour.
-    treeLineMat.color.setHex(0xffffff).lerp(cFogTint.setHex(sky.fog), 0.35)
+    // Less haze than the skyline gets — it is nearer, so it keeps more of its own colour —
+    // but the same darkness handling, since neither backdrop is lit by the scene.
+    treeLineMat.color.setHex(backdropTint(sky, phase, 0.35))
+    const level = paintLevel(phase)
+    for (const [m, base] of painted) m.color.setHex(base).multiplyScalar(level)
     sun.intensity = sky.sunIntensity
     sun.color.setHex(sky.sunColor)
     hemi.intensity = sky.ambient

@@ -8,6 +8,12 @@ import { parseHeartRate } from './protocol'
 // Sentinel error string, translated at render (#140) — see treadmill.ts.
 export const NO_WEBBT_HR_ERROR = 'Web Bluetooth unavailable here.'
 
+// Population estimate used only to prefill the still-editable setting.
+export function estimateMaxHr(age: number): number | null {
+  if (!Number.isFinite(age) || age < 14 || age > 100) return null
+  return Math.round(208 - 0.7 * age)
+}
+
 const HR_SERVICE = '0000180d-0000-1000-8000-00805f9b34fb'
 const HR_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb'
 

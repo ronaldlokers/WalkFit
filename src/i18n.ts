@@ -208,6 +208,11 @@ const en = {
   'settings.forget': 'Forget',
   'settings.forgetConfirm': "Forget this device? You'll need to pair it again next time.",
   'settings.maxHr': 'Max HR',
+  'settings.estimateMaxHr': 'Estimate from age',
+  'settings.age': 'Age',
+  'settings.useEstimate': 'Use estimate',
+  'settings.maxHrEstimateNote':
+    'Tanaka estimate (208 − 0.7 × age). A measured maximum is more accurate.',
   'settings.fatburnNote': 'Fat-burn zone: {lo}–{hi} bpm',
   'settings.weight': 'Weight',
   'settings.weightNote': 'Used to estimate calories burned.',
@@ -488,6 +493,11 @@ const nl: Record<MessageKey, string> = {
   'settings.forget': 'Vergeten',
   'settings.forgetConfirm': 'Dit apparaat vergeten? Je moet het de volgende keer opnieuw koppelen.',
   'settings.maxHr': 'Max HR',
+  'settings.estimateMaxHr': 'Schat op basis van leeftijd',
+  'settings.age': 'Leeftijd',
+  'settings.useEstimate': 'Schatting gebruiken',
+  'settings.maxHrEstimateNote':
+    'Tanaka-schatting (208 − 0,7 × leeftijd). Een gemeten maximum is nauwkeuriger.',
   'settings.fatburnNote': 'Vetverbrandingszone: {lo}–{hi} bpm',
   'settings.weight': 'Gewicht',
   'settings.weightNote': 'Gebruikt om verbrande calorieën te schatten.',

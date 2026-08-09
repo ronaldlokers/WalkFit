@@ -36,6 +36,10 @@ const en = {
   'track.suffix': '· 400 m track',
   'track.lastBest': 'last {last} · best {best}',
   'track.walkToStart': 'walk to start',
+  'route.stadium': 'stadium hub',
+  'route.park': 'park route',
+  'route.next': 'next',
+  'route.checkpoint': 'checkpoint',
 
   // action row + controls
   'actions.start': 'Start',
@@ -334,6 +338,10 @@ const nl: Record<MessageKey, string> = {
   'track.suffix': '· 400 m-baan',
   'track.lastBest': 'laatste {last} · beste {best}',
   'track.walkToStart': 'loop om te starten',
+  'route.stadium': 'stadionhub',
+  'route.park': 'parkroute',
+  'route.next': 'volgende',
+  'route.checkpoint': 'checkpoint',
 
   'actions.start': 'Start',
   'actions.resume': 'Hervat',

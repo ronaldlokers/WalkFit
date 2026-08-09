@@ -128,6 +128,7 @@ test.describe('main view', () => {
     // it, the browser must not report a transport failure or a loader exception.
     expect(assetRequest?.failure() ?? null).toBeNull()
     expect(pageErrors).toEqual([])
+    await expect(page.getByTestId('route-hud')).toBeVisible()
     await expect(page.locator('.scene3d-wrap, svg.track')).toBeVisible()
     // scenic mounts (three.js lazy chunk) or falls back without WebGL — either way
     // the 2D button must land us on a working track view

@@ -395,22 +395,29 @@ export function cloudTexture(size: number): THREE.CanvasTexture {
   return t
 }
 
-// A pacer is five meshes — body+head merged, two arms, two legs — sharing one material.
+// A pacer is five meshes — torso, two arms, two legs — in the kit colour, plus a head in
+// skin tone. The head used to be merged into the torso and therefore wore the kit colour
+// too, which is the single clearest reason the figures read as mannequins rather than
+// people: a runner whose head is the same flat colour as their shirt has no face, no skin
+// and no silhouette break at the shoulders.
 // Arms and legs need DIFFERENT lengths: a leg has to reach the ground from the hip, and an
 // arm that long would hang past the knee. Each limb pivots at its top so a rotation about x
 // swings it from the shoulder or hip.
 export function runnerParts(): {
   body: THREE.BufferGeometry
+  head: THREE.BufferGeometry
   arm: THREE.BufferGeometry
   leg: THREE.BufferGeometry
 } {
   const torso = new THREE.CapsuleGeometry(0.16, 0.5, 3, 6)
   torso.translate(0, 1.15, 0)
-  const head = new THREE.SphereGeometry(0.12, 8, 6)
-  head.translate(0, 1.58, 0)
-  const body = mergeGeometries([torso, head])!
+  const neck = new THREE.CylinderGeometry(0.055, 0.07, 0.09, 6)
+  neck.translate(0, 1.45, 0)
+  const body = mergeGeometries([torso, neck])!
   torso.dispose()
-  head.dispose()
+  neck.dispose()
+  const head = new THREE.SphereGeometry(0.115, 10, 8)
+  head.translate(0, 1.575, 0)
   // Leg: half-height is length/2 + radius = 0.43, so translating by that puts the pivot at
   // the very top and the foot exactly 0.86 m below it. Mounted at hip y = 0.86, the foot
   // lands on y = 0 — the track surface.
@@ -419,7 +426,7 @@ export function runnerParts(): {
   // Arm: 0.60 m from the shoulder, so the hand sits at y = 0.82 with the shoulder at 1.42.
   const arm = new THREE.CapsuleGeometry(0.05, 0.5, 3, 5)
   arm.translate(0, -0.3, 0)
-  return { body, arm, leg }
+  return { body, head, arm, leg }
 }
 
 // Always Standard: material class cannot change after the bake (materials are the merge

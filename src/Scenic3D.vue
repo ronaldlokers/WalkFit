@@ -298,7 +298,6 @@ onMounted(() => {
   }
   if (TIER_BUDGET[tier].clouds) addClouds()
 
-  const cFogTint = new THREE.Color()
   const cLo = new THREE.Color()
   const cHi = new THREE.Color()
   const cMix = new THREE.Color()
@@ -1028,7 +1027,15 @@ onMounted(() => {
   // --- pacers (live, never baked) ---
   // scene.add here runs AFTER the bake block above, so these are never swept into
   // staticRoots — pacers move every frame and must not be merged into the static world.
-  const { body: pacerBodyGeo, arm: pacerArmGeo, leg: pacerLegGeo } = runnerParts()
+  const {
+    body: pacerBodyGeo,
+    head: pacerHeadGeo,
+    arm: pacerArmGeo,
+    leg: pacerLegGeo,
+  } = runnerParts()
+  // One shared skin material across every rig: a head is not part of anyone's kit, and
+  // sharing it keeps the head meshes from adding a material per pacer.
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xc98d63, roughness: 0.75 })
   // The real maximum across every tier, not just 'high' — the per-frame loop below iterates
   // pacerRigs.length, so any future tier with a higher pacer count would silently never
   // render its extras if this only tracked one tier.
@@ -1061,6 +1068,9 @@ onMounted(() => {
       return m
     }
     mk(pacerBodyGeo, 0, 0)
+    const head = new THREE.Mesh(pacerHeadGeo, skinMat)
+    head.castShadow = true
+    group.add(head)
     const armL = mk(pacerArmGeo, -0.22, 1.42)
     const armR = mk(pacerArmGeo, 0.22, 1.42)
     const legL = mk(pacerLegGeo, -0.09, 0.86)
@@ -1092,6 +1102,9 @@ onMounted(() => {
     return m
   }
   mkRabbitLimb(pacerBodyGeo, 0, 0)
+  // The rabbit's head stays in kit colour, not skin: it is a pace instrument that has to
+  // read as one solid emissive shape after dark, not a person.
+  mkRabbitLimb(pacerHeadGeo, 0, 0)
   const rabbitArmL = mkRabbitLimb(pacerArmGeo, -0.22, 1.42)
   const rabbitArmR = mkRabbitLimb(pacerArmGeo, 0.22, 1.42)
   const rabbitLegL = mkRabbitLimb(pacerLegGeo, -0.09, 0.86)
@@ -1579,6 +1592,8 @@ onMounted(() => {
     Object.values(mat).forEach((m) => m.dispose())
     Object.values(tex).forEach((t) => t.dispose())
     pacerBodyGeo.dispose()
+    pacerHeadGeo.dispose()
+    skinMat.dispose()
     pacerArmGeo.dispose()
     pacerLegGeo.dispose()
     pacerRigs.forEach((r) => r.kit.dispose())

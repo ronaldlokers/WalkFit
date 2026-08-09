@@ -9,43 +9,6 @@
 import { worldHash, LAP_M, TRACK_IN, LANE_W, BEND_R } from './scenic'
 
 export type PacerKind = 'walker' | 'jogger' | 'runner' | 'intervals'
-export type CameraView = 'first' | 'third'
-
-export interface CameraViewConfig {
-  followM: number
-  heightM: number
-  lookAheadM: number
-  targetHeightM: number
-  motionScale: number
-  showAvatar: boolean
-  showViewmodelArms: boolean
-}
-
-const CAMERA_VIEWS: Record<CameraView, CameraViewConfig> = {
-  first: {
-    followM: 0,
-    heightM: 1.6,
-    lookAheadM: 10,
-    targetHeightM: 1.4,
-    motionScale: 1,
-    showAvatar: false,
-    showViewmodelArms: true,
-  },
-  third: {
-    followM: 4.5,
-    heightM: 2.8,
-    lookAheadM: 2,
-    targetHeightM: 1.15,
-    motionScale: 0.2,
-    showAvatar: true,
-    showViewmodelArms: false,
-  },
-}
-
-export function cameraViewConfig(view: CameraView): CameraViewConfig {
-  return CAMERA_VIEWS[view]
-}
-
 export interface Pacer {
   lane: number // 2..6 — never lane 1, which is where the walker is
   d: number // metres travelled along that lane's own line

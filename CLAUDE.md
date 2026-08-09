@@ -179,6 +179,10 @@ Keep pinned Playwright version and image tag in sync.
   actually swings limbs over), `paceGap`, and `cameraMotion` (bob/sway/roll/FOV, phased
   off walked distance, sharing the same `gaitCycleM` cadence the limbs use — the bob is
   twice the gait frequency, the sway exactly it). Unit-tested in `src/scenicLife.test.ts`.
+- `src/scenicPlayer.ts` — **pure and independent from the world model**; persisted Scenic v3
+  camera/outfit choices and their renderer configuration. Settings imports its outfit list at
+  runtime, so importing `scenic.ts` here would unnecessarily pull the world model into the main
+  bundle. Unit-tested in `src/scenicPlayer.test.ts`.
 - `src/scenicVenue.ts` — **pure, three.js-free** club-track furniture: `stadium()` returns
   parts in the same shape `surroundings()` uses, so the component's prop builder and
   merge-by-material bake absorb them unchanged. `PART_SIZES` is the single source of truth
@@ -238,7 +242,8 @@ layout since #103: fullscreen visual, fading HUD pills, workout state in the
 (3D time-of-day override), `walkfit.scenic.quality` (`auto` | `low` | `high`, 3D quality
 override), `walkfit.scenic.motion` (`on` | `off`, 3D head bob/sway/lean — on by default, and
 `prefers-reduced-motion` overrides it), `walkfit.scenic.camera` (`first` | `third`, Scenic v3
-player camera — first person remains the default),
+player camera — first person remains the default), `walkfit.scenic.avatar` (`sky` | `coral` |
+`lime` | `violet`, local player outfit palette),
 `walkfit.capture` (raw BLE frame
 debug logging, off unless `'1'`), `walkfit.demo` (demo mode — src/demo.ts simulates the
 treadmill + HR strap behind the composable interfaces and seeds a fixture dataset;

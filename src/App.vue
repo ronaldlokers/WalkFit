@@ -37,7 +37,7 @@ import StatisticsSheet from './StatisticsSheet.vue'
 import SettingsSheet from './SettingsSheet.vue'
 import type { TimeOfDay } from './scenicSky'
 import type { QualitySetting } from './scenicQuality'
-import type { CameraView } from './scenicLife'
+import type { CameraView, AvatarStyle } from './scenicPlayer'
 
 const {
   state,
@@ -506,6 +506,13 @@ const scenicCamera = ref<CameraView>(
   localStorage.getItem('walkfit.scenic.camera') === 'third' ? 'third' : 'first',
 )
 watch(scenicCamera, (v) => localStorage.setItem('walkfit.scenic.camera', v))
+const storedAvatarStyle = localStorage.getItem('walkfit.scenic.avatar')
+const avatarStyle = ref<AvatarStyle>(
+  storedAvatarStyle === 'coral' || storedAvatarStyle === 'lime' || storedAvatarStyle === 'violet'
+    ? storedAvatarStyle
+    : 'sky',
+)
+watch(avatarStyle, (v) => localStorage.setItem('walkfit.scenic.avatar', v))
 
 // --- live calorie counter ---
 // Integrated per-tick from actual speed (via metForSpeed), not a single average-speed
@@ -1477,6 +1484,7 @@ const pace = computed(() => {
           :rabbit-distance="rabbitDistance"
           :motion="scenicMotion"
           :camera-view="scenicCamera"
+          :avatar-style="avatarStyle"
           @unsupported="scenicUnsupported"
         />
       </div>
@@ -1911,6 +1919,7 @@ const pace = computed(() => {
         v-model:scenic-quality="scenicQuality"
         v-model:scenic-motion="scenicMotion"
         v-model:scenic-camera="scenicCamera"
+        v-model:avatar-style="avatarStyle"
         v-model:goal-weight="goalWeight"
         v-model:strava-auto-upload="stravaAutoUpload"
         :tm="{ state, connect, disconnect, forget: forgetTreadmill }"

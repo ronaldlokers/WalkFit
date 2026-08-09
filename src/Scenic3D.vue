@@ -41,11 +41,12 @@ import {
   strideLength,
   limbSwing,
   cameraMotion,
-  cameraViewConfig,
   FOV_BASE_DEG,
   FOV_EPSILON_DEG,
 } from './scenicLife'
-import type { Pacer, CameraView } from './scenicLife'
+import type { Pacer } from './scenicLife'
+import { avatarStyleConfig, cameraViewConfig } from './scenicPlayer'
+import type { AvatarStyle, CameraView } from './scenicPlayer'
 import {
   stadium,
   PART_SIZES,
@@ -119,6 +120,7 @@ const props = defineProps<{
   rabbitDistance?: number | null // target-pace rabbit (#realism slice 3); null/omitted = none
   motion?: boolean // head bob / sway / bend lean (#realism slice 4); omitted = on
   cameraView?: CameraView // Scenic v3 player camera; omitted preserves first person
+  avatarStyle?: AvatarStyle // local outfit palette; omitted uses sky
 }>()
 const emit = defineEmits<{ unsupported: [] }>()
 
@@ -1367,7 +1369,10 @@ onMounted(() => {
   // First person keeps only the torso for its cast shadow; third person reveals the full
   // split-limb rig. It deliberately shares the NPC geometry and cadence model so the two
   // populations cannot drift into different proportions or animation timing.
-  const avatarKit = new THREE.MeshStandardMaterial({ color: 0x9fb4d0, roughness: 0.8 })
+  const avatarKit = new THREE.MeshStandardMaterial({
+    color: avatarStyleConfig(props.avatarStyle ?? 'sky').kit,
+    roughness: 0.8,
+  })
   const avatarGroup = new THREE.Group()
   const avatarBody = new THREE.Mesh(pacerBodyGeo, avatarKit)
   avatarBody.castShadow = true
@@ -1855,6 +1860,13 @@ onMounted(() => {
     () => props.cameraView,
     () => update(display),
   )
+  const stopAvatarStyleWatch = watch(
+    () => props.avatarStyle,
+    (style) => {
+      avatarKit.color.setHex(avatarStyleConfig(style ?? 'sky').kit)
+      update(display)
+    },
+  )
 
   const ro = new ResizeObserver(() => {
     const w = el.clientWidth
@@ -1886,6 +1898,7 @@ onMounted(() => {
     stopQualityWatch()
     stopTimeWatch()
     stopCameraWatch()
+    stopAvatarStyleWatch()
     document.removeEventListener('visibilitychange', onVisibility)
     renderer?.domElement.removeEventListener('webglcontextlost', onContextLost)
     renderer?.domElement.removeEventListener('webglcontextrestored', onContextRestored)

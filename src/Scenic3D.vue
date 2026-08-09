@@ -236,7 +236,9 @@ onMounted(() => {
   // a contact edge crisp rather than a soft smear.
   function enableShadows(size: number, boxM: number) {
     renderer!.shadowMap.enabled = true
-    renderer!.shadowMap.type = THREE.PCFSoftShadowMap
+    // PCFSoftShadowMap was removed in three r185 and now only warns before falling back
+    // to PCFShadowMap. Select the supported map explicitly so opening 3D stays warning-free.
+    renderer!.shadowMap.type = THREE.PCFShadowMap
     sun.castShadow = true
     sun.shadow.mapSize.set(size, size)
     // three keeps the depth target until the map is disposed, so a tier change that only

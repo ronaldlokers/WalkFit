@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   activeRouteChunks,
+  crossedLandmarks,
   landmarkAt,
   PARK_ROUTE_M,
   ROUTE_CHUNK_M,
@@ -45,6 +46,18 @@ describe('stadium-to-park route model', () => {
     expect(landmarkAt(640)?.kind).toBe('checkpoint')
     expect(landmarkAt(640.9, 0.5)).toBeNull()
     expect(landmarkAt(800)?.id).toBe('ridge-overlook')
+  })
+
+  it('reports each landmark crossed across a lap boundary exactly once', () => {
+    expect(crossedLandmarks(635, 645).map((landmark) => landmark.id)).toEqual(['pond-checkpoint'])
+    expect(crossedLandmarks(795, 805).map((landmark) => landmark.id)).toEqual(['ridge-overlook'])
+    expect(crossedLandmarks(795, 1605).map((landmark) => landmark.id)).toEqual([
+      'ridge-overlook',
+      'park-gate',
+      'garden-terrace',
+      'pond-checkpoint',
+      'ridge-overlook',
+    ])
   })
 
   it('reports enter/exit deltas while enforcing the pool cap', () => {

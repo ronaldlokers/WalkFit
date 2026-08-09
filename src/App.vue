@@ -38,7 +38,13 @@ import SettingsSheet from './SettingsSheet.vue'
 import type { TimeOfDay } from './scenicSky'
 import type { QualitySetting } from './scenicQuality'
 import type { CameraView, AvatarStyle } from './scenicPlayer'
-import { ROUTE_CHUNKS, ROUTE_LANDMARKS, ROUTE_TOTAL_M, STADIUM_HUB_M } from './scenicRoute'
+import {
+  crossedLandmarks,
+  ROUTE_CHUNKS,
+  ROUTE_LANDMARKS,
+  ROUTE_TOTAL_M,
+  STADIUM_HUB_M,
+} from './scenicRoute'
 
 const {
   state,
@@ -1296,6 +1302,23 @@ const routeChunkProgress = computed(() =>
     return { id: chunk.id, progress, active: progress > 0 && progress < 1 }
   }),
 )
+const routeCheckpointMessage = ref('')
+let routeCheckpointTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  () => state.distance,
+  (distance, previous) => {
+    const checkpoint = crossedLandmarks(previous ?? 0, distance).find(
+      (landmark) => landmark.kind === 'checkpoint',
+    )
+    if (!checkpoint) return
+    routeCheckpointMessage.value = `✓ ${t('route.checkpoint')} · ${checkpoint.name}`
+    if (routeCheckpointTimer) clearTimeout(routeCheckpointTimer)
+    routeCheckpointTimer = setTimeout(() => {
+      routeCheckpointMessage.value = ''
+      routeCheckpointTimer = null
+    }, 3500)
+  },
+)
 
 // Composable error strings are English sentinels (protocol layer is framework-free);
 // map the known ones to translations, pass anything else through raw (#140).
@@ -1517,6 +1540,9 @@ const pace = computed(() => {
               :class="{ active: chunk.active, complete: chunk.progress >= 1 }"
               :style="{ '--route-progress': `${chunk.progress * 100}%` }"
             ></span>
+          </div>
+          <div v-if="routeCheckpointMessage" class="route-checkpoint">
+            {{ routeCheckpointMessage }}
           </div>
         </div>
         <Scenic3D
@@ -2209,6 +2235,13 @@ code {
 }
 .route-ribbon-segment.complete::after {
   background: #dffcf8;
+}
+.route-checkpoint {
+  margin-top: 8px;
+  color: #dffcf8;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
 }
 /* A bright sky is now possible (render-quality slice 1), so the HUD needs its own
    contrast rather than relying on a dim world. Darkens only the top and bottom bands,

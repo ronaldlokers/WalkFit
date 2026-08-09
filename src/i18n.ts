@@ -102,6 +102,7 @@ const en = {
   'picker.start': 'Start workout',
   'picker.repeat': 'Repeat last: {name}',
   'picker.goalSuggestion': '{remaining} kcal left today — {name} can get you there',
+  'picker.customizeCopy': 'Customize a copy',
   'challenge.beatLastWeek': '{current} km this week · {remaining} km to beat last week',
   'challenge.beaten': 'Last week beaten — keep going!',
 
@@ -383,6 +384,7 @@ const nl: Record<MessageKey, string> = {
   'picker.start': 'Workout starten',
   'picker.repeat': 'Herhaal laatste: {name}',
   'picker.goalSuggestion': 'Nog {remaining} kcal vandaag — {name} brengt je bij je doel',
+  'picker.customizeCopy': 'Kopie aanpassen',
   'challenge.beatLastWeek':
     '{current} km deze week · nog {remaining} km om vorige week te verslaan',
   'challenge.beaten': 'Vorige week verslagen — ga zo door!',

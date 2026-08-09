@@ -133,6 +133,17 @@ test.describe('workout menu', () => {
     await expect(page.locator('.tcard')).toHaveCount(5)
     await expect(page.locator('.tcard').first()).toContainText(/km/)
     await expect(page.locator('.tcard').first()).toContainText(/kcal/)
+    await page.locator('.tcard').first().click()
+    await page.getByRole('button', { name: 'Customize a copy' }).click()
+    await expect(page.locator('.builder-name')).toHaveValue('Fat Burn 30 copy')
+    await expect(page.locator('.builder-seg')).toHaveCount(4)
+    await page.locator('.builder-name').fill('My Fat Burn')
+    await page.getByRole('button', { name: 'Save workout' }).click()
+    await expect(page.locator('.tcard', { hasText: 'My Fat Burn' })).toBeVisible()
+    const custom = JSON.parse(
+      (await page.evaluate(() => localStorage.getItem('walkfit.workouts.custom')))!,
+    )
+    expect(custom[0].segments).toHaveLength(4)
     await page.locator('.workout-tab', { hasText: 'Heart rate' }).click()
     await expect(page.locator('.hr-zone-opt')).toHaveCount(4)
     await page.locator('.wp-head .x').click()

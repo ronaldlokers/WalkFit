@@ -69,6 +69,12 @@ function openBuilder() {
   buildSegs.value = [{ speed: 3.0, minutes: 10 }]
   building.value = true
 }
+function duplicateIntoBuilder(workout: Workout) {
+  buildName.value = `${workout.name} copy`
+  buildSegs.value = workout.segments.map((segment) => ({ ...segment }))
+  preview.value = null
+  building.value = true
+}
 function addSeg() {
   if (buildSegs.value.length < 24)
     buildSegs.value.push({ ...buildSegs.value[buildSegs.value.length - 1]! })
@@ -289,6 +295,9 @@ function segDur(min: number) {
       </ol>
       <div class="detail-actions">
         <button class="btn ghost" @click="preview = null">{{ t('wizard.back') }}</button>
+        <button class="btn ghost" @click="duplicateIntoBuilder(preview)">
+          {{ t('picker.customizeCopy') }}
+        </button>
         <button
           v-if="preview.id.startsWith('custom-')"
           class="btn ghost delete-custom"

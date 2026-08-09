@@ -41,6 +41,25 @@ export function addWeighIn(entry: WeightEntry): WeightEntry[] {
   return mergeWeighIns([entry])
 }
 
+function sameEntry(a: WeightEntry, b: WeightEntry): boolean {
+  if (a.source !== b.source) return false
+  return a.grpid !== undefined || b.grpid !== undefined
+    ? a.grpid !== undefined && a.grpid === b.grpid
+    : a.date === b.date
+}
+
+export function updateWeighIn(entry: WeightEntry, kg: number): WeightEntry[] {
+  const list = loadWeightLog()
+  const index = list.findIndex((candidate) => sameEntry(candidate, entry))
+  if (index < 0 || !Number.isFinite(kg) || kg < 30 || kg > 250) return list
+  list[index] = { ...list[index]!, kg: Math.round(kg * 10) / 10 }
+  return save(list)
+}
+
+export function removeWeighIn(entry: WeightEntry): WeightEntry[] {
+  return save(loadWeightLog().filter((candidate) => !sameEntry(candidate, entry)))
+}
+
 // Idempotent merge: a provider re-sync never duplicates entries; a matching entry
 // overwrites (providers may correct a reading). Matching prefers the provider's stable
 // measurement id — a reading whose TIMESTAMP was corrected in the provider's app comes

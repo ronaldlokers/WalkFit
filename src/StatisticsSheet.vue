@@ -18,6 +18,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   'weigh-in': [kg: number]
+  'edit-weigh-in': [entry: WeightEntry, kg: number]
+  'delete-weigh-in': [entry: WeightEntry]
+  'edit-session': [date: string, changes: Pick<Session, 'distance' | 'duration' | 'kcal'>]
   'delete-session': [date: string]
 }>()
 
@@ -214,8 +217,29 @@ const weekWalks = computed(() => {
     .reverse()
 })
 const expandedWalk = ref<string | null>(null)
+const editingWalk = ref<string | null>(null)
+const walkDraft = ref({ distanceKm: 0, durationMin: 0, kcal: 0 })
 function toggleWalk(date: string) {
   expandedWalk.value = expandedWalk.value === date ? null : date
+  if (expandedWalk.value !== date) editingWalk.value = null
+}
+function startWalkEdit(w: Session) {
+  editingWalk.value = w.date
+  walkDraft.value = {
+    distanceKm: Math.round((w.distance / 1000) * 100) / 100,
+    durationMin: Math.round((w.duration / 60) * 10) / 10,
+    kcal: Math.round(w.kcal),
+  }
+}
+function saveWalkEdit(w: Session) {
+  const { distanceKm, durationMin, kcal } = walkDraft.value
+  if (distanceKm < 0 || durationMin < 0 || kcal < 0) return
+  emit('edit-session', w.date, {
+    distance: Math.round(distanceKm * 1000),
+    duration: Math.round(durationMin * 60),
+    kcal: Math.round(kcal),
+  })
+  editingWalk.value = null
 }
 function walkDay(iso: string) {
   return new Date(iso).toLocaleDateString(localeTag(), {
@@ -290,11 +314,24 @@ const fatSpark = computed(() => {
 })
 
 const weighInInput = ref<number | null>(null)
+const editingWeight = ref<WeightEntry | null>(null)
+const weightDraft = ref<number | null>(null)
 function logWeighIn() {
   if (!weighInInput.value) return
   const kg = Math.round(weighInInput.value * 10) / 10
   emit('weigh-in', kg)
   weighInInput.value = null
+}
+function startWeightEdit(entry: WeightEntry) {
+  editingWeight.value = entry
+  weightDraft.value = entry.kg
+}
+function saveWeightEdit() {
+  if (!editingWeight.value || weightDraft.value === null) return
+  if (weightDraft.value < 30 || weightDraft.value > 250) return
+  emit('edit-weigh-in', editingWeight.value, weightDraft.value)
+  editingWeight.value = null
+  weightDraft.value = null
 }
 
 // --- month heatmap (#148): "how consistent was I?" answered better than week-hopping.
@@ -729,6 +766,48 @@ function jumpTo(id: string) {
               {{ t('stats.logWeighIn') }}
             </button>
           </div>
+          <ul v-if="weightLog.length" class="weight-list">
+            <li
+              v-for="entry in [...weightLog].reverse()"
+              :key="`${entry.source}:${entry.grpid ?? entry.date}`"
+            >
+              <template v-if="editingWeight === entry">
+                <span class="set-inline">
+                  <input
+                    v-model.number="weightDraft"
+                    type="number"
+                    step="0.1"
+                    min="30"
+                    max="250"
+                    @keyup.enter="saveWeightEdit"
+                  />
+                  <span class="set-unit">kg</span>
+                </span>
+                <span class="edit-actions">
+                  <button class="btn primary sm" @click="saveWeightEdit">
+                    {{ t('stats.save') }}
+                  </button>
+                  <button class="btn ghost sm" @click="editingWeight = null">
+                    {{ t('stats.cancel') }}
+                  </button>
+                </span>
+              </template>
+              <template v-else>
+                <span>
+                  <strong>{{ entry.kg.toFixed(1) }} kg</strong>
+                  <small>{{ walkDay(entry.date) }} · {{ entry.source }}</small>
+                </span>
+                <span class="edit-actions">
+                  <button class="btn ghost sm" @click="startWeightEdit(entry)">
+                    {{ t('stats.edit') }}
+                  </button>
+                  <button class="btn ghost sm destructive" @click="emit('delete-weigh-in', entry)">
+                    {{ t('stats.delete') }}
+                  </button>
+                </span>
+              </template>
+            </li>
+          </ul>
         </div>
 
         <!-- Walks: the shown week's log, expandable detail + delete (#67) -->
@@ -783,9 +862,46 @@ function jumpTo(id: string) {
                     :points="walkSeriesChart(w)!.hrLine!"
                   />
                 </svg>
-                <button class="btn ghost sm walk-delete" @click="emit('delete-session', w.date)">
-                  {{ t('stats.deleteWalk') }}
-                </button>
+                <div v-if="editingWalk === w.date" class="walk-edit">
+                  <label>
+                    {{ t('stats.distanceKm') }}
+                    <input
+                      v-model.number="walkDraft.distanceKm"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                    />
+                  </label>
+                  <label>
+                    {{ t('stats.durationMin') }}
+                    <input
+                      v-model.number="walkDraft.durationMin"
+                      type="number"
+                      min="0"
+                      step="0.1"
+                    />
+                  </label>
+                  <label>
+                    {{ t('stats.calories') }}
+                    <input v-model.number="walkDraft.kcal" type="number" min="0" step="1" />
+                  </label>
+                  <span class="edit-actions">
+                    <button class="btn primary sm" @click="saveWalkEdit(w)">
+                      {{ t('stats.save') }}
+                    </button>
+                    <button class="btn ghost sm" @click="editingWalk = null">
+                      {{ t('stats.cancel') }}
+                    </button>
+                  </span>
+                </div>
+                <div v-else class="edit-actions">
+                  <button class="btn ghost sm" @click="startWalkEdit(w)">
+                    {{ t('stats.editWalk') }}
+                  </button>
+                  <button class="btn ghost sm walk-delete" @click="emit('delete-session', w.date)">
+                    {{ t('stats.deleteWalk') }}
+                  </button>
+                </div>
               </div>
             </li>
           </ul>
@@ -1441,6 +1557,41 @@ function jumpTo(id: string) {
 .walk-delete {
   color: #e0284a;
 }
+.edit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.destructive {
+  color: #e0284a;
+}
+.walk-edit {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.walk-edit label {
+  display: grid;
+  gap: 4px;
+  color: #5a789a;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.walk-edit input,
+.weight-list input {
+  min-width: 0;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid rgba(23, 50, 77, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.8);
+  color: #17324d;
+}
+.walk-edit .edit-actions {
+  grid-column: 1 / -1;
+}
 .detail-tiles {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1521,6 +1672,34 @@ function jumpTo(id: string) {
 }
 .weigh-row {
   margin-top: 12px;
+}
+.weight-list {
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  margin: 10px 0 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+.weight-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.45);
+}
+.weight-list strong,
+.weight-list small {
+  display: block;
+}
+.weight-list small {
+  margin-top: 2px;
+  color: #5a789a;
+  font-size: 11px;
 }
 .set-row {
   display: flex;

@@ -16,6 +16,7 @@ import {
   loadStatistics,
   addSession,
   removeSession,
+  updateSession,
   loadGoals,
   saveGoals,
   dailyTotals,
@@ -23,7 +24,7 @@ import {
 import type { Session } from './statistics'
 import { mmss } from './format'
 import { t, localeTag } from './i18n'
-import { loadWeightLog, addWeighIn } from './weight'
+import { loadWeightLog, addWeighIn, updateWeighIn, removeWeighIn } from './weight'
 import type { WeightEntry } from './weight'
 import { syncProvider } from './health'
 import type { HealthProvider } from './health'
@@ -870,6 +871,15 @@ const weightLog = ref<WeightEntry[]>(loadWeightLog())
 function handleWeighIn(kg: number) {
   weightLog.value = addWeighIn({ date: new Date().toISOString(), kg, source: 'manual' })
   syncWeightKg()
+}
+function handleEditWeighIn(entry: WeightEntry, kg: number) {
+  weightLog.value = updateWeighIn(entry, kg)
+}
+function handleDeleteWeighIn(entry: WeightEntry) {
+  weightLog.value = removeWeighIn(entry)
+}
+function handleEditSession(date: string, changes: Pick<Session, 'distance' | 'duration' | 'kcal'>) {
+  sessions.value = updateSession(date, changes)
 }
 // Newest weigh-in drives the kcal-estimate weight (walkfit.weight persists via the
 // weightKg watcher above).
@@ -1732,6 +1742,9 @@ const pace = computed(() => {
         :goal-weight="goalWeight"
         @close="statisticsOpen = false"
         @weigh-in="handleWeighIn"
+        @edit-weigh-in="handleEditWeighIn"
+        @delete-weigh-in="handleDeleteWeighIn"
+        @edit-session="handleEditSession"
         @delete-session="(date: string) => (sessions = removeSession(date))"
       />
     </div>

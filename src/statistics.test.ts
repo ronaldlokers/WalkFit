@@ -3,6 +3,7 @@ import {
   loadStatistics,
   addSession,
   removeSession,
+  updateSession,
   mergeSessions,
   weeklyTotals,
   currentStreak,
@@ -13,6 +14,7 @@ import {
   saveGoals,
   DEFAULT_GOALS,
 } from './statistics'
+import type { Session } from './statistics'
 
 beforeEach(() => localStorage.clear())
 
@@ -224,6 +226,36 @@ describe('removeSession (#67)', () => {
       avgHr: null,
     })
     expect(removeSession('1999-01-01T00:00:00.000Z')).toHaveLength(1)
+  })
+})
+
+describe('updateSession', () => {
+  it('updates editable totals while preserving metadata and series', () => {
+    const original: Session = {
+      date: '2026-07-13T08:00:00.000Z',
+      distance: 900,
+      duration: 600,
+      kcal: 40,
+      avgHr: 110,
+      workout: 'Quick Burn',
+      series: [[0, 4, 110]],
+    }
+    addSession(original)
+    const [updated] = updateSession(original.date, { distance: 1200, duration: 720, kcal: 52 })
+    expect(updated).toEqual({ ...original, distance: 1200, duration: 720, kcal: 52 })
+  })
+
+  it('ignores an unknown session and invalid edits', () => {
+    const original: Session = {
+      date: '2026-07-13T08:00:00.000Z',
+      distance: 900,
+      duration: 600,
+      kcal: 40,
+      avgHr: null,
+    }
+    addSession(original)
+    expect(updateSession('missing', { distance: 1, duration: 1, kcal: 1 })).toEqual([original])
+    expect(updateSession(original.date, { distance: -1, duration: 1, kcal: 1 })).toEqual([original])
   })
 })
 

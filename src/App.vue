@@ -45,6 +45,7 @@ import {
   ROUTE_TOTAL_M,
   STADIUM_HUB_M,
 } from './scenicRoute'
+import { loadProgression, recordCompletedWalk, saveProgression } from './scenicProgression'
 
 const {
   state,
@@ -549,6 +550,7 @@ watch(
 // --- session statistics ---
 const MIN_SESSION_DISTANCE = 50 // metres — filters out accidental/blip starts
 const sessions = ref(loadStatistics())
+const progression = ref(loadProgression())
 const statisticsOpen = ref(false)
 // Daily activity goals for the rings (#43); edits in Settings persist via the watcher.
 const goals = reactive(loadGoals())
@@ -723,6 +725,15 @@ function finalizeSession() {
     // very first-ever session isn't a "record" in any meaningful sense.
     const prevBestDistance = sessions.value.reduce((a, s) => Math.max(a, s.distance), 0)
     sessions.value = addSession(session)
+    progression.value = recordCompletedWalk(progression.value, {
+      dateKey: session.date.slice(0, 10),
+      distanceM: session.distance,
+      activeMinutes: session.duration / 60,
+      workoutCompleted: !!sessionWorkoutName,
+      routeId: 'stadium-park',
+      routeDistanceM: Math.min(session.distance, 800),
+    })
+    saveProgression(progression.value)
     if (prevBestDistance > 0 && distance > prevBestDistance) {
       beep(1568, 200)
       speak(t('speech.newRecord'))
@@ -1531,6 +1542,7 @@ const pace = computed(() => {
               >{{ t('route.next') }} · {{ nextRouteLandmark.name }} ·
               {{ Math.round(nextRouteDistanceM) }} m</span
             >
+            <span class="route-xp">Lv {{ progression.level }} · {{ progression.xp }} XP</span>
           </div>
           <div class="route-ribbon" role="progressbar" :aria-valuenow="routeDistanceM">
             <span
@@ -2210,6 +2222,13 @@ code {
   color: rgba(237, 245, 255, 0.82);
   font-size: 11px;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.route-xp {
+  flex: none;
+  color: #ffd76a;
+  font-size: 10px;
+  font-weight: 800;
   white-space: nowrap;
 }
 .route-ribbon {

@@ -38,6 +38,7 @@ import SettingsSheet from './SettingsSheet.vue'
 import type { TimeOfDay } from './scenicSky'
 import type { QualitySetting } from './scenicQuality'
 import type { CameraView, AvatarStyle } from './scenicPlayer'
+import { ROUTE_CHUNKS, ROUTE_LANDMARKS, ROUTE_TOTAL_M, STADIUM_HUB_M } from './scenicRoute'
 
 const {
   state,
@@ -1270,6 +1271,32 @@ const walkArea = computed(() => {
 })
 const peakSpeed = computed(() => (state.history.length ? Math.max(...state.history) : 0))
 
+// Scenic route ribbon: the first 400 m is the surveyed stadium hub, followed by the
+// deterministic 400 m park extension. Wrapping keeps free walks and long sessions readable
+// without implying that the treadmill can control incline or terrain.
+const routeDistanceM = computed(() => {
+  const wrapped = ((state.distance % ROUTE_TOTAL_M) + ROUTE_TOTAL_M) % ROUTE_TOTAL_M
+  return wrapped
+})
+const routeInPark = computed(() => routeDistanceM.value >= STADIUM_HUB_M)
+const routeSectionLabel = computed(() => t(routeInPark.value ? 'route.park' : 'route.stadium'))
+const nextRouteLandmark = computed(() => {
+  const current = routeDistanceM.value
+  return ROUTE_LANDMARKS.find((landmark) => landmark.distanceM > current) ?? ROUTE_LANDMARKS[0]
+})
+const nextRouteDistanceM = computed(() =>
+  Math.max(0, nextRouteLandmark.value.distanceM - routeDistanceM.value),
+)
+const routeChunkProgress = computed(() =>
+  ROUTE_CHUNKS.map((chunk) => {
+    const progress = Math.max(
+      0,
+      Math.min(1, (routeDistanceM.value - chunk.startM) / (chunk.endM - chunk.startM)),
+    )
+    return { id: chunk.id, progress, active: progress > 0 && progress < 1 }
+  }),
+)
+
 // Composable error strings are English sentinels (protocol layer is framework-free);
 // map the known ones to translations, pass anything else through raw (#140).
 const tmError = computed(() => (state.error === NO_WEBBT_ERROR ? t('warn.noWebBtTm') : state.error))
@@ -1474,6 +1501,24 @@ const pace = computed(() => {
            each fixed-size distance bucket deterministically hashes to whether/what spawns,
            so the scene never repeats obviously but also never jumps between renders. -->
       <div v-else class="scene3d-wrap">
+        <div class="route-hud" data-testid="route-hud" aria-live="polite">
+          <div class="route-hud-copy">
+            <span class="route-section">{{ routeSectionLabel }}</span>
+            <span class="route-next"
+              >{{ t('route.next') }} · {{ nextRouteLandmark.name }} ·
+              {{ Math.round(nextRouteDistanceM) }} m</span
+            >
+          </div>
+          <div class="route-ribbon" role="progressbar" :aria-valuenow="routeDistanceM">
+            <span
+              v-for="chunk in routeChunkProgress"
+              :key="chunk.id"
+              class="route-ribbon-segment"
+              :class="{ active: chunk.active, complete: chunk.progress >= 1 }"
+              :style="{ '--route-progress': `${chunk.progress * 100}%` }"
+            ></span>
+          </div>
+        </div>
         <Scenic3D
           :distance="state.distance"
           :speed="state.speed"
@@ -2105,6 +2150,65 @@ code {
 /* --- 3D scenic (#51): canvas wrapper --- */
 .scene3d-wrap {
   position: relative;
+}
+.route-hud {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  left: 14px;
+  width: min(340px, calc(100% - 28px));
+  padding: 10px 12px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(8, 12, 18, 0.68);
+  color: #edf5ff;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+.route-hud-copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.route-section {
+  color: #72e2d8;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.route-next {
+  overflow: hidden;
+  color: rgba(237, 245, 255, 0.82);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.route-ribbon {
+  display: flex;
+  gap: 3px;
+  height: 5px;
+  margin-top: 8px;
+}
+.route-ribbon-segment {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.22);
+}
+.route-ribbon-segment::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--route-progress);
+  border-radius: inherit;
+  background: #72e2d8;
+  content: '';
+}
+.route-ribbon-segment.complete::after {
+  background: #dffcf8;
 }
 /* A bright sky is now possible (render-quality slice 1), so the HUD needs its own
    contrast rather than relying on a dim world. Darkens only the top and bottom bands,

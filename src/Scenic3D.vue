@@ -50,7 +50,14 @@ import type { AvatarStyle, CameraView } from './scenicPlayer'
 import { loadScenicManifest } from './scenicAssets'
 import type { ScenicAssetCache as ScenicAssetCacheType } from './scenicAssetLoader'
 import { scenicParkPlacements } from './scenicPark'
-import { PARK_ROUTE_M, ROUTE_CHUNK_M, STADIUM_HUB_M, RouteChunkPool } from './scenicRoute'
+import {
+  ROUTE_CHUNK_M,
+  ROUTE_LANDMARKS,
+  ROUTE_TOTAL_M,
+  STADIUM_HUB_M,
+  RouteChunkPool,
+  routePoint,
+} from './scenicRoute'
 import { routeChunkGeometry } from './scenicRouteMeshes'
 import {
   stadium,
@@ -1246,9 +1253,39 @@ onMounted(() => {
   })
   const routePool = new RouteChunkPool()
   const routeRoots = new Map<string, THREE.Mesh>()
+  const checkpointMaterial = new THREE.MeshStandardMaterial({
+    color: 0x5dd8d0,
+    emissive: 0x123b3b,
+    emissiveIntensity: 0.35,
+    roughness: 0.6,
+  })
+  const checkpointRoots = new Map<string, THREE.Group>()
+  function buildCheckpoint(distanceM: number): THREE.Group | null {
+    const point = routePoint(distanceM)
+    if (!point) return null
+    const arch = new THREE.Group()
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.28, 3.2, 0.28), checkpointMaterial)
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.32, 0.28), checkpointMaterial)
+    const left = leg.clone()
+    const right = leg.clone()
+    left.position.x = -1.95
+    right.position.x = 1.95
+    beam.position.y = 3.05
+    arch.add(left, right, beam)
+    arch.position.set(point.x, 0, point.z)
+    arch.rotation.y = Math.atan2(point.tx, point.tz)
+    arch.traverse((object) => {
+      const mesh = object as THREE.Mesh
+      if (mesh.isMesh) {
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+      }
+    })
+    return arch
+  }
   function syncRouteChunks(distanceM: number) {
-    const local = ((distanceM % PARK_ROUTE_M) + PARK_ROUTE_M) % PARK_ROUTE_M
-    const routeDistance = STADIUM_HUB_M + local
+    const wrapped = ((distanceM % ROUTE_TOTAL_M) + ROUTE_TOTAL_M) % ROUTE_TOTAL_M
+    const routeDistance = wrapped < STADIUM_HUB_M ? STADIUM_HUB_M - 1 : wrapped
     const delta = routePool.update(routeDistance, ROUTE_CHUNK_M)
     for (const chunk of delta.exited) {
       const root = routeRoots.get(chunk.id)
@@ -1256,6 +1293,17 @@ onMounted(() => {
       scene.remove(root)
       root.geometry.dispose()
       routeRoots.delete(chunk.id)
+      if (chunk.landmarkId) {
+        const checkpoint = checkpointRoots.get(chunk.landmarkId)
+        if (checkpoint) {
+          scene.remove(checkpoint)
+          checkpoint.traverse((object) => {
+            const mesh = object as THREE.Mesh
+            if (mesh.isMesh) mesh.geometry.dispose()
+          })
+          checkpointRoots.delete(chunk.landmarkId)
+        }
+      }
     }
     for (const chunk of delta.entered) {
       const root = new THREE.Mesh(routeChunkGeometry(chunk), routeMaterial)
@@ -1263,6 +1311,14 @@ onMounted(() => {
       root.receiveShadow = true
       routeRoots.set(chunk.id, root)
       scene.add(root)
+      const landmark = ROUTE_LANDMARKS.find((candidate) => candidate.id === chunk.landmarkId)
+      if (landmark?.kind === 'checkpoint') {
+        const checkpoint = buildCheckpoint(landmark.distanceM)
+        if (checkpoint) {
+          checkpointRoots.set(landmark.id, checkpoint)
+          scene.add(checkpoint)
+        }
+      }
     }
   }
 
@@ -2012,7 +2068,15 @@ onMounted(() => {
     routePool.clear()
     routeRoots.forEach((root) => root.geometry.dispose())
     routeRoots.clear()
+    checkpointRoots.forEach((root) =>
+      root.traverse((object) => {
+        const mesh = object as THREE.Mesh
+        if (mesh.isMesh) mesh.geometry.dispose()
+      }),
+    )
+    checkpointRoots.clear()
     routeMaterial.dispose()
+    checkpointMaterial.dispose()
     disposables.forEach((g) => g.dispose())
     signMats.forEach((m) => {
       m.map?.dispose()

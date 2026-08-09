@@ -1256,6 +1256,7 @@ onMounted(() => {
   })
   const routePool = new RouteChunkPool()
   const routeRoots = new Map<string, THREE.Mesh>()
+  let routeGeometryId: ScenicRouteId = props.routeId ?? 'stadium-park'
   const checkpointMaterial = new THREE.MeshStandardMaterial({
     color: 0x5dd8d0,
     emissive: 0x123b3b,
@@ -1263,8 +1264,24 @@ onMounted(() => {
     roughness: 0.6,
   })
   const checkpointRoots = new Map<string, THREE.Group>()
+  function clearRouteChunks() {
+    routePool.clear()
+    routeRoots.forEach((root) => {
+      scene.remove(root)
+      root.geometry.dispose()
+    })
+    routeRoots.clear()
+    checkpointRoots.forEach((root) => {
+      scene.remove(root)
+      root.traverse((object) => {
+        const mesh = object as THREE.Mesh
+        if (mesh.isMesh) mesh.geometry.dispose()
+      })
+    })
+    checkpointRoots.clear()
+  }
   function buildCheckpoint(distanceM: number): THREE.Group | null {
-    const point = routePoint(distanceM, props.routeId ?? 'stadium-park')
+    const point = routePoint(distanceM, routeGeometryId)
     if (!point) return null
     const arch = new THREE.Group()
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.28, 3.2, 0.28), checkpointMaterial)
@@ -1287,9 +1304,14 @@ onMounted(() => {
     return arch
   }
   function syncRouteChunks(distanceM: number) {
+    const routeId = props.routeId ?? 'stadium-park'
+    if (routeId !== routeGeometryId) {
+      clearRouteChunks()
+      routeGeometryId = routeId
+    }
     const wrapped = ((distanceM % ROUTE_TOTAL_M) + ROUTE_TOTAL_M) % ROUTE_TOTAL_M
     const routeDistance = wrapped < STADIUM_HUB_M ? STADIUM_HUB_M - 1 : wrapped
-    routeMaterial.color.setHex(routeColor(props.routeId ?? 'stadium-park'))
+    routeMaterial.color.setHex(routeColor(routeId))
     const delta = routePool.update(routeDistance, ROUTE_CHUNK_M)
     for (const chunk of delta.exited) {
       const root = routeRoots.get(chunk.id)
@@ -1310,10 +1332,7 @@ onMounted(() => {
       }
     }
     for (const chunk of delta.entered) {
-      const root = new THREE.Mesh(
-        routeChunkGeometry(chunk, 3.2, props.routeId ?? 'stadium-park'),
-        routeMaterial,
-      )
+      const root = new THREE.Mesh(routeChunkGeometry(chunk, 3.2, routeId), routeMaterial)
       root.castShadow = false
       root.receiveShadow = true
       routeRoots.set(chunk.id, root)
@@ -1339,7 +1358,7 @@ onMounted(() => {
   function worldPoint(distanceM: number, lateral = 0): ScenicWorldPoint {
     const wrapped = ((distanceM % ROUTE_TOTAL_M) + ROUTE_TOTAL_M) % ROUTE_TOTAL_M
     if (wrapped < STADIUM_HUB_M) return { ...trackPoint(wrapped, lateral), y: 0 }
-    const point = routePoint(wrapped, props.routeId ?? 'stadium-park')!
+    const point = routePoint(wrapped, routeGeometryId)!
     return {
       ...point,
       x: point.x - point.tz * lateral,
@@ -2087,6 +2106,10 @@ onMounted(() => {
       update(display)
     },
   )
+  const stopRouteWatch = watch(
+    () => props.routeId,
+    () => update(display),
+  )
 
   const ro = new ResizeObserver(() => {
     const w = el.clientWidth
@@ -2121,21 +2144,13 @@ onMounted(() => {
     stopCameraWatch()
     stopActiveWatch()
     stopAvatarStyleWatch()
+    stopRouteWatch()
     document.removeEventListener('visibilitychange', onVisibility)
     renderer?.domElement.removeEventListener('webglcontextlost', onContextLost)
     renderer?.domElement.removeEventListener('webglcontextrestored', onContextRestored)
     ro.disconnect()
     scene.clear()
-    routePool.clear()
-    routeRoots.forEach((root) => root.geometry.dispose())
-    routeRoots.clear()
-    checkpointRoots.forEach((root) =>
-      root.traverse((object) => {
-        const mesh = object as THREE.Mesh
-        if (mesh.isMesh) mesh.geometry.dispose()
-      }),
-    )
-    checkpointRoots.clear()
+    clearRouteChunks()
     routeMaterial.dispose()
     checkpointMaterial.dispose()
     disposables.forEach((g) => g.dispose())

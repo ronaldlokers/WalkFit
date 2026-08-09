@@ -64,7 +64,7 @@ interface SkyKey extends SkyState {
 // clash is now handled where it belongs — the HUD pills carry their own scrim and the
 // canvas has a vignette (App.vue) — instead of by dimming the world.
 const SKY_KEYS: SkyKey[] = [
-  { at: 0.0, sky: 0x54486a, fog: 0xa8788a, sunIntensity: 3.2, sunColor: 0xffb08a, ambient: 0.4 }, // pre-dawn: sun is still below the horizon until phase 0.02
+  { at: 0.0, sky: 0x54486a, fog: 0xa8788a, sunIntensity: 3.2, sunColor: 0xffb08a, ambient: 1.0 }, // pre-dawn: sun is still below the horizon until phase 0.02
   { at: 0.18, sky: 0x5f95d6, fog: 0xa8c4e0, sunIntensity: 2.3, sunColor: 0xfff2dd, ambient: 1.1 }, // morning
   { at: 0.45, sky: 0x6ba8e8, fog: 0xb9d4ee, sunIntensity: 2.6, sunColor: 0xffffff, ambient: 1.2 }, // day
   { at: 0.62, sky: 0x6b8fc4, fog: 0xc0a9a8, sunIntensity: 2.1, sunColor: 0xffe0b0, ambient: 1.0 }, // late

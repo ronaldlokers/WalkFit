@@ -526,6 +526,11 @@ onMounted(() => {
     depthWrite: false,
     fog: false,
   })
+  // How far you can see, relative to clear air. The two camera-following backdrops are
+  // fog:false — real fog at their distance would saturate and erase them — so weather has
+  // to reach them by hand, or a "mist" walk fades the trees 40 m away while leaving a
+  // pin-sharp city on the horizon behind them.
+  const clarity = fogBand.far / WEATHER_FOG.clear.far
   const treeLineMesh = new THREE.Mesh(treeLineGeo, treeLineMat)
   scene.add(treeLineMesh)
   disposables.push(treeLineGeo)
@@ -1239,6 +1244,7 @@ onMounted(() => {
     skylineMesh.position.set(camera.position.x, 30, camera.position.z)
     // pull it toward the horizon colour so it recedes in fog and darkens at night
     skylineMat.color.setHex(sky.fog)
+    skylineMat.opacity = 0.35 + 0.65 * clarity
     treeLineMesh.position.set(
       camera.position.x,
       TREELINE_H * (TREELINE_GROUND_V - 0.5),
@@ -1246,12 +1252,16 @@ onMounted(() => {
     )
     // Less haze than the skyline gets — it is nearer, so it keeps more of its own colour —
     // but the same darkness handling, since neither backdrop is lit by the scene.
-    treeLineMat.color.setHex(backdropTint(sky, phase, 0.35))
+    treeLineMat.color.setHex(backdropTint(sky, phase, 0.35 + 0.5 * (1 - clarity)))
     const level = paintLevel(phase)
     for (const [m, base] of painted) m.color.setHex(base).multiplyScalar(level)
     sun.intensity = sky.sunIntensity
     sun.color.setHex(sky.sunColor)
     hemi.intensity = sky.ambient
+    // Ambient comes FROM the sky, so it carries the sky's colour: warm at dawn and sunset,
+    // blue at midday. Pinned to white it lit a dawn track with noon-coloured fill, which is
+    // what left the ground looking grey under a pink sky.
+    hemi.color.setHex(sky.fog)
     place(sunSprite, bodies.sun)
     place(moonSprite, bodies.moon)
     sunSprite.visible = bodies.sun.visible

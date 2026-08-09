@@ -168,6 +168,11 @@ test.describe('statistics', () => {
       (await page.evaluate(() => localStorage.getItem('walkfit.history')))!,
     ).at(-1)
     expect(corrected).toMatchObject({ distance: 1750, duration: 1350, kcal: 80, avgHr: 112 })
+    const downloadPromise = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Share card' }).click()
+    const download = await downloadPromise
+    expect(download.suggestedFilename()).toMatch(/^walkfit-\d{4}-\d{2}-\d{2}\.png$/)
+    await expect(page.getByRole('status')).toHaveText('Session card downloaded.')
 
     // week navigation: back changes the label, This week returns
     const label = await page.locator('.week-label span').innerText()

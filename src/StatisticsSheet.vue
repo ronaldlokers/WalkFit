@@ -5,6 +5,7 @@ import type { Session, Goals } from './statistics'
 import { SPEED_MAX } from './treadmill'
 import type { WeightEntry } from './weight'
 import { mmss } from './format'
+import { renderSessionCard, sessionCardMetrics, shareOrDownload } from './shareCard'
 import { t, locale, localeTag } from './i18n'
 import Logo from './Logo.vue'
 
@@ -458,6 +459,30 @@ const records = computed(() => {
     longestStreakEver: longestStreak(s),
   }
 })
+
+const shareStatus = ref<string | null>(null)
+async function shareWalk(w: Session) {
+  shareStatus.value = null
+  const metrics = sessionCardMetrics(w)
+  const badge = records.value.longestWalkDate === w.date ? t('stats.longestWalkBadge') : undefined
+  try {
+    const file = renderSessionCard(w, {
+      date: new Date(w.date).toLocaleDateString(localeTag(), { dateStyle: 'long' }),
+      distance: `${metrics.distanceKm.toFixed(2)} km`,
+      duration: `${Math.round(metrics.durationMin)} min`,
+      calories: `${metrics.kcal} kcal`,
+      avgSpeed: `${metrics.avgSpeedKmh.toFixed(1)} km/h`,
+      heartRate: w.avgHr === null ? undefined : `${w.avgHr} bpm`,
+      workout: w.workout,
+      badge,
+    })
+    const result = await shareOrDownload(file, t('stats.shareTitle'))
+    shareStatus.value = result === 'shared' ? t('stats.shared') : t('stats.downloaded')
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return
+    shareStatus.value = t('stats.shareFailed')
+  }
+}
 const DISTANCE_BADGES = [100, 500, 1000, 2500]
 const SESSION_BADGES = [10, 50, 100, 365]
 const distanceBadges = computed(() =>
@@ -895,6 +920,9 @@ function jumpTo(id: string) {
                   </span>
                 </div>
                 <div v-else class="edit-actions">
+                  <button class="btn primary sm" @click="shareWalk(w)">
+                    {{ t('stats.shareWalk') }}
+                  </button>
                   <button class="btn ghost sm" @click="startWalkEdit(w)">
                     {{ t('stats.editWalk') }}
                   </button>
@@ -902,6 +930,7 @@ function jumpTo(id: string) {
                     {{ t('stats.deleteWalk') }}
                   </button>
                 </div>
+                <p v-if="shareStatus" class="share-status" role="status">{{ shareStatus }}</p>
               </div>
             </li>
           </ul>
@@ -1565,6 +1594,12 @@ function jumpTo(id: string) {
 }
 .destructive {
   color: #e0284a;
+}
+.share-status {
+  margin: 8px 0 0;
+  color: #32725a;
+  font-size: 12px;
+  text-align: right;
 }
 .walk-edit {
   display: grid;

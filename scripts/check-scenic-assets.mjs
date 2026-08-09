@@ -26,7 +26,7 @@ for (const asset of manifest.assets) {
     throw new Error(`${asset.id}: unsupported license ${asset.license}`)
   if (!tiers.has(asset.tier)) throw new Error(`${asset.id}: invalid tier ${asset.tier}`)
   if (!kinds.has(asset.kind)) throw new Error(`${asset.id}: invalid kind ${asset.kind}`)
-  if (!/^\/scenic\/[a-z0-9/_-]+\.(?:glb|webp|ktx2|ogg)$/.test(asset.path))
+  if (!/^scenic\/[a-z0-9/_-]+\.(?:glb|webp|ktx2|ogg)$/.test(asset.path))
     throw new Error(`${asset.id}: invalid scenic asset path ${asset.path}`)
   if (!/^https:\/\//.test(asset.source) || !asset.attribution?.trim())
     throw new Error(`${asset.id}: source and attribution are required`)

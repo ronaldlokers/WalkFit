@@ -16,7 +16,8 @@ material variation should create density before unique models create download we
 
 - Runtime models use binary glTF (`.glb`). Textures use WebP initially; KTX2 is allowed once its
   transcoder is shipped and covered offline. Ambient loops use Ogg Vorbis.
-- Every file lives below `public/scenic/` and appears in `manifest.json` with its exact byte and
+- Every file lives below `public/scenic/` and appears in `manifest.json` with a `scenic/…`
+  base-relative URL (required for the GitHub Pages repository subpath), its exact byte and
   triangle count, tier, HTTPS source, SPDX-style licence, and visible attribution.
 - Accepted licences are CC0 1.0, CC BY 4.0, and original WalkFit work. CC BY assets must retain
   attribution in the manifest and future in-app credits screen.

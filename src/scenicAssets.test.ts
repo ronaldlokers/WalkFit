@@ -10,7 +10,7 @@ import {
 const asset = (overrides: Partial<ScenicAsset> = {}): ScenicAsset => ({
   id: 'park-tree',
   kind: 'environment',
-  path: '/scenic/park-tree.glb',
+  path: 'scenic/park-tree.glb',
   bytes: 120_000,
   triangles: 2400,
   tier: 'all',
@@ -53,8 +53,8 @@ describe('assetsForTier', () => {
     version: 1,
     assets: [
       asset(),
-      asset({ id: 'better-tree', path: '/scenic/better-tree.glb', tier: 'high' }),
-      asset({ id: 'hero-tree', path: '/scenic/hero-tree.glb', tier: 'ultra' }),
+      asset({ id: 'better-tree', path: 'scenic/better-tree.glb', tier: 'high' }),
+      asset({ id: 'hero-tree', path: 'scenic/hero-tree.glb', tier: 'ultra' }),
     ],
   }
 

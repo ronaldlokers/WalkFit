@@ -29,7 +29,7 @@ export const SCENIC_ASSET_BUDGET = {
 } as const
 
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const FILE = /^\/scenic\/[a-z0-9/_-]+\.(?:glb|webp|ktx2|ogg)$/
+const FILE = /^scenic\/[a-z0-9/_-]+\.(?:glb|webp|ktx2|ogg)$/
 const KINDS = new Set<ScenicAssetKind>(['character', 'environment', 'prop', 'texture', 'audio'])
 const TIERS = new Set<ScenicAssetTier>(['all', 'high', 'ultra'])
 const LICENSES = new Set<ScenicAssetLicense>(['CC0-1.0', 'CC-BY-4.0', 'LicenseRef-WalkFit'])
@@ -51,7 +51,7 @@ export function validateScenicManifest(value: unknown): string[] {
     else if (ids.has(asset.id)) errors.push(`${at}.id is duplicated`)
     else ids.add(asset.id)
     if (typeof asset.path !== 'string' || !FILE.test(asset.path))
-      errors.push(`${at}.path must be a supported /scenic/ asset`)
+      errors.push(`${at}.path must be a supported scenic/ asset`)
     else if (paths.has(asset.path)) errors.push(`${at}.path is duplicated`)
     else paths.add(asset.path)
     if (!KINDS.has(asset.kind as ScenicAssetKind)) errors.push(`${at}.kind is invalid`)

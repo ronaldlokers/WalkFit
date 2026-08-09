@@ -8,6 +8,25 @@ export interface AmbientProfile {
   gain: number
 }
 
+export type ScenicCueKind = 'checkpoint' | 'achievement' | 'level-up' | 'footstep'
+
+export interface ScenicCue {
+  frequenciesHz: readonly number[]
+  durationMs: number
+  gapMs: number
+}
+
+const CUES: Record<ScenicCueKind, ScenicCue> = {
+  checkpoint: { frequenciesHz: [660, 880], durationMs: 90, gapMs: 55 },
+  achievement: { frequenciesHz: [784, 988, 1319], durationMs: 110, gapMs: 65 },
+  'level-up': { frequenciesHz: [523, 659, 784, 1047], durationMs: 120, gapMs: 70 },
+  footstep: { frequenciesHz: [145], durationMs: 35, gapMs: 0 },
+}
+
+export function scenicCue(kind: ScenicCueKind): ScenicCue {
+  return CUES[kind]
+}
+
 export function ambientProfile(phase: number, weather: WeatherId): AmbientProfile {
   if (weather === 'overcast' || weather === 'mist') {
     return { kind: 'rain', frequencyHz: 140, gain: 0.003 }

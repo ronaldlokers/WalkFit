@@ -273,6 +273,8 @@ const en = {
   'settings.includeTokens': 'include connection tokens (device-specific secrets)',
   'settings.sound': 'Sound',
   'settings.audioCues': 'Audio cues',
+  'settings.cueVolume': 'Milestone and footstep volume',
+  'settings.ambientVolume': 'Ambient volume',
   'settings.debug': 'Debug panel',
   'settings.advanced': 'Advanced',
   'settings.importNote': 'Sessions and weigh-ins merge on import; settings overwrite.',
@@ -573,6 +575,8 @@ const nl: Record<MessageKey, string> = {
   'settings.includeTokens': 'inclusief verbindingstokens (apparaatspecifieke geheimen)',
   'settings.sound': 'Geluid',
   'settings.audioCues': 'Audiosignalen',
+  'settings.cueVolume': 'Volume mijlpalen en voetstappen',
+  'settings.ambientVolume': 'Omgevingsvolume',
   'settings.debug': 'Debugpaneel',
   'settings.advanced': 'Geavanceerd',
   'settings.importNote':

@@ -38,7 +38,7 @@ import SettingsSheet from './SettingsSheet.vue'
 import type { TimeOfDay } from './scenicSky'
 import type { QualitySetting } from './scenicQuality'
 import type { CameraView, AvatarStyle } from './scenicPlayer'
-import { ambientProfile, type AmbientKind } from './scenicAudio'
+import { ambientProfile, scenicCue, type AmbientKind, type ScenicCueKind } from './scenicAudio'
 import { dayPhase, TIME_PHASES, weatherFor } from './scenicSky'
 import {
   crossedLandmarks,
@@ -131,6 +131,14 @@ watch(debugOn, (v) => localStorage.setItem('walkfit.debug', v ? '1' : '0'))
 // --- audio cues ---
 const audioOn = ref(localStorage.getItem('walkfit.audio') !== '0') // default on
 watch(audioOn, (v) => localStorage.setItem('walkfit.audio', v ? '1' : '0'))
+const clampAudioVolume = (value: number, fallback: number) =>
+  Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback
+const cueVolume = ref(clampAudioVolume(Number(localStorage.getItem('walkfit.audio.cues')), 1))
+const ambientVolume = ref(
+  clampAudioVolume(Number(localStorage.getItem('walkfit.audio.ambient')), 1),
+)
+watch(cueVolume, (v) => localStorage.setItem('walkfit.audio.cues', String(v)))
+watch(ambientVolume, (v) => localStorage.setItem('walkfit.audio.ambient', String(v)))
 let audioCtx: AudioContext | null = null
 let ambientOscillator: OscillatorNode | null = null
 let ambientGain: GainNode | null = null
@@ -142,7 +150,7 @@ function beep(freq = 880, ms = 120) {
     const o = audioCtx.createOscillator()
     const g = audioCtx.createGain()
     o.frequency.value = freq
-    g.gain.value = 0.08
+    g.gain.value = 0.08 * cueVolume.value
     o.connect(g)
     g.connect(audioCtx.destination)
     o.start()
@@ -150,6 +158,12 @@ function beep(freq = 880, ms = 120) {
   } catch {
     // no audio output available — cues are best-effort
   }
+}
+function playScenicCue(kind: ScenicCueKind) {
+  const cue = scenicCue(kind)
+  cue.frequenciesHz.forEach((frequency, index) => {
+    window.setTimeout(() => beep(frequency, cue.durationMs), index * (cue.durationMs + cue.gapMs))
+  })
 }
 function speak(text: string) {
   if (!audioOn.value) return
@@ -199,7 +213,7 @@ function syncAmbient() {
     ambientKind = profile.kind
     ambientOscillator.type = profile.kind === 'rain' ? 'sawtooth' : 'sine'
     ambientOscillator.frequency.value = profile.frequencyHz
-    ambientGain.gain.value = profile.gain
+    ambientGain.gain.value = profile.gain * ambientVolume.value
     ambientOscillator.connect(ambientGain)
     ambientGain.connect(audioCtx.destination)
     ambientOscillator.start()
@@ -546,7 +560,10 @@ const scenicTime = ref<TimeOfDay>(
     : 'auto',
 )
 watch(scenicTime, (v) => localStorage.setItem('walkfit.scenic.time', v))
-watch(() => [audioOn.value, state.running, state.distance, scenicTime.value], syncAmbient)
+watch(
+  () => [audioOn.value, ambientVolume.value, state.running, state.distance, scenicTime.value],
+  syncAmbient,
+)
 // render-quality tier override for the 3D view (Settings → Display); 'auto' probes the device
 const storedScenicQuality = localStorage.getItem('walkfit.scenic.quality')
 const scenicQuality = ref<QualitySetting>(
@@ -687,6 +704,14 @@ watch(
     }
   },
 )
+// A single short, low-volume footstep per paired belt-pedometer increment gives the
+// player a sense of motion without turning every sensor packet into a click storm.
+watch(
+  () => state.steps,
+  (steps, previous) => {
+    if (state.running && steps > previous && steps % 2 === 0) playScenicCue('footstep')
+  },
+)
 // Average: sample on the ~1 Hz elapsed tick, NOT on bpm change — a change-triggered
 // watcher weights volatile periods (20 min steady at 115 was ONE sample) (#132).
 watch(
@@ -786,6 +811,7 @@ function finalizeSession() {
     // very first-ever session isn't a "record" in any meaningful sense.
     const prevBestDistance = sessions.value.reduce((a, s) => Math.max(a, s.distance), 0)
     sessions.value = addSession(session)
+    const previousLevel = progression.value.level
     progression.value = recordCompletedWalk(progression.value, {
       dateKey: session.date.slice(0, 10),
       distanceM: session.distance,
@@ -795,8 +821,9 @@ function finalizeSession() {
       routeDistanceM: Math.min(session.distance, 800),
     })
     saveProgression(progression.value)
+    if (progression.value.level > previousLevel) playScenicCue('level-up')
     if (prevBestDistance > 0 && distance > prevBestDistance) {
-      beep(1568, 200)
+      playScenicCue('achievement')
       speak(t('speech.newRecord'))
     }
     if (strava.state.connected) {
@@ -1388,6 +1415,7 @@ watch(
     )
     if (!checkpoint) return
     routeCheckpointMessage.value = `✓ ${t('route.checkpoint')} · ${checkpoint.name}`
+    playScenicCue('checkpoint')
     if (routeCheckpointTimer) clearTimeout(routeCheckpointTimer)
     routeCheckpointTimer = setTimeout(() => {
       routeCheckpointMessage.value = ''
@@ -2079,6 +2107,8 @@ const pace = computed(() => {
         v-model:max-hr="maxHr"
         v-model:weight-kg="weightKg"
         v-model:audio-on="audioOn"
+        v-model:cue-volume="cueVolume"
+        v-model:ambient-volume="ambientVolume"
         v-model:announce-every="announceEvery"
         v-model:debug-on="debugOn"
         v-model:view-mode="viewMode"

@@ -85,6 +85,8 @@ const emit = defineEmits<{
 const maxHr = defineModel<number>('maxHr', { required: true })
 const weightKg = defineModel<number>('weightKg', { required: true })
 const audioOn = defineModel<boolean>('audioOn', { required: true })
+const cueVolume = defineModel<number>('cueVolume', { required: true })
+const ambientVolume = defineModel<number>('ambientVolume', { required: true })
 const announceEvery = defineModel<'off' | '1km' | '2km' | '5min' | '10min'>('announceEvery', {
   required: true,
 })
@@ -513,6 +515,14 @@ function confirmForgetNow() {
           <input v-model="audioOn" type="checkbox" />
         </label>
         <p class="set-note">{{ t('settings.soundNote') }}</p>
+        <label class="set-row">
+          <span>{{ t('settings.cueVolume') }}</span>
+          <input v-model.number="cueVolume" type="range" min="0" max="1" step="0.05" />
+        </label>
+        <label class="set-row">
+          <span>{{ t('settings.ambientVolume') }}</span>
+          <input v-model.number="ambientVolume" type="range" min="0" max="1" step="0.05" />
+        </label>
         <div class="set-row">
           <span>{{ t('settings.announce') }}</span>
           <select v-model="announceEvery" class="set-select">

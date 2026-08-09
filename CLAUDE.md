@@ -132,7 +132,17 @@ Keep pinned Playwright version and image tag in sync.
   a plain cosine once put the sun 68 deg underground at the dawn preset. Star opacity ramps
   inside the night band's own edges so a risen sun never sits over visible stars. Weather
   desaturates toward each colour's own luminance rather than a fixed grey, or a misty night
-  comes out brighter than a clear day. Unit-tested in `src/scenicSky.test.ts`.
+  comes out brighter than a clear day. Peak sun elevation is ~50 deg, NOT overhead: at the
+  original 76 deg midday shadows were a quarter of an object's height and the whole scene
+  rendered flat and unmodelled. It also owns the light response of everything three.js will
+  NOT shade — `daylight(phase)` (0..1 from the sun's elevation, not `sunIntensity`, which
+  ramps toward the pre-dawn keyframe while the sun is still underground), and the three
+  consumers built on it: `cloudColor` (an unlit cloud shell tinted to exactly `sky.sky` is
+  invisible by day), `backdropTint` (the treeline ring stayed daytime green under a night
+  sky), and `paintLevel` (lane lines, markings, signs, lane numbers, fence and flags are all
+  unlit `MeshBasic`, so without it they are exactly as bright at midnight as at noon —
+  floodlight heads are deliberately excluded, being lamps rather than paint). Unit-tested in
+  `src/scenicSky.test.ts`.
 - `src/scenicQuality.ts` — adaptive quality tiers: a median-of-60-frames probe picks
   `low`/`high`, `walkfit.scenic.quality` overrides it. Gates the shadow map, texture size,
   star count and clouds. Every tier path must work in BOTH directions — enabling and
@@ -140,6 +150,18 @@ Keep pinned Playwright version and image tag in sync.
 - `src/scenicMeshes.ts` — pure vertex/uv/index array builders plus the three.js mesh and
   procedural `CanvasTexture` factories, extracted from `Scenic3D.vue`. Every `REPEAT` value
   must divide `LAP_M` exactly, or the texture misaligns with itself at the start/finish seam.
+  `assertSameAttributes` rejects a merge batch that mixes indexed and non-indexed geometry as
+  well as one with mismatched attributes — three's own primitives disagree (`PlaneGeometry`
+  is indexed, `IcosahedronGeometry` is not) and the only symptom is `mergeGeometries`
+  returning null. Tree crowns are crossed alpha-tested billboards (`canopyTexture`), not
+  solid meshes: a convex crown reads as a faceted ball from every angle, and the ragged
+  outline is the whole difference. Because those cards are `DoubleSide`, they must be listed
+  in the component's `castsDespiteTwoSided` set — the bake reads `side === DoubleSide` as
+  "flat ground marking, must not cast", which silently stopped every tree casting a shadow.
+  `treeLineTexture` fills the band between fence and skyline; its crowns are drawn tall in v
+  and narrow in u because the ring is ~1000 m around and only 26 m high, and its `wrapT` must
+  be `ClampToEdgeWrapping` or the opaque ground band at the texture's base bleeds across the
+  seam as a dark hairline around the sky.
 - `src/scenicLife.ts` — **pure, three.js-free** (must stay that way so App.vue COULD import
   it directly — a three import here would drag three.js out of Scenic3D.vue's lazy chunk
   and into the main bundle): ambient `pacers(t, count)` whose positions are analytic in

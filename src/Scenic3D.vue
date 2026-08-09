@@ -47,6 +47,7 @@ import {
 import type { Pacer } from './scenicLife'
 import { avatarStyleConfig, cameraViewConfig, playerGait } from './scenicPlayer'
 import type { AvatarStyle, CameraView } from './scenicPlayer'
+import { loadScenicManifest } from './scenicAssets'
 import {
   stadium,
   PART_SIZES,
@@ -189,6 +190,19 @@ onBeforeUnmount(() => {
 
 onMounted(() => {
   const el = host.value!
+  // Start the Scenic v3 asset boundary even while the manifest is empty. Loading failures
+  // deliberately leave the procedural venue intact; an art/CDN/cache failure must never
+  // blank treadmill controls or force the 2D fallback reserved for missing WebGL.
+  let assetCache: { dispose: () => Promise<void> } | null = null
+  void loadScenicManifest(document.baseURI)
+    .then(async (manifest) => {
+      if (disposed || !manifest.assets.some((asset) => asset.path.endsWith('.glb'))) return
+      // GLTFLoader and SkeletonUtils add ~70 kB minified. Keep them in their own dynamic
+      // chunk and do not parse it until a manifest actually contains a model.
+      const { ScenicAssetCache } = await import('./scenicAssetLoader')
+      if (!disposed) assetCache = new ScenicAssetCache(manifest, document.baseURI)
+    })
+    .catch(() => {})
   // WebGL probe before any three.js setup — no WebGL (e.g. jsdom, old machines) means
   // the parent should fall back to the track view.
   const probe = document.createElement('canvas')
@@ -1899,6 +1913,7 @@ onMounted(() => {
   startLoop()
 
   cleanup = () => {
+    void assetCache?.dispose()
     stopLoop()
     stopDistanceWatch?.()
     stopQualityWatch()

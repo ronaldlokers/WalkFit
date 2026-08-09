@@ -22,6 +22,20 @@ export interface ScenicAssetManifest {
   assets: ScenicAsset[]
 }
 
+type Fetcher = (input: string | URL) => Promise<Pick<Response, 'ok' | 'status' | 'json'>>
+
+export async function loadScenicManifest(
+  baseUrl: string,
+  fetcher: Fetcher = fetch,
+): Promise<ScenicAssetManifest> {
+  const response = await fetcher(new URL('scenic/manifest.json', baseUrl))
+  if (!response.ok) throw new Error(`scenic manifest request failed (${response.status})`)
+  const value: unknown = await response.json()
+  const errors = validateScenicManifest(value)
+  if (errors.length) throw new Error(`invalid scenic manifest: ${errors.join('; ')}`)
+  return value as ScenicAssetManifest
+}
+
 export const SCENIC_ASSET_BUDGET = {
   maxFileBytes: 4 * 1024 * 1024,
   maxTotalBytes: 16 * 1024 * 1024,

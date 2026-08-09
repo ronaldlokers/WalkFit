@@ -188,6 +188,10 @@ Keep pinned Playwright version and image tag in sync.
   an accepted licence in `manifest.json`. `npm run assets:check` enforces the manifest/files and
   CI runs it. The PWA precache includes GLB/WebP/KTX2/Ogg; see
   `docs/scenic-v3-art-direction.md` before importing art.
+- `src/scenicAssetLoader.ts` — lazy-only manifest/GLB boundary: resolves against
+  `document.baseURI` for GitHub Pages, deduplicates downloads, skeleton-clones instances, shares
+  source GPU resources until component disposal, and returns `null` on individual model failure
+  so the procedural world remains the fallback. Never import it from App/Settings.
 - `src/scenicVenue.ts` — **pure, three.js-free** club-track furniture: `stadium()` returns
   parts in the same shape `surroundings()` uses, so the component's prop builder and
   merge-by-material bake absorb them unchanged. `PART_SIZES` is the single source of truth

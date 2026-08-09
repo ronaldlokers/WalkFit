@@ -17,7 +17,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       manifest: false,
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,json,svg,png,webp,ktx2,glb,ogg,ico,webmanifest}'],
         // the main JS chunk is already <250 kB (CI-guarded); this just raises the
         // precache's own inline-size ceiling so workbox doesn't warn on the 3D chunk
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,

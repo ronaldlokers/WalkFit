@@ -1477,6 +1477,7 @@ const pace = computed(() => {
         <Scenic3D
           :distance="state.distance"
           :speed="state.speed"
+          :active="state.running"
           :weather-seed="weatherSeed"
           :time-of-day="scenicTime"
           :quality="scenicQuality"

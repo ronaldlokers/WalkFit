@@ -45,7 +45,7 @@ import {
   FOV_EPSILON_DEG,
 } from './scenicLife'
 import type { Pacer } from './scenicLife'
-import { avatarStyleConfig, cameraViewConfig } from './scenicPlayer'
+import { avatarStyleConfig, cameraViewConfig, playerGait } from './scenicPlayer'
 import type { AvatarStyle, CameraView } from './scenicPlayer'
 import {
   stadium,
@@ -113,6 +113,7 @@ import type { Tier, QualitySetting } from './scenicQuality'
 const props = defineProps<{
   distance: number
   speed: number
+  active?: boolean // treadmill is actually moving; separates idle pose from selected speed
   weatherSeed?: number // per-walk weather pick (#72); omitted = clear
   timeOfDay?: TimeOfDay // Settings override; 'auto' follows walked distance
   quality?: QualitySetting
@@ -1474,7 +1475,8 @@ onMounted(() => {
     camera.position.set(cameraAt.x, view.heightM + cameraBob, cameraAt.z)
     const ahead = trackPoint(d + view.lookAheadM, motion.dx)
     camera.lookAt(ahead.x, view.targetHeightM + cameraBob, ahead.z)
-    const bodySwing = limbSwing(d, stride) * 0.55
+    const gait = playerGait(props.active ?? false, props.speed)
+    const swing = limbSwing(d, stride)
     avatarGroup.position.set(avatarAt.x, 0, avatarAt.z)
     avatarGroup.rotation.y = Math.atan2(-avatarAt.tx, -avatarAt.tz)
     avatarHead.visible = view.showAvatar
@@ -1491,12 +1493,12 @@ onMounted(() => {
       camera.fov = motion.fov
       camera.updateProjectionMatrix()
     }
-    armL.rotation.x = bodySwing
-    armR.rotation.x = -bodySwing
-    avatarArmL.rotation.x = -bodySwing * 0.75
-    avatarArmR.rotation.x = bodySwing * 0.75
-    avatarLegL.rotation.x = bodySwing
-    avatarLegR.rotation.x = -bodySwing
+    armL.rotation.x = swing * gait.armSwing
+    armR.rotation.x = -swing * gait.armSwing
+    avatarArmL.rotation.x = -swing * gait.armSwing
+    avatarArmR.rotation.x = swing * gait.armSwing
+    avatarLegL.rotation.x = swing * gait.legSwing
+    avatarLegR.rotation.x = -swing * gait.legSwing
     // Settings can pin the time of day; 'auto' follows walked distance (#72)
     const tod = props.timeOfDay ?? 'auto'
     const phase = tod === 'auto' ? dayPhase(d) : TIME_PHASES[tod]
@@ -1860,6 +1862,10 @@ onMounted(() => {
     () => props.cameraView,
     () => update(display),
   )
+  const stopActiveWatch = watch(
+    () => props.active,
+    () => update(display),
+  )
   const stopAvatarStyleWatch = watch(
     () => props.avatarStyle,
     (style) => {
@@ -1898,6 +1904,7 @@ onMounted(() => {
     stopQualityWatch()
     stopTimeWatch()
     stopCameraWatch()
+    stopActiveWatch()
     stopAvatarStyleWatch()
     document.removeEventListener('visibilitychange', onVisibility)
     renderer?.domElement.removeEventListener('webglcontextlost', onContextLost)

@@ -52,11 +52,16 @@ const {
 const hr = useHeartRate()
 const strava = useStrava()
 const origin = window.location.origin
+const launchAction = new URLSearchParams(window.location.search).get('action')
 
 // --- onboarding wizard ---
 // The onboarding wizard shows only until it's been completed or dismissed once —
 // returning users (and mid-walk reloads) go straight to the main screen (#63).
-const wizardOpen = ref(localStorage.getItem('walkfit.setupDone') !== '1')
+const wizardOpen = ref(
+  launchAction !== 'free' &&
+    launchAction !== 'repeat' &&
+    localStorage.getItem('walkfit.setupDone') !== '1',
+)
 // After a backup import the persisted state is authoritative — reload rather than
 // hand-refreshing every ref (#69).
 function reloadApp() {
@@ -970,7 +975,7 @@ function bump(delta: number) {
 }
 
 // --- workouts (weight-loss plans + HR-steered) ---
-const menuOpen = ref(false)
+const menuOpen = ref(launchAction === 'repeat')
 const workoutTab = ref<'plans' | 'hr'>('plans') // header menu's initial tab
 function openWorkoutMenu(tab: 'plans' | 'hr' = 'plans') {
   menuOpen.value = true
@@ -1682,6 +1687,7 @@ const pace = computed(() => {
           :hr-connected="hr.state.connected"
           :custom-workouts="customWorkouts"
           :last-workout="lastWorkout"
+          :initial-preview="launchAction === 'repeat' ? lastWorkout : null"
           :start-tab="workoutTab"
           @save-custom="saveCustom"
           @delete-custom="deleteCustom"

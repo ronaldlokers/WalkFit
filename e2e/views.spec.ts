@@ -63,6 +63,29 @@ test.describe('wizard', () => {
 })
 
 test.describe('main view', () => {
+  test('PWA shortcuts bypass onboarding safely and preview the last workout', async ({ page }) => {
+    await page.goto('/?action=free')
+    await expect(page.getByRole('heading', { name: 'Connect your treadmill' })).toBeHidden()
+    await expect(page.getByText('min/km')).toBeVisible()
+
+    await seed(page, {
+      'walkfit.history': JSON.stringify([
+        {
+          date: new Date().toISOString(),
+          distance: 1000,
+          duration: 900,
+          kcal: 50,
+          avgHr: null,
+          workout: 'Quick Burn 20',
+        },
+      ]),
+    })
+    await page.goto('/?action=repeat')
+    await expect(page.getByRole('heading', { name: 'Quick Burn 20' })).toBeVisible()
+    // Opening a shortcut stops at the preview; starting still requires this explicit tap.
+    await expect(page.getByRole('button', { name: 'Start workout' })).toBeVisible()
+  })
+
   test('immersive layout: idle stat strip, controls, view flip', async ({ page }) => {
     await seed(page)
     await page.goto('/')

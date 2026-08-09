@@ -1,62 +1,45 @@
-# Scenic device validation
+# Scenic v3 device validation
 
-Last audited: 2026-08-09
+This is the manual release gate for Scenic v3. Run it against a production build served
+from the deployed PWA (not Vite's development server), with the treadmill controls still
+available in the same browser tab.
 
-The scenic renderer has automated coverage for its tier decisions and a real-GPU desktop
-smoke check. Mobile Safari/Bluefy and an active treadmill session still require physical
-hardware that is not available in the development environment. This document separates the
-completed checks from that hardware-only validation so the remaining claim is exact.
+## Matrix
 
-## Completed desktop check
+| Device / browser                              | Quality           | Camera modes  | Motion       | Network                       | Required result                                                                                |
+| --------------------------------------------- | ----------------- | ------------- | ------------ | ----------------------------- | ---------------------------------------------------------------------------------------------- |
+| Desktop with Intel Iris Xe or newer, Chromium | auto, high, ultra | first + third | on + reduced | online                        | stable mount, no context loss, route HUD and checkpoint visible                                |
+| Mid-range Android Chromium                    | auto, low         | first + third | on + reduced | online                        | no blank frame, controls remain responsive, no sustained memory growth                         |
+| iPhone/iPad Safari or Bluefy                  | auto, low         | first + third | on + reduced | online                        | 20-minute walk remains interactive; graceful 2D fallback is acceptable if WebGL is unavailable |
+| Any supported device                          | low               | first         | on           | offline after one online load | PWA starts, scenic chunk and manifest are available, procedural fallback remains usable        |
 
-The production UI was exercised in Chromium 150 at 1440 x 900 on the host GPU:
+## Procedure
 
-- GPU: Intel Iris Xe Graphics, Alder Lake-P GT2
-- WebGL renderer: `ANGLE (Intel, Mesa Intel(R) Iris(R) Xe Graphics (ADL GT2), OpenGL ES 3.2)`
-- explicit `low`, `high`, and `ultra` tiers rendered at the full 1440 x 900 canvas size
-- `auto` rendered successfully and sustained a 16.7 ms median frame interval
-- `low`, `high`, and `ultra` each sustained a 16.7 ms median frame interval; sampled p95 was
-  16.8 ms or better
-- day frames were inspected at every tier; night frames were inspected at `high` and `ultra`
-- clouds, tier-dependent grass density, the ultra post-process, stars, track markings, and the
-  overlaid controls were visible; no browser console or page errors occurred
+1. Start from a clean profile, open the deployed app, complete onboarding, and open 3D.
+2. Exercise the first/third-person toggle, outfit picker, reduced-motion setting, and each
+   quality tier. Confirm the header, route ribbon, stop/pause/reset controls, and live stats
+   never become unreachable behind the scenic HUD.
+3. Walk at least 20 minutes on desktop and iPhone/Bluefy. Capture a screenshot at the
+   stadium hub, park gate, pond checkpoint, and overlook. Record browser console errors,
+   approximate FPS, and whether the GLB request succeeded or the procedural fallback was
+   used.
+4. Reload while walking, background the tab for 30 seconds, return, and exercise a WebGL
+   context-loss/recovery if the browser exposes the test hook. The session snapshot, route
+   HUD, and controls must recover without a blank view.
+5. With the app loaded once, enable airplane/offline mode and reload. Confirm the app shell,
+   lazy scenic chunk, manifest, and both licensed GLBs are served by the installed PWA.
+6. Export a JSON backup, clear the profile in a disposable browser context, import the file,
+   and verify progression XP, route badges, personal bests, outfit choice, and settings return.
 
-This confirms that the desktop tier paths run on a physical GPU rather than Playwright's
-SwiftShader. It is a smoke check, not a long-duration thermal benchmark.
+## Acceptance thresholds
 
-The normal repository gates also pass: formatting, lint, type checking, 310 unit tests,
-production build, bundle-size guard, and 11 Playwright tests.
+- No uncaught page errors during any matrix row.
+- The main bundle remains under the repository guard; Three.js stays in the lazy scenic chunk.
+- Low tier stays responsive on the phone path; high/ultra may reduce detail only through the
+  documented quality budgets.
+- A failed manifest, GLB, or WebGL probe leaves the 2D track and safety controls usable.
+- No progression reward depends on speed above the user's selected workout target or on an
+  incline command the treadmill protocol does not support.
 
-## Physical-hardware blocker
-
-The following claims cannot be validated from this machine because it has no iPhone/iPad and
-no Dreaver Motion One available to the browser:
-
-1. Mobile WebGL frame pacing and thermal behaviour in Bluefy on iOS.
-2. HUD readability while the phone is mounted at treadmill viewing distance.
-3. Rendering while live BLE telemetry advances distance and speed for a sustained walk.
-4. WebGL recovery after an actual mobile-browser background/foreground cycle.
-
-No code or CI change can remove that boundary; a person with the devices must perform the
-matrix below.
-
-## Required device matrix
-
-Run a 20-minute walk on the real treadmill in Bluefy on a current iPhone, then repeat the
-short checks on a desktop Chromium browser with the treadmill connected.
-
-| Check                                                              | iPhone / Bluefy | Desktop Chromium             |
-| ------------------------------------------------------------------ | --------------- | ---------------------------- |
-| Auto starts without a black frame or 2D fallback                   | Required        | Completed on Iris Xe         |
-| Performance, Quality, then Auto switch live                        | Required        | Required with live BLE       |
-| Day, sunset, and night keep HUD text readable                      | Required        | Required at viewing distance |
-| Distance moves the camera continuously for 20 minutes              | Required        | Required                     |
-| No obvious sustained stutter, context loss, or overheating warning | Required        | Required                     |
-| Background for 10 seconds, return, and continue rendering          | Required        | Optional                     |
-
-Do not enable Ultra on the phone; it is an explicitly opt-in desktop tier. On desktop, also
-switch to Ultra for two minutes and confirm bloom/colour grading appears without a black frame.
-
-Record the device model, OS/browser version, selected tier, approximate DPR/resolution, and any
-failure with a screenshot or screen recording. A failure should include the browser console when
-available and whether switching to Performance recovers the view.
+Record date, device/browser, commit, quality, camera, FPS impression, and pass/fail in the
+release issue before calling the physical-device gate complete.

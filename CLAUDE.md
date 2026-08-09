@@ -188,6 +188,8 @@ Keep pinned Playwright version and image tag in sync.
   an accepted licence in `manifest.json`. `npm run assets:check` enforces the manifest/files and
   CI runs it. The PWA precache includes GLB/WebP/KTX2/Ogg; see
   `docs/scenic-v3-art-direction.md` before importing art.
+- `docs/scenic-device-validation.md` is the physical-device/offline release matrix; record
+  device, commit, quality, camera, and pass/fail evidence there or in the release issue.
 - `src/scenicAssetLoader.ts` — lazy-only manifest/GLB boundary: resolves against
   `document.baseURI` for GitHub Pages, deduplicates downloads, skeleton-clones instances, shares
   source GPU resources until component disposal, and returns `null` on individual model failure

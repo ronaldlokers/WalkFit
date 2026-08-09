@@ -206,7 +206,10 @@ function syncAmbient() {
         ? dayPhase(state.distance)
         : TIME_PHASES[scenicTime.value as Exclude<TimeOfDay, 'auto'>]
     const profile = ambientProfile(phase, weatherFor(weatherSeed))
-    if (ambientKind === profile.kind && ambientOscillator) return
+    if (ambientKind === profile.kind && ambientOscillator) {
+      if (ambientGain) ambientGain.gain.value = profile.gain * ambientVolume.value
+      return
+    }
     stopAmbient()
     ambientOscillator = audioCtx.createOscillator()
     ambientGain = audioCtx.createGain()

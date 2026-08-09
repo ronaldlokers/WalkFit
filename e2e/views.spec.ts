@@ -114,8 +114,21 @@ test.describe('main view', () => {
     // load straight into a persisted scenic preference (guards the pathLen remount
     // regression in CLAUDE.md), then switch back to the 2D track: the runner marker
     // must exist, which requires the recomputed path geometry
+    const pageErrors: Error[] = []
+    page.on('pageerror', (error) => pageErrors.push(error))
     await seed(page, { 'walkfit.view': 'scenic' })
+    const assetRequestPromise = page
+      .waitForRequest((request) => request.url().endsWith('/scenic/bush-detailed.glb'), {
+        timeout: 5_000,
+      })
+      .catch(() => null)
     await page.goto('/')
+    const assetRequest = await assetRequestPromise
+    // A browser without WebGL may legitimately skip the GLB request; if it does request
+    // it, the browser must not report a transport failure or a loader exception.
+    expect(assetRequest?.failure() ?? null).toBeNull()
+    expect(pageErrors).toEqual([])
+    await expect(page.locator('.scene3d-wrap, svg.track')).toBeVisible()
     // scenic mounts (three.js lazy chunk) or falls back without WebGL — either way
     // the 2D button must land us on a working track view
     await page.locator('.view-flip button', { hasText: '2D' }).click()

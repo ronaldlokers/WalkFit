@@ -46,6 +46,7 @@ import {
   STADIUM_HUB_M,
 } from './scenicRoute'
 import { loadProgression, recordCompletedWalk, saveProgression } from './scenicProgression'
+import { routeCompletion, ROUTE_LIBRARY } from './scenicRouteLibrary'
 
 const {
   state,
@@ -551,6 +552,8 @@ watch(
 const MIN_SESSION_DISTANCE = 50 // metres — filters out accidental/blip starts
 const sessions = ref(loadStatistics())
 const progression = ref(loadProgression())
+const activeRoute = ROUTE_LIBRARY.find((route) => route.available) ?? ROUTE_LIBRARY[0]
+const activeRouteCompletion = computed(() => routeCompletion(activeRoute, progression.value))
 const statisticsOpen = ref(false)
 // Daily activity goals for the rings (#43); edits in Settings persist via the watcher.
 const goals = reactive(loadGoals())
@@ -1537,12 +1540,19 @@ const pace = computed(() => {
       <div v-else class="scene3d-wrap">
         <div class="route-hud" data-testid="route-hud" aria-live="polite">
           <div class="route-hud-copy">
-            <span class="route-section">{{ routeSectionLabel }}</span>
+            <span class="route-section">{{ activeRoute.name }} · {{ routeSectionLabel }}</span>
             <span class="route-next"
               >{{ t('route.next') }} · {{ nextRouteLandmark.name }} ·
               {{ Math.round(nextRouteDistanceM) }} m</span
             >
             <span class="route-xp">Lv {{ progression.level }} · {{ progression.xp }} XP</span>
+          </div>
+          <div class="route-record">
+            <span>{{ activeRoute.scenery }}</span>
+            <span v-if="activeRouteCompletion.completed">✓ badge</span>
+            <span v-else-if="activeRouteCompletion.personalBestM"
+              >PB {{ Math.round(activeRouteCompletion.personalBestM) }} m</span
+            >
           </div>
           <div class="route-ribbon" role="progressbar" :aria-valuenow="routeDistanceM">
             <span
@@ -2231,6 +2241,14 @@ code {
   font-size: 10px;
   font-weight: 800;
   white-space: nowrap;
+}
+.route-record {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 5px;
+  color: rgba(237, 245, 255, 0.6);
+  font-size: 9px;
 }
 .route-ribbon {
   display: flex;

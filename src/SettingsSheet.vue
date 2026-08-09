@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TreadmillState } from './treadmill'
+import { estimateMaxHr } from './heartrate'
 import type { HeartRateState } from './heartrate'
 import type { StravaState } from './strava'
 import type { HealthProvider } from './health'
@@ -125,6 +126,12 @@ const SECTION_LABEL: Record<SettingsSection, () => string> = {
   advanced: () => t('settings.section.advanced'),
 }
 const section = ref<SettingsSection>('devices')
+const ageForEstimate = ref<number | null>(null)
+function applyMaxHrEstimate() {
+  if (ageForEstimate.value === null) return
+  const estimate = estimateMaxHr(ageForEstimate.value)
+  if (estimate !== null) maxHr.value = estimate
+}
 
 // Forget-device confirm (#190): forgetting drops the remembered id for good
 // (unlike Disconnect, which just ends the current session) — worth a step before
@@ -231,6 +238,23 @@ function confirmForgetNow() {
             t('settings.fatburnNote', { lo: Math.round(maxHr * 0.6), hi: Math.round(maxHr * 0.7) })
           }}
         </p>
+        <div class="set-row maxhr-helper">
+          <span>{{ t('settings.estimateMaxHr') }}</span>
+          <span class="set-actions">
+            <input
+              v-model.number="ageForEstimate"
+              :aria-label="t('settings.age')"
+              type="number"
+              min="14"
+              max="100"
+              :placeholder="t('settings.age')"
+            />
+            <button class="btn ghost sm" @click="applyMaxHrEstimate">
+              {{ t('settings.useEstimate') }}
+            </button>
+          </span>
+        </div>
+        <p class="set-note">{{ t('settings.maxHrEstimateNote') }}</p>
       </template>
 
       <template v-else-if="section === 'goals'">

@@ -78,4 +78,21 @@ describe('stadium-to-park route model', () => {
     expect(second.exited.length).toBeGreaterThan(0)
     expect(pool.clear().length).toBe(second.active.length)
   })
+
+  it('keeps a long session bounded as the walker crosses many route laps', () => {
+    const pool = new RouteChunkPool()
+    let entered = 0
+    let exited = 0
+    for (let lap = 0; lap < 100; lap++) {
+      for (let distance = 0; distance <= ROUTE_TOTAL_M; distance += 7) {
+        const delta = pool.update(distance, ROUTE_CHUNK_M)
+        entered += delta.entered.length
+        exited += delta.exited.length
+        expect(delta.active.length).toBeLessThanOrEqual(ROUTE_POOL_CAP)
+      }
+    }
+    expect(entered).toBeGreaterThan(ROUTE_POOL_CAP)
+    expect(exited).toBeGreaterThan(entered - ROUTE_POOL_CAP)
+    expect(pool.clear().length).toBeLessThanOrEqual(ROUTE_POOL_CAP)
+  })
 })

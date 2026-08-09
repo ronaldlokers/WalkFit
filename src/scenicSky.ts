@@ -14,7 +14,10 @@ export function weatherFor(seed: number): WeatherId {
 }
 // fog band per weather; the component applies these to THREE.Fog near/far
 export const WEATHER_FOG: Record<WeatherId, { near: number; far: number }> = {
-  clear: { near: 60, far: 230 },
+  // Clear air should stay clear: at near 60 / far 230 the far side of the loop and the
+  // treeline were already half-dissolved, which reads as permanent haze rather than
+  // distance. Mist and overcast keep their close bands — that is their whole character.
+  clear: { near: 110, far: 320 },
   overcast: { near: 45, far: 190 },
   mist: { near: 15, far: 100 },
 }
@@ -61,12 +64,12 @@ interface SkyKey extends SkyState {
 // clash is now handled where it belongs — the HUD pills carry their own scrim and the
 // canvas has a vignette (App.vue) — instead of by dimming the world.
 const SKY_KEYS: SkyKey[] = [
-  { at: 0.0, sky: 0x54486a, fog: 0xa8788a, sunIntensity: 3.2, sunColor: 0xffb08a, ambient: 0.4 }, // pre-dawn: sun is still below the horizon until phase 0.02
+  { at: 0.0, sky: 0x54486a, fog: 0xa8788a, sunIntensity: 3.2, sunColor: 0xffb08a, ambient: 1.0 }, // pre-dawn: sun is still below the horizon until phase 0.02
   { at: 0.18, sky: 0x5f95d6, fog: 0xa8c4e0, sunIntensity: 2.3, sunColor: 0xfff2dd, ambient: 1.1 }, // morning
   { at: 0.45, sky: 0x6ba8e8, fog: 0xb9d4ee, sunIntensity: 2.6, sunColor: 0xffffff, ambient: 1.2 }, // day
   { at: 0.62, sky: 0x6b8fc4, fog: 0xc0a9a8, sunIntensity: 2.1, sunColor: 0xffe0b0, ambient: 1.0 }, // late
   { at: 0.75, sky: 0x6d4270, fog: 0xc4707a, sunIntensity: 2.6, sunColor: 0xff9a5c, ambient: 0.55 }, // sunset
-  { at: 0.87, sky: 0x161a2e, fog: 0x24283c, sunIntensity: 0.2, sunColor: 0x9ab0ff, ambient: 0.3 }, // night
+  { at: 0.87, sky: 0x161a2e, fog: 0x24283c, sunIntensity: 0.2, sunColor: 0x9ab0ff, ambient: 0.45 }, // night
   { at: 1.0, sky: 0x54486a, fog: 0xa8788a, sunIntensity: 3.2, sunColor: 0xffb08a, ambient: 0.4 }, // wraps to pre-dawn
 ]
 
@@ -115,6 +118,43 @@ export function skyAt(phase: number, weather: WeatherId = 'clear'): SkyState {
   }
 }
 
+// Cloud shell tint. Clouds are lit by the same sun the ground is, so by day they read
+// BRIGHTER than the sky behind them; after dark they have no light of their own and must
+// sink back into the sky, or the shell doubles the night sky's luminance. Tinting the
+// shell to exactly `sky` (the first cut) made it invisible in daylight: the same colour
+// as its background, with only the texture's alpha to tell the two apart.
+// How lit the world is, 0..1, for the unlit backdrops (cloud shell, treeline ring) that
+// three.js will not shade for us. Keyed off the sun's ELEVATION, not sunIntensity: the
+// pre-dawn keyframe carries a deliberately large sunIntensity (3.2) that the interpolation
+// is already ramping toward while the sun is still underground, so an intensity-driven
+// factor lights unlit geometry up in the middle of the night.
+export function daylight(phase: number): number {
+  return Math.max(0, Math.min(1, skyBodies(phase).sun.elevation / 0.08))
+}
+
+export function cloudColor(sky: SkyState, phase: number): number {
+  const lit = daylight(phase)
+  return lerpColor(lerpColor(sky.sky, sky.sunColor, 0.55 * lit), 0xffffff, 0.45 * lit)
+}
+
+// How bright flat PAINT should read, 0..1. Painted surfaces (lane lines, markings, signs,
+// the fence) are unlit MeshBasic — flat paint needs no shading, and a lit material placed
+// 4 cm above the track z-fights against it — but unlit also means nothing dims them, so
+// after dark they rendered exactly as bright as at noon. Floors at a non-zero value: a club
+// track at night is floodlit, not pitch black.
+export function paintLevel(phase: number): number {
+  return 0.22 + 0.78 * daylight(phase)
+}
+
+// Tint for a camera-following backdrop ring at `haze` (0 = keeps its own colour, 1 = fully
+// the horizon colour). MeshBasic backdrops take no light at all, so the daylight factor has
+// to do the dimming by hand — without it the treeline stayed a bright daytime green under a
+// night sky, lit by nothing.
+export function backdropTint(sky: SkyState, phase: number, haze: number): number {
+  const t = haze + (1 - haze) * (1 - daylight(phase)) * 0.85
+  return lerpColor(0xffffff, sky.fog, Math.min(1, t))
+}
+
 // Night band (#72): floodlights switch on, path edges matter — shared so the component
 // and any future logic agree on what "night" means.
 export function isNight(phase: number): boolean {
@@ -140,7 +180,11 @@ export interface SkyBodies {
 
 export const SUN_PEAK_PHASE = 0.45 // the "day" palette keyframe
 export const SUN_SET_PHASE = 0.8 // sun reaches the horizon shortly after the sunset keyframe
-const MAX_ELEVATION = Math.PI * 0.42 // just shy of straight overhead
+// Deliberately NOT straight overhead. At the old 0.42pi (76 deg) the midday sun cast
+// shadows barely a quarter of an object's height, so the whole scene rendered flat and
+// unmodelled — nothing on the track had a shadow to sit in. A ~50 deg peak keeps shadows
+// roughly as long as the things casting them, which is what gives the ground depth.
+const MAX_ELEVATION = Math.PI * 0.28
 // isNight()'s dawn edge (phase < 0.02). Elevation must stay negative right up to this
 // edge — see the p < NIGHT_DAWN_EDGE branch in sunElevation below.
 const NIGHT_DAWN_EDGE = 0.02

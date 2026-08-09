@@ -8,6 +8,9 @@ import {
   WEATHER_FOG,
   TIME_PHASES,
   skyBodies,
+  cloudColor,
+  backdropTint,
+  paintLevel,
 } from './scenicSky'
 
 const lumOf = (c: number) =>
@@ -124,7 +127,10 @@ describe('skyBodies', () => {
     const deg = (r: number) => (r * 180) / Math.PI
     expect(deg(skyBodies(TIME_PHASES.dawn).sun.elevation)).toBeLessThan(15)
     expect(deg(skyBodies(TIME_PHASES.sunset).sun.elevation)).toBeLessThan(30)
-    expect(deg(skyBodies(TIME_PHASES.day).sun.elevation)).toBeGreaterThan(60)
+    // high, but well short of vertical — a near-overhead sun leaves nothing casting a
+    // readable shadow, which is the specific flatness this bound exists to prevent
+    expect(deg(skyBodies(TIME_PHASES.day).sun.elevation)).toBeGreaterThan(40)
+    expect(deg(skyBodies(TIME_PHASES.day).sun.elevation)).toBeLessThan(60)
   })
 
   it('the moon is up exactly when the sun is below the horizon', () => {
@@ -172,5 +178,56 @@ describe('skyBodies', () => {
         expect(`${p.toFixed(3)}: ${b.starOpacity}`).toBe(`${p.toFixed(3)}: 0`)
       }
     }
+  })
+})
+
+describe('cloud tint', () => {
+  it('is brighter than the sky while the sun is up', () => {
+    // the whole point of the shell: tinted to exactly sky.sky it is invisible by day
+    for (const p of [TIME_PHASES.dawn, TIME_PHASES.day, TIME_PHASES.sunset]) {
+      const sky = skyAt(p)
+      expect(lumOf(cloudColor(sky, p))).toBeGreaterThan(lumOf(sky.sky) + 8)
+    }
+  })
+
+  it('sinks back into the sky at night', () => {
+    // a lit shell after dark doubles the night sky's luminance — the same mistake
+    // overcastify() guards against on the weather side
+    const sky = skyAt(TIME_PHASES.night)
+    expect(cloudColor(sky, TIME_PHASES.night)).toBe(sky.sky)
+  })
+
+  it('takes the sun colour, so sunset clouds are warm', () => {
+    const sunset = cloudColor(skyAt(TIME_PHASES.sunset), TIME_PHASES.sunset)
+    const red = (sunset >> 16) & 0xff
+    const blue = sunset & 0xff
+    expect(red).toBeGreaterThan(blue)
+  })
+})
+
+describe('backdrop tint', () => {
+  it('darkens unlit backdrops at night, since nothing else will', () => {
+    // MeshBasic rings take no light: a treeline tinted only for haze stayed full daytime
+    // green under a night sky
+    const night = backdropTint(skyAt(TIME_PHASES.night), TIME_PHASES.night, 0.35)
+    const day = backdropTint(skyAt(TIME_PHASES.day), TIME_PHASES.day, 0.35)
+    expect(lumOf(night)).toBeLessThan(lumOf(day) * 0.5)
+  })
+
+  it('a hazier backdrop lands closer to the horizon colour', () => {
+    const sky = skyAt(TIME_PHASES.day)
+    const near = backdropTint(sky, TIME_PHASES.day, 0.2)
+    const far = backdropTint(sky, TIME_PHASES.day, 0.8)
+    const dist = (c: number) => Math.abs(lumOf(c) - lumOf(sky.fog))
+    expect(dist(far)).toBeLessThan(dist(near))
+  })
+})
+
+describe('paint level', () => {
+  it('dims painted markings after dark but never to black', () => {
+    expect(paintLevel(TIME_PHASES.day)).toBeCloseTo(1, 2)
+    const night = paintLevel(TIME_PHASES.night)
+    expect(night).toBeLessThan(0.3)
+    expect(night).toBeGreaterThan(0.1) // a floodlit club track, not a blackout
   })
 })

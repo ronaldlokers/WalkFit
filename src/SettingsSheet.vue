@@ -319,6 +319,7 @@ function confirmForgetNow() {
             <option value="auto">{{ t('settings.qualityAuto') }}</option>
             <option value="low">{{ t('settings.qualityLow') }}</option>
             <option value="high">{{ t('settings.qualityHigh') }}</option>
+            <option value="ultra">{{ t('settings.qualityUltra') }}</option>
           </select>
         </div>
         <div class="set-row">

@@ -72,16 +72,22 @@ describe('runnerParts', () => {
   it('puts the foot on the ground when the leg is mounted at the hip', () => {
     // the defect this pins: a limb short enough to be an arm cannot reach the ground from
     // the hip, and pacers floated 35.5 cm above the track for two rounds
-    const { body, arm, leg } = runnerParts()
+    const { body, head, arm, leg } = runnerParts()
     leg.computeBoundingBox()
     arm.computeBoundingBox()
     body.computeBoundingBox()
+    head.computeBoundingBox()
     const HIP_Y = 0.86
     expect(leg.boundingBox!.min.y + HIP_Y).toBeCloseTo(0, 2)
     expect(leg.boundingBox!.max.y).toBeCloseTo(0, 2) // pivots at its top
     expect(arm.boundingBox!.min.y).toBeGreaterThan(leg.boundingBox!.min.y) // arms are shorter
-    expect(body.boundingBox!.max.y).toBeGreaterThan(1.6) // head clears eye height
+    // The head is its OWN geometry, not merged into the torso: merged, it wore the kit
+    // colour, which is what made the figures read as mannequins. It still has to sit on top
+    // of the torso and clear eye height.
+    expect(head.boundingBox!.max.y).toBeGreaterThan(1.6)
+    expect(head.boundingBox!.min.y).toBeGreaterThan(body.boundingBox!.max.y - 0.1)
     body.dispose()
+    head.dispose()
     arm.dispose()
     leg.dispose()
   })

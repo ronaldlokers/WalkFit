@@ -132,3 +132,46 @@ export function stadium(): VenuePart[] {
 
   return out
 }
+
+// Grass tufts along the two edges of the track, as instance placements. Deterministic from
+// worldHash so the field is identical every mount and can be baked into one InstancedMesh.
+//
+// Near-field detail is the cue a bare ground plane cannot fake: at eye height the metre in
+// front of you is most of the screen, and a flat texture there reads as painted lino no
+// matter how good the texture is.
+//
+// Tufts must never land on the running surface — TRACK_IN..TRACK_OUT is where the walker
+// and pacers actually run, and a blade of grass through the lane lines is worse than no
+// grass at all. `scenicVenue.test.ts` pins it.
+export interface Tuft {
+  s: number
+  o: number
+  scale: number
+  seed: number
+}
+
+// Bands the tufts may occupy. The inner one is only the unmown lip beside the kerb, NOT the
+// infield: the infield is a maintained pitch with mowing stripes, and clumps of wild grass
+// scattered across it read as neglect rather than detail.
+export const TUFT_INNER: [number, number] = [TRACK_IN - 2.2, TRACK_IN - 0.7]
+export const TUFT_OUTER: [number, number] = [TRACK_OUT + 0.6, FENCE_O - 1]
+
+export function grassTufts(count: number): Tuft[] {
+  const out: Tuft[] = []
+  for (let i = 0; i < count; i++) {
+    const h = i * 7
+    const band = worldHash(h + 1201) < 0.45 ? TUFT_INNER : TUFT_OUTER
+    // squared, so tufts crowd toward the track edge where they are actually seen rather
+    // than spreading evenly across a band most of which is beyond the fog
+    const t = worldHash(h + 1202) ** 2
+    const o =
+      band === TUFT_INNER ? band[1] - t * (band[1] - band[0]) : band[0] + t * (band[1] - band[0])
+    out.push({
+      s: worldHash(h + 1203) * LAP_M,
+      o,
+      scale: 0.7 + worldHash(h + 1204) * 0.8,
+      seed: worldHash(h + 1205),
+    })
+  }
+  return out
+}

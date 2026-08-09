@@ -43,11 +43,52 @@ describe('resolveTier', () => {
 })
 
 describe('TIER_BUDGET', () => {
-  it('high is at least as generous as low on every axis', () => {
-    expect(TIER_BUDGET.high.textureSize).toBeGreaterThan(TIER_BUDGET.low.textureSize)
-    expect(TIER_BUDGET.high.pacers).toBeGreaterThan(TIER_BUDGET.low.pacers)
-    expect(TIER_BUDGET.high.stars).toBeGreaterThan(TIER_BUDGET.low.stars)
-    expect(TIER_BUDGET.high.shadowMap).toBe(true)
-    expect(TIER_BUDGET.low.shadowMap).toBe(false)
+  it('never gets less generous as the tier climbs', () => {
+    const order = ['low', 'high', 'ultra'] as const
+    for (let i = 1; i < order.length; i++) {
+      const lo = TIER_BUDGET[order[i - 1]!]
+      const hi = TIER_BUDGET[order[i]!]
+      for (const k of ['textureSize', 'pacers', 'stars', 'shadowMapSize', 'tufts'] as const) {
+        expect(`${order[i]}.${k}`).toBe(
+          hi[k] >= lo[k] ? `${order[i]}.${k}` : `${order[i]}.${k} regressed`,
+        )
+      }
+      for (const k of ['clouds', 'normalMaps', 'contactShading', 'post'] as const) {
+        expect(`${order[i]}.${k}`).toBe(
+          hi[k] || !lo[k] ? `${order[i]}.${k}` : `${order[i]}.${k} regressed`,
+        )
+      }
+    }
+  })
+
+  it('only the cheap tier falls back to blob shadows', () => {
+    expect(TIER_BUDGET.low.shadowMapSize).toBe(0)
+    expect(TIER_BUDGET.high.shadowMapSize).toBeGreaterThan(0)
+  })
+
+  it('ultra spends its shadow budget on texels per metre, not just map size', () => {
+    const density = (t: 'high' | 'ultra') =>
+      TIER_BUDGET[t].shadowMapSize / (2 * TIER_BUDGET[t].shadowBoxM)
+    expect(density('ultra')).toBeGreaterThan(density('high') * 2)
+  })
+
+  it('post-processing is desktop-only, so it must never reach the phone tiers', () => {
+    expect(TIER_BUDGET.low.post).toBe(false)
+    expect(TIER_BUDGET.high.post).toBe(false)
+  })
+})
+
+describe('the ultra tier is opt-in only', () => {
+  it('the probe never selects it', () => {
+    // vsync clamps frame time at ~16.7 ms no matter how much headroom the GPU has, so a
+    // frame-time probe cannot tell "fast enough for a fullscreen post chain" from "exactly
+    // at 60 Hz". Auto therefore tops out at high; ultra comes from Settings or not at all.
+    for (const frames of [Array(PROBE_FRAMES).fill(1), Array(PROBE_FRAMES).fill(8)]) {
+      expect(tierFromFrames(frames)).toBe('high')
+    }
+  })
+
+  it('but an explicit setting still gets it', () => {
+    expect(resolveTier('ultra', 'low')).toBe('ultra')
   })
 })

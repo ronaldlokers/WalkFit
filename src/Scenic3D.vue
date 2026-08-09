@@ -8,6 +8,11 @@
 // motion stays smooth despite the ~4 Hz distance updates from the treadmill ticker.
 import { onMounted, onBeforeUnmount, watch, ref } from 'vue'
 import * as THREE from 'three'
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import {
   trackPoint,
@@ -45,6 +50,7 @@ import {
   stadium,
   PART_SIZES,
   SKYLINE_R,
+  grassTufts,
   GATE_S0,
   GATE_S1,
   venueClearO,
@@ -63,6 +69,7 @@ import {
   REPEAT,
   tartanTexture,
   grassTexture,
+  canopyTexture,
   barkTexture,
   foliageTexture,
   concreteTexture,
@@ -76,6 +83,12 @@ import {
   seatingTexture,
   pitchLinesTexture,
   skylineTexture,
+  normalFromTexture,
+  tuftGeometry,
+  tuftTexture,
+  contactShade,
+  treeLineTexture,
+  TREELINE_GROUND_V,
   sandTexture,
 } from './scenicMeshes'
 import {
@@ -86,6 +99,10 @@ import {
   WEATHER_FOG,
   TIME_PHASES,
   isNight,
+  cloudColor,
+  backdropTint,
+  paintLevel,
+  daylight,
 } from './scenicSky'
 import type { TimeOfDay } from './scenicSky'
 import { tierFromFrames, resolveTier, PROBE_FRAMES, TIER_BUDGET } from './scenicQuality'
@@ -104,6 +121,51 @@ const props = defineProps<{
 const emit = defineEmits<{ unsupported: [] }>()
 
 const host = ref<HTMLDivElement | null>(null)
+
+// Colour grade. This is the cheapest large step toward the look of a game that ships a
+// colour pipeline: a touch of saturation and contrast around mid grey, plus a corner
+// falloff. Kept deliberately mild — the palette is already authored for ACES, so this is a
+// finishing pass, not a rescue.
+const GRADE_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    uSaturation: { value: 1.28 },
+    uContrast: { value: 1.09 },
+    uVignette: { value: 0.22 },
+    // How much of the grade to apply, 0..1. Driven from the daylight factor: contrast
+    // around mid grey and a corner falloff both take away from the darks, and a night
+    // frame has almost nothing BUT darks — applied at full strength after sunset they
+    // crushed the track, the fence and the stand into one black field.
+    uGrade: { value: 1 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uSaturation;
+    uniform float uContrast;
+    uniform float uVignette;
+    uniform float uGrade;
+    varying vec2 vUv;
+    void main() {
+      vec4 tex = texture2D(tDiffuse, vUv);
+      vec3 c = tex.rgb;
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(l), c, mix(1.0, uSaturation, uGrade));
+      c = (c - 0.5) * mix(1.0, uContrast, uGrade) + 0.5;
+      // radial falloff from the centre, squared so the corners darken and the middle is
+      // left alone rather than the whole frame being dimmed
+      float d = distance(vUv, vec2(0.5));
+      c *= 1.0 - uVignette * uGrade * d * d * 2.0;
+      gl_FragColor = vec4(max(c, 0.0), tex.a);
+    }
+  `,
+}
 
 const EYE_HEIGHT = 1.6
 // The perimeter fence's height. Used in three places (ribbon vertex, chain-link texture
@@ -139,7 +201,7 @@ onMounted(() => {
   // Start on the cheap tier and upgrade once if the machine turns out to be fast. Never
   // downgrade mid-session: a tier flip during a walk is more jarring than a few dropped
   // frames, and the walker cannot do anything about it either way.
-  let tier: Tier = props.quality === 'high' ? 'high' : 'low'
+  let tier: Tier = props.quality === 'high' || props.quality === 'ultra' ? props.quality : 'low'
   const probeSamples: number[] = []
   let probeDone = props.quality !== 'auto' && props.quality !== undefined
 
@@ -158,26 +220,34 @@ onMounted(() => {
   renderer.toneMappingExposure = 1.0
   el.appendChild(renderer.domElement)
 
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x30363f, 0.9)
+  // The ground half is a stand-in for bounce light off the infield and the track, so it is
+  // warm and well clear of black — at 0x30363f every underside in the scene (the grandstand
+  // roof above all) rendered as a flat black void with no shape in it at all.
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x6b6455, 0.9)
   const sun = new THREE.DirectionalLight(0xffffff, 1)
   const sunTarget = new THREE.Object3D()
   scene.add(hemi, sun, sunTarget)
   sun.target = sunTarget
   const SUN_DIST = 120
 
-  // Fixed-size shadow box re-centred on the walker each frame. Fitting it to the whole
-  // 400 m loop would spend nearly all the map's resolution on geometry behind you.
-  const SHADOW_BOX = 60 // metres either side of the camera
-  function enableShadows() {
+  // Shadow box re-centred on the walker each frame, sized by the tier. Fitting it to the
+  // whole 400 m loop would spend nearly all the map's resolution on geometry behind you —
+  // and shrinking the box is the cheapest way to buy texels per metre, which is what makes
+  // a contact edge crisp rather than a soft smear.
+  function enableShadows(size: number, boxM: number) {
     renderer!.shadowMap.enabled = true
-    renderer!.shadowMap.type = THREE.PCFShadowMap
+    renderer!.shadowMap.type = THREE.PCFSoftShadowMap
     sun.castShadow = true
-    sun.shadow.mapSize.set(2048, 2048)
+    sun.shadow.mapSize.set(size, size)
+    // three keeps the depth target until the map is disposed, so a tier change that only
+    // changes mapSize would otherwise keep rendering at the old resolution.
+    sun.shadow.map?.dispose()
+    sun.shadow.map = null
     const cam = sun.shadow.camera
-    cam.left = -SHADOW_BOX
-    cam.right = SHADOW_BOX
-    cam.top = SHADOW_BOX
-    cam.bottom = -SHADOW_BOX
+    cam.left = -boxM
+    cam.right = boxM
+    cam.top = boxM
+    cam.bottom = -boxM
     // Tight near/far around the sun's fixed distance (not 1..SUN_DIST*2): every bias unit
     // spends its precision on the box that actually matters instead of empty space, so a
     // much smaller bias still clears the self-shadow acne below.
@@ -204,21 +274,58 @@ onMounted(() => {
   // toneMapped:false is load-bearing — three.js applies fog AFTER tone mapping, so real
   // fogged geometry fades to the raw hex. If the dome were tone mapped it would no longer
   // match the fog it is painted to blend into, and the seam would come back.
-  const domeGeo = new THREE.SphereGeometry(DOME_R, 24, 12)
-  const domeColors = new THREE.Float32BufferAttribute(
-    new Float32Array(domeGeo.attributes.position!.count * 3),
-    3,
-  )
-  domeGeo.setAttribute('color', domeColors)
-  const dome = new THREE.Mesh(
-    domeGeo,
-    new THREE.MeshBasicMaterial({
-      vertexColors: true,
-      side: THREE.BackSide,
-      fog: false,
-      toneMapped: false,
-    }),
-  )
+  const domeGeo = new THREE.SphereGeometry(DOME_R, 32, 16)
+  // The gradient is evaluated per FRAGMENT, not interpolated between ~350 vertices. A
+  // vertex gradient on a 24x12 sphere bands visibly across a clear sky, and it cannot carry
+  // a sun halo at all: the halo is a few degrees wide and would land between vertices.
+  const domeUniforms = {
+    uSky: { value: new THREE.Color(0x6ba8e8) },
+    uFog: { value: new THREE.Color(0xb9d4ee) },
+    uSunColor: { value: new THREE.Color(0xffffff) },
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    uSunUp: { value: 1 }, // 0 below the horizon: no halo on a night sky
+  }
+  const domeMat = new THREE.ShaderMaterial({
+    uniforms: domeUniforms,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+    // toneMapped:false is load-bearing — three applies fog AFTER tone mapping, so real
+    // fogged geometry fades to the raw hex. Tone mapping the dome would stop it matching
+    // the fog it exists to blend into, and the ground/sky seam would come back.
+    toneMapped: false,
+    vertexShader: `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uSky;
+      uniform vec3 uFog;
+      uniform vec3 uSunColor;
+      uniform vec3 uSunDir;
+      uniform float uSunUp;
+      varying vec3 vDir;
+      void main() {
+        vec3 dir = normalize(vDir);
+        // Rayleigh-ish: the horizon is the longest path through the atmosphere, so it
+        // carries the most scattering. pow() biases the ramp toward the horizon rather
+        // than putting the midpoint at 45 degrees, which is what a linear ramp does and
+        // why the old dome read as a flat backdrop.
+        float h = pow(clamp(dir.y, 0.0, 1.0), 0.42);
+        vec3 col = mix(uFog, uSky, h);
+        // Mie: a tight disc for the sun itself and a broad glow around it, both fading out
+        // as the sun sets so a set sun cannot leave a bright patch on the horizon.
+        float c = max(dot(dir, normalize(uSunDir)), 0.0);
+        float halo = pow(c, 220.0) * 0.55 + pow(c, 12.0) * 0.22 + pow(c, 3.0) * 0.06;
+        col += uSunColor * halo * uSunUp;
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `,
+  })
+  const dome = new THREE.Mesh(domeGeo, domeMat)
   scene.add(dome)
 
   // Sky bodies: a sun/moon glow sprite each, a star field that fades in at night, and a
@@ -268,7 +375,7 @@ onMounted(() => {
   function addClouds() {
     if (clouds) return
     cloudTex = cloudTexture(512)
-    cloudTex.repeat.set(3, 2)
+    cloudTex.repeat.set(4, 2)
     // thetaLength must reach past 90deg: at 81.8deg the shell's lower rim floated 8.2deg
     // above the horizon as a hard edge across the sky. Past vertical it tucks behind the
     // ground plane, which is opaque and depth-writing, so the seam is simply occluded.
@@ -278,7 +385,7 @@ onMounted(() => {
       new THREE.MeshBasicMaterial({
         map: cloudTex,
         transparent: true,
-        opacity: 0.5,
+        opacity: 0.62,
         side: THREE.BackSide,
         depthWrite: false,
         fog: false,
@@ -289,20 +396,7 @@ onMounted(() => {
   }
   if (TIER_BUDGET[tier].clouds) addClouds()
 
-  const cLo = new THREE.Color()
-  const cHi = new THREE.Color()
-  const cMix = new THREE.Color()
-  function paintDome(skyHex: number, fogHex: number) {
-    cHi.setHex(skyHex)
-    cLo.setHex(fogHex)
-    const pos = domeGeo.attributes.position!
-    for (let i = 0; i < pos.count; i++) {
-      const t = Math.min(1, Math.max(0, pos.getY(i) / 140))
-      cMix.copy(cLo).lerp(cHi, t)
-      domeColors.setXYZ(i, cMix.r, cMix.g, cMix.b)
-    }
-    domeColors.needsUpdate = true
-  }
+  const cAmbient = new THREE.Color()
   // Hoisted out of update() (Fix 4): that function runs every rendered frame, so a
   // closure declared inside it was a fresh allocation per frame.
   const place = (o: THREE.Object3D, b: { azimuth: number; elevation: number }) => {
@@ -316,7 +410,10 @@ onMounted(() => {
   // --- shared geometries/materials ---
   const geo = {
     trunk: new THREE.CylinderGeometry(0.12, 0.18, 1, 5),
-    crown: new THREE.IcosahedronGeometry(0.9, 0),
+    crown: new THREE.IcosahedronGeometry(0.9, 0), // bushes only — trees use canopy cards
+    // non-indexed to match the icosahedron bushes: mergeGeometries returns null for a
+    // batch that mixes indexed and non-indexed geometry, and both share mat.crown2
+    canopy: new THREE.PlaneGeometry(3.4, 3.4).toNonIndexed(),
     cone: new THREE.ConeGeometry(0.8, 1.4, 6),
     rock: new THREE.IcosahedronGeometry(0.5, 0),
     pole: new THREE.CylinderGeometry(0.09, 0.12, 1, 6),
@@ -338,12 +435,16 @@ onMounted(() => {
   // memoized here so a tier change reuses the same texture object instead of pointlessly
   // regenerating an identical 1024 copy every toggle.
   let pitchLinesTex: THREE.CanvasTexture | null = null
-  function makeTextures(size: number) {
+  function makeTextures(size: number, withNormals: boolean) {
     const aniso = Math.min(4, renderer!.capabilities.getMaxAnisotropy())
     pitchLinesTex ??= pitchLinesTexture(1024)
     const t = {
       tartan: tartanTexture(size),
-      grass: grassTexture(size, 108),
+      // rough ground outside the fence is not a mown pitch, and at 60 repeats over the
+      // 700 m plane its stripes tiled every 11.7 m into visible banding
+      grass: grassTexture(size, 108, false),
+      canopy1: canopyTexture(size, 104),
+      canopy2: canopyTexture(size, 84),
       infield: grassTexture(size, 96),
       bark: barkTexture(size),
       foliage: foliageTexture(size),
@@ -377,19 +478,52 @@ onMounted(() => {
     // across the seam and draws a dark hairline right around the sky at the rim.
     t.skyline.wrapT = THREE.ClampToEdgeWrapping
     t.skyline.needsUpdate = true
-    return t
+    // Normal maps come LAST so each one inherits its source's final repeat — derived
+    // before the repeats above are set, every normal would tile at 1:1 while its colour map
+    // tiled at 80:1, and the lighting would slide across the surface it belongs to.
+    // Only the surfaces with real microrelief get one; a chain-link alpha or a painted
+    // marking has no height to encode.
+    const normals = withNormals
+      ? {
+          tartan: normalFromTexture(t.tartan, 2.5),
+          infield: normalFromTexture(t.infield, 1.6),
+          grass: normalFromTexture(t.grass, 1.6),
+          concrete: normalFromTexture(t.concrete, 2),
+          seating: normalFromTexture(t.seating, 2),
+          sand: normalFromTexture(t.sand, 2.5),
+        }
+      : null
+    if (normals) for (const n of Object.values(normals)) n.anisotropy = aniso
+    return { ...t, normals }
   }
   // Task 6 deliberately left this out because nothing read it yet; it has a reader now.
   let budget = TIER_BUDGET[tier]
   // an explicit quality: 'high' setting must get shadows immediately — the probe that
   // would otherwise call this (via applyTier) never runs when the tier isn't 'auto'.
-  if (budget.shadowMap && !renderer!.shadowMap.enabled) enableShadows()
-  let tex = makeTextures(budget.textureSize)
+  if (budget.shadowMapSize) enableShadows(budget.shadowMapSize, budget.shadowBoxM)
+  let tex = makeTextures(budget.textureSize, budget.normalMaps)
 
   const mat = {
     trunk: surface({ color: 0xffffff, map: tex.bark, roughness: 0.95 }),
-    crown1: surface({ color: 0xffffff, map: tex.foliage, roughness: 1, flatShading: true }),
-    crown2: surface({ color: 0xc8e0a8, map: tex.foliage, roughness: 1, flatShading: true }),
+    // alphaTest rather than transparent: an alpha-tested material still writes depth, so
+    // crossed quads inside one canopy sort correctly against each other without the
+    // per-fragment ordering artefacts a blended material would show from every angle.
+    crown1: new THREE.MeshStandardMaterial({
+      map: tex.canopy1,
+      alphaTest: 0.5,
+      side: THREE.DoubleSide,
+      shadowSide: THREE.DoubleSide,
+      roughness: 1,
+      metalness: 0,
+    }),
+    crown2: new THREE.MeshStandardMaterial({
+      map: tex.canopy2,
+      alphaTest: 0.5,
+      side: THREE.DoubleSide,
+      shadowSide: THREE.DoubleSide,
+      roughness: 1,
+      metalness: 0,
+    }),
     pine: surface({ color: 0x8fb890, map: tex.foliage, roughness: 1, flatShading: true }),
     rock: surface({ color: 0x777d87, roughness: 0.85, flatShading: true }),
     pole: surface({ color: 0x4a505b, roughness: 0.6 }),
@@ -397,31 +531,46 @@ onMounted(() => {
     kerb: surface({
       color: 0xffffff,
       map: tex.concrete,
+      normalMap: tex.normals?.concrete,
       roughness: 0.9,
       side: THREE.DoubleSide,
     }),
     breakLine: new THREE.MeshBasicMaterial({ color: 0x3ba55d, side: THREE.DoubleSide }),
     relay: new THREE.MeshBasicMaterial({ color: 0xd8b638, side: THREE.DoubleSide }),
     hurdle: new THREE.MeshBasicMaterial({ color: 0x2e7d4f, side: THREE.DoubleSide }),
-    grass: surface({ color: 0xffffff, map: tex.grass, roughness: 1 }),
+    grass: surface({
+      color: 0xffffff,
+      map: tex.grass,
+      normalMap: tex.normals?.grass,
+      normalScale: 0.6,
+      roughness: 1,
+    }),
     // The loop ribbons reverse travel direction halfway around, so a fixed triangle
     // winding faces down on one straight and up on the other — DoubleSide instead of
     // per-segment winding gymnastics (they're flat strips only ever seen from above).
     infield: surface({
       color: 0xffffff,
       map: tex.infield,
+      normalMap: tex.normals?.infield,
+      normalScale: 0.6,
       roughness: 1,
       side: THREE.DoubleSide,
     }),
     track: surface({
       color: 0xffffff,
       map: tex.tartan,
+      normalMap: tex.normals?.tartan,
       roughness: 0.85,
       side: THREE.DoubleSide,
     }),
     laneLine: new THREE.MeshBasicMaterial({ color: 0xdfe4ea, side: THREE.DoubleSide }),
     finish: new THREE.MeshBasicMaterial({ color: 0xf2f5f9, side: THREE.DoubleSide }),
-    seating: surface({ color: 0xffffff, map: tex.seating, roughness: 0.9 }),
+    seating: surface({
+      color: 0xffffff,
+      map: tex.seating,
+      normalMap: tex.normals?.seating,
+      roughness: 0.9,
+    }),
     fence: new THREE.MeshBasicMaterial({
       map: tex.chainLink,
       transparent: true,
@@ -429,9 +578,20 @@ onMounted(() => {
       depthWrite: false, // a mesh fence must not occlude what is behind it
     }),
     clubhouse: surface({ color: 0xd8cfc0, roughness: 0.85 }),
-    roof: surface({ color: 0x7a4b3a, roughness: 0.8 }),
+    roof: surface({ color: 0x8d5a45, roughness: 0.8 }),
+    // The soffit is its own material: the roof's underside is the one large surface in the
+    // venue that never sees the sun, so lit by the hemisphere term alone it renders as a
+    // black slot over the terracing. A pale underside is also what real stands have — it
+    // is there to bounce light back down onto the seats.
+    soffit: surface({ color: 0xcfc6b4, roughness: 0.95 }),
     pitch: surface({ color: 0xffffff, map: tex.pitchLines, roughness: 1, side: THREE.DoubleSide }),
-    sand: surface({ color: 0xffffff, map: tex.sand, roughness: 1, side: THREE.DoubleSide }),
+    sand: surface({
+      color: 0xffffff,
+      map: tex.sand,
+      normalMap: tex.normals?.sand,
+      roughness: 1,
+      side: THREE.DoubleSide,
+    }),
     mat: surface({ color: 0x2f5fa8, roughness: 0.9, side: THREE.DoubleSide }),
     // Dedicated rather than reusing mat.seating (FrontSide) — a flag needs to read from
     // both sides, and flipping a shared material would also double-side the grandstand's
@@ -446,7 +606,9 @@ onMounted(() => {
   // SKYLINE_R away and always inside the dome (DOME_R) and the far plane (CAMERA_FAR).
   // fog:false because at this distance linear fog would saturate and erase it — the tint
   // applied in update() carries the depth cue instead, without the all-or-nothing.
-  const skylineGeo = new THREE.CylinderGeometry(SKYLINE_R, SKYLINE_R, 55, 48, 1, true)
+  // Tall enough to stand clearly above the treeline in front of it: at 55 m the roofline
+  // sat level with the trees at 173 m, so the two rings read as one confused band.
+  const skylineGeo = new THREE.CylinderGeometry(SKYLINE_R, SKYLINE_R, 82, 48, 1, true)
   const skylineMat = new THREE.MeshBasicMaterial({
     map: tex.skyline,
     transparent: true,
@@ -458,16 +620,95 @@ onMounted(() => {
   scene.add(skylineMesh)
   disposables.push(skylineGeo)
 
+  // Treeline: the same trick one ring closer, filling the band between the venue fence and
+  // the buildings. Without it the ground simply stops at a hard grass/sky edge — the one
+  // place the world visibly ends. Nearer than the skyline, so it is tinted less strongly
+  // toward the fog colour and keeps more of its own green.
+  // Height and centre must satisfy TREELINE_GROUND_V: the texture's ground line is at
+  // v = 0.73, so with a 26 m cylinder the centre sits at 26 * (0.73 - 0.5) = 6 m.
+  const TREELINE_H = 26
+  const treeLineTex = treeLineTexture(1024)
+  treeLineTex.repeat.set(6, 1)
+  // v must NOT wrap: the texture's opaque ground band sits at the bottom, and with
+  // RepeatWrapping the linear filter samples it across the seam and paints a dark hairline
+  // along the cylinder's top rim — a line across the sky, right where nothing should be.
+  treeLineTex.wrapT = THREE.ClampToEdgeWrapping
+  const treeLineGeo = new THREE.CylinderGeometry(
+    SKYLINE_R * 0.72,
+    SKYLINE_R * 0.72,
+    TREELINE_H,
+    48,
+    1,
+    true,
+  )
+  const treeLineMat = new THREE.MeshBasicMaterial({
+    map: treeLineTex,
+    transparent: true,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+  })
+  // How far you can see, relative to clear air. The two camera-following backdrops are
+  // fog:false — real fog at their distance would saturate and erase them — so weather has
+  // to reach them by hand, or a "mist" walk fades the trees 40 m away while leaving a
+  // pin-sharp city on the horizon behind them.
+  const clarity = fogBand.far / WEATHER_FOG.clear.far
+  const treeLineMesh = new THREE.Mesh(treeLineGeo, treeLineMat)
+  scene.add(treeLineMesh)
+  disposables.push(treeLineGeo)
+
+  // Unlit painted surfaces, with the colour they are authored at — update() scales them by
+  // the scene's light level every frame (see paintLevel). mat.floodOn is deliberately NOT
+  // here: it is a lamp, not paint, and switching it on after dark is the whole point.
+  const painted: [THREE.MeshBasicMaterial, number][] = []
+  const dimsWithLight = (m: THREE.MeshBasicMaterial) => {
+    painted.push([m, m.color.getHex()])
+    return m
+  }
+  for (const m of [
+    mat.breakLine,
+    mat.relay,
+    mat.hurdle,
+    mat.laneLine,
+    mat.finish,
+    mat.fence,
+    mat.flag,
+  ]) {
+    dimsWithLight(m)
+  }
+
+  // Surfaces that lie flat on the ground: every vertex is at y = 0, so contact shading
+  // would darken the whole thing uniformly instead of shading it.
+  const FLAT_ON_GROUND = new Set<THREE.Material>([
+    mat.grass,
+    mat.infield,
+    mat.track,
+    mat.kerb,
+    mat.pitch,
+    mat.sand,
+  ])
+
+  // Double-sided materials that must still cast (see the bake's castShadow rule).
+  const castsDespiteTwoSided = new Set<THREE.Material>([mat.crown1, mat.crown2])
+
   function buildProp(p: Prop): THREE.Object3D {
     const g = new THREE.Group()
     if (p.type === 'tree') {
       const trunk = new THREE.Mesh(geo.trunk, mat.trunk)
       trunk.scale.set(1, 2.2, 1)
       trunk.position.y = 1.1
-      const crown = new THREE.Mesh(geo.crown, p.seed < 0.5 ? mat.crown1 : mat.crown2)
-      crown.position.y = 2.6
-      crown.scale.setScalar(1.4)
-      g.add(trunk, crown)
+      g.add(trunk)
+      // Crossed billboards, not a solid crown: three quads through the same axis, each
+      // carrying the canopy alpha. A convex mesh reads as a faceted ball from every angle
+      // — the ragged outline is what makes a tree look like a tree, and only alpha can
+      // give one. Fixed (not camera-facing) so the world can still be baked once.
+      const canopy = p.seed < 0.5 ? mat.crown1 : mat.crown2
+      for (let i = 0; i < 3; i++) {
+        const card = new THREE.Mesh(geo.canopy, canopy)
+        card.position.y = 2.7
+        card.rotation.y = (i / 3) * Math.PI
+        g.add(card)
+      }
     } else if (p.type === 'pine') {
       const trunk = new THREE.Mesh(geo.trunk, mat.trunk)
       trunk.scale.set(1, 1.6, 1)
@@ -565,11 +806,16 @@ onMounted(() => {
       backWall.position.set(rows * STAND_ROW_DEPTH, 2.1, 0)
       g.add(backWall)
       const roof = keep(new THREE.Mesh(new THREE.BoxGeometry(STAND_ROOF_W, 0.25, len), mat.roof))
+      const soffit = keep(
+        new THREE.Mesh(new THREE.PlaneGeometry(STAND_ROOF_W, len).toNonIndexed(), mat.soffit),
+      )
+      soffit.rotation.x = Math.PI / 2 // faces down
       // Not STAND_ROOF_W / 2 — the roof is offset from the terracing's midpoint, not
       // centred on itself. Its outer edge (this position + half its width) is exactly
       // STAND_DEPTH, which is what the fence-clearance test checks.
       roof.position.set(rows * 0.55, 5.4, 0)
-      g.add(roof)
+      soffit.position.set(rows * 0.55, 5.27, 0)
+      g.add(roof, soffit)
       for (let i = 0; i < 4; i++) {
         const col = keep(
           new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 5.3, 6), mat.clubhouse),
@@ -791,7 +1037,9 @@ onMounted(() => {
   const numberMats: THREE.MeshBasicMaterial[] = []
   for (const ln of laneNumbers()) {
     const p = trackPoint(ln.s, ln.o)
-    const m = new THREE.MeshBasicMaterial({ map: digitTexture(ln.lane), transparent: true })
+    const m = dimsWithLight(
+      new THREE.MeshBasicMaterial({ map: digitTexture(ln.lane), transparent: true }),
+    )
     numberMats.push(m)
     const digit = new THREE.Mesh(numberGeo, m)
     digit.rotation.x = -Math.PI / 2 // lie flat on the track, texture-up toward -z
@@ -826,7 +1074,7 @@ onMounted(() => {
     post.scale.set(0.6, 2.4, 0.6)
     post.position.set(at.x, 1.2, at.z)
     scene.add(post)
-    const boardMat = new THREE.MeshBasicMaterial({ map: signTexture(sign.label) })
+    const boardMat = dimsWithLight(new THREE.MeshBasicMaterial({ map: signTexture(sign.label) }))
     signMats.push(boardMat)
     const board = new THREE.Mesh(geo.head, boardMat)
     board.scale.set(0.9, 1.5, 0.5)
@@ -856,7 +1104,14 @@ onMounted(() => {
     // light aims at the origin instead of following the walker. The sun/moon sprites,
     // star points and cloud shell are all live-updated per frame too (see update() below)
     // — left in staticRoots they would get merged into a mesh and silently vanish.
-    const skyObjects: THREE.Object3D[] = [dome, sunSprite, moonSprite, stars, skylineMesh]
+    const skyObjects: THREE.Object3D[] = [
+      dome,
+      sunSprite,
+      moonSprite,
+      stars,
+      skylineMesh,
+      treeLineMesh,
+    ]
     if (clouds) skyObjects.push(clouds)
     const staticRoots = scene.children.filter(
       (c) => !skyObjects.includes(c) && !(c as THREE.Light).isLight && c !== sunTarget,
@@ -884,29 +1139,160 @@ onMounted(() => {
           `scenic merge: mergeGeometries returned null for "${material.name || material.type}"`,
         )
       }
+      // Contact darkening, baked once into the merged buffer. Skipped for the ground
+      // surfaces (their vertices all sit at y = 0, so they would come out uniformly dark
+      // rather than shaded) and for anything unlit, which ignores vertex colours anyway.
+      const std = material as THREE.MeshStandardMaterial
+      if (budget.contactShading && std.isMeshStandardMaterial && !FLAT_ON_GROUND.has(material)) {
+        contactShade(merged)
+        if (!std.vertexColors) {
+          std.vertexColors = true
+          std.needsUpdate = true
+        }
+      }
       disposables.push(merged)
       const m = new THREE.Mesh(merged, material)
       if (material === blobMat) {
         blobMesh = m
         // Session may mount straight onto Quality (shadows on) — hide the fake ground
         // contact discs immediately instead of waiting for a later applyTier() call.
-        blobMesh.visible = !budget.shadowMap
+        blobMesh.visible = !budget.shadowMapSize
       }
       // DoubleSide surfaces must not cast: three flips shadowSide for them, so these flat
       // ribbons and painted markings write their own depth into the map and self-shadow
       // into acne. Deriving this from `side` rather than a hand-kept list means a new
       // marking cannot silently reintroduce it.
       const twoSided = (material as THREE.Material).side === THREE.DoubleSide
-      m.castShadow = !twoSided
+      // ...except the alpha-tested foliage cards, which are double-sided because a flat
+      // quad has to be seen from behind, not because they are ground markings. Excluded
+      // from the rule they would otherwise fall into, a tree stopped casting any shadow at
+      // all the moment its crown became a billboard.
+      m.castShadow = !twoSided || castsDespiteTwoSided.has(material)
       m.receiveShadow = true
       scene.add(m)
     }
   }
 
+  // --- post-processing: bloom + grading, ultra tier only ---
+  // Built lazily, because the addons are only worth their bytes and their two extra
+  // fullscreen passes on a machine that asked for them. A phone never gets here: at DPR 3
+  // a fullscreen pass is the first thing that costs frames rather than watts.
+  //
+  // Colour handling note: three skips tone mapping in the material shaders whenever it is
+  // rendering into a render target, and OutputPass applies it at the end instead. Fog and
+  // the sky dome therefore still agree with each other — both arrive at OutputPass in the
+  // same space — so the ground/sky seam the dome exists to hide stays hidden.
+  let composer: EffectComposer | null = null
+  let bloomPass: UnrealBloomPass | null = null
+  // ShaderPass clones the uniform objects it is handed, so per-frame writes have to go to
+  // the PASS's own uniforms — writing to GRADE_SHADER.uniforms updates nothing.
+  let gradePass: ShaderPass | null = null
+  function buildComposer() {
+    if (composer) return
+    composer = new EffectComposer(renderer!)
+    composer.setPixelRatio(renderer!.getPixelRatio())
+    composer.setSize(el.clientWidth || 1, el.clientHeight || 1)
+    composer.addPass(new RenderPass(scene, camera))
+    bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(el.clientWidth || 1, el.clientHeight || 1),
+      0.2, // strength: a sheen on the brightest things, not a glow over everything
+      0.6, // radius
+      0.92, // threshold: only sunlit white and the floodlights clear this
+    )
+    composer.addPass(bloomPass)
+    // Tone mapping and the sRGB conversion both live here once a composer is in play, and
+    // the grade goes AFTER them, not before. Everything upstream of OutputPass is scene
+    // referred and linear, where a contrast pivot at 0.5 is meaningless: a night frame sits
+    // around 0.002-0.02, so (c - 0.5) * k + 0.5 drove every pixel of it negative and the
+    // clamp turned the whole thing black. Measured, not guessed — mean frame luminance fell
+    // from 23.6 to 1.5 with the pass in the wrong place.
+    composer.addPass(new OutputPass())
+    gradePass = new ShaderPass(GRADE_SHADER)
+    composer.addPass(gradePass)
+  }
+  function disposeComposer() {
+    composer?.dispose()
+    bloomPass?.dispose()
+    composer = null
+    bloomPass = null
+    gradePass = null
+  }
+  if (budget.post) buildComposer()
+
+  // --- grass tufts: one InstancedMesh, added after the bake so it is never merged ---
+  // Static geometry, but it animates (wind), so it cannot join the static world. One draw
+  // call regardless of count.
+  let tufts: THREE.InstancedMesh | null = null
+  let tuftGeo: THREE.BufferGeometry | null = null
+  let tuftTex: THREE.CanvasTexture | null = null
+  const windUniform = { value: 0 }
+  // An InstancedMesh's instance count is fixed at construction, so allocate for the
+  // hungriest tier and draw a prefix of it — `tufts.count` is what actually gets rendered.
+  const MAX_TUFTS = Math.max(...Object.values(TIER_BUDGET).map((b) => b.tufts))
+  function addTufts(count: number) {
+    if (tufts || !count) return
+    tuftGeo = tuftGeometry()
+    tuftTex = tuftTexture(256)
+    const m = new THREE.MeshStandardMaterial({
+      map: tuftTex,
+      alphaTest: 0.45,
+      side: THREE.DoubleSide,
+      roughness: 1,
+      metalness: 0,
+    })
+    // Wind, injected rather than written as a custom shader: this keeps three's own
+    // lighting, fog and shadow chunks, which a from-scratch ShaderMaterial would have to
+    // reimplement. Sway scales with uv.y so the roots stay planted and only the tips move.
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.uWind = windUniform
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uWind;')
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+           #ifdef USE_INSTANCING
+             vec3 iPos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+           #else
+             vec3 iPos = vec3(0.0);
+           #endif
+           float gust = sin(uWind * 1.7 + iPos.x * 0.35 + iPos.z * 0.29)
+                      + 0.4 * sin(uWind * 3.1 + iPos.z * 0.7);
+           transformed.x += gust * 0.09 * uv.y;
+           transformed.z += gust * 0.05 * uv.y;`,
+        )
+    }
+    tufts = new THREE.InstancedMesh(tuftGeo, m, count)
+    tufts.castShadow = false // a blade's own shadow is not worth a depth pass
+    tufts.receiveShadow = true
+    const mtx = new THREE.Matrix4()
+    const q = new THREE.Quaternion()
+    const scl = new THREE.Vector3()
+    const pos = new THREE.Vector3()
+    grassTufts(count).forEach((t, i) => {
+      const at = trackPoint(t.s, t.o)
+      pos.set(at.x, 0, at.z)
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.seed * Math.PI * 2)
+      scl.setScalar(0.65 + t.scale * 0.5)
+      tufts!.setMatrixAt(i, mtx.compose(pos, q, scl))
+    })
+    tufts.instanceMatrix.needsUpdate = true
+    tufts.count = TIER_BUDGET[tier].tufts
+    scene.add(tufts)
+  }
+  if (budget.tufts) addTufts(MAX_TUFTS)
+
   // --- pacers (live, never baked) ---
   // scene.add here runs AFTER the bake block above, so these are never swept into
   // staticRoots — pacers move every frame and must not be merged into the static world.
-  const { body: pacerBodyGeo, arm: pacerArmGeo, leg: pacerLegGeo } = runnerParts()
+  const {
+    body: pacerBodyGeo,
+    head: pacerHeadGeo,
+    arm: pacerArmGeo,
+    leg: pacerLegGeo,
+  } = runnerParts()
+  // One shared skin material across every rig: a head is not part of anyone's kit, and
+  // sharing it keeps the head meshes from adding a material per pacer.
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xc98d63, roughness: 0.75 })
   // The real maximum across every tier, not just 'high' — the per-frame loop below iterates
   // pacerRigs.length, so any future tier with a higher pacer count would silently never
   // render its extras if this only tracked one tier.
@@ -939,6 +1325,9 @@ onMounted(() => {
       return m
     }
     mk(pacerBodyGeo, 0, 0)
+    const head = new THREE.Mesh(pacerHeadGeo, skinMat)
+    head.castShadow = true
+    group.add(head)
     const armL = mk(pacerArmGeo, -0.22, 1.42)
     const armR = mk(pacerArmGeo, 0.22, 1.42)
     const legL = mk(pacerLegGeo, -0.09, 0.86)
@@ -970,6 +1359,9 @@ onMounted(() => {
     return m
   }
   mkRabbitLimb(pacerBodyGeo, 0, 0)
+  // The rabbit's head stays in kit colour, not skin: it is a pace instrument that has to
+  // read as one solid emissive shape after dark, not a person.
+  mkRabbitLimb(pacerHeadGeo, 0, 0)
   const rabbitArmL = mkRabbitLimb(pacerArmGeo, -0.22, 1.42)
   const rabbitArmR = mkRabbitLimb(pacerArmGeo, 0.22, 1.42)
   const rabbitLegL = mkRabbitLimb(pacerLegGeo, -0.09, 0.86)
@@ -1014,6 +1406,13 @@ onMounted(() => {
   )
   labelSprite.scale.set(2.2, 0.55, 1)
   labelSprite.visible = false
+  // Range over which the nearest-pacer label fades out rather than being clipped off.
+  const LABEL_FADE_M = 14
+  const LABEL_MAX_M = 24
+  const smoothstep = (a: number, b: number, x: number) => {
+    const t = Math.max(0, Math.min(1, (x - a) / (b - a)))
+    return t * t * (3 - 2 * t)
+  }
   scene.add(labelSprite)
   let lastLabel = ''
   function drawLabel(text: string) {
@@ -1036,7 +1435,6 @@ onMounted(() => {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   let display = props.distance // smoothed distance the camera actually sits at
   let sessionSeconds = 0
-  let lastDomeKey = -1 // repaint the ~350 dome vertex colors only when the sky changed (#62)
   function update(d: number) {
     // Measured, not modelled: state.steps is the belt's own pedometer, so the arms swing
     // at your real cadence rather than an assumed one — and the camera bobs at it too.
@@ -1088,18 +1486,45 @@ onMounted(() => {
     )
     const sky = skyAt(phase, weather)
     scene.fog!.color.setHex(sky.fog)
-    const domeKey = sky.sky * 0x1000000 + sky.fog
-    if (domeKey !== lastDomeKey) {
-      lastDomeKey = domeKey
-      paintDome(sky.sky, sky.fog)
-    }
+    domeUniforms.uSky.value.setHex(sky.sky)
+    domeUniforms.uFog.value.setHex(sky.fog)
+    domeUniforms.uSunColor.value.setHex(sky.sunColor)
+    domeUniforms.uSunDir.value.set(
+      Math.cos(bodies.sun.azimuth) * Math.cos(bodies.sun.elevation),
+      Math.sin(bodies.sun.elevation),
+      Math.sin(bodies.sun.azimuth) * Math.cos(bodies.sun.elevation),
+    )
+    // Fades over the last few degrees rather than switching off, or the halo pops out at
+    // the exact frame the sun crosses the horizon.
+    domeUniforms.uSunUp.value = Math.max(0, Math.min(1, bodies.sun.elevation / 0.12))
     dome.position.set(camera.position.x, 0, camera.position.z)
-    skylineMesh.position.set(camera.position.x, 18, camera.position.z)
+    skylineMesh.position.set(camera.position.x, 30, camera.position.z)
     // pull it toward the horizon colour so it recedes in fog and darkens at night
     skylineMat.color.setHex(sky.fog)
+    skylineMat.opacity = 0.35 + 0.65 * clarity
+    treeLineMesh.position.set(
+      camera.position.x,
+      TREELINE_H * (TREELINE_GROUND_V - 0.5),
+      camera.position.z,
+    )
+    // Less haze than the skyline gets — it is nearer, so it keeps more of its own colour —
+    // but the same darkness handling, since neither backdrop is lit by the scene.
+    treeLineMat.color.setHex(backdropTint(sky, phase, 0.35 + 0.5 * (1 - clarity)))
+    // 0.3 floor rather than 0: some saturation still helps a night frame, it is the
+    // contrast and the vignette that cannot be afforded there.
+    if (gradePass) gradePass.uniforms.uGrade!.value = 0.3 + 0.7 * daylight(phase)
+    windUniform.value = sessionSeconds
+    const level = paintLevel(phase)
+    for (const [m, base] of painted) m.color.setHex(base).multiplyScalar(level)
     sun.intensity = sky.sunIntensity
     sun.color.setHex(sky.sunColor)
     hemi.intensity = sky.ambient
+    // Ambient comes FROM the sky, so it carries the sky's colour: warm at dawn and sunset,
+    // blue at midday. Pinned to white it lit a dawn track with noon-coloured fill, which is
+    // what left the ground looking grey under a pink sky. Only PART of the way, though —
+    // taking the fog colour outright multiplies the fill by a colour that has almost no
+    // luminance at night, and the whole ground went black.
+    hemi.color.setHex(0xffffff).lerp(cAmbient.setHex(sky.fog), 0.55)
     place(sunSprite, bodies.sun)
     place(moonSprite, bodies.moon)
     sunSprite.visible = bodies.sun.visible
@@ -1110,9 +1535,10 @@ onMounted(() => {
     if (clouds) {
       clouds.position.set(camera.position.x, 0, camera.position.z)
       clouds.rotation.y = d * 0.0004 // drift with walked distance, like everything else
-      // Tint from the sky, or a white shell doubles the night sky's luminance — the same
-      // "weather brightens the night" mistake, arriving by a different route.
-      ;(clouds.material as THREE.MeshBasicMaterial).color.setHex(sky.sky)
+      // Lit by the same sun the ground is (cloudColor), so the shell reads as cloud by day
+      // and sinks back into the sky after dark — a white shell would double the night sky's
+      // luminance, the "weather brightens the night" mistake by a different route.
+      ;(clouds.material as THREE.MeshBasicMaterial).color.setHex(cloudColor(sky, phase))
     }
     // Pacers: analytic positions, so no accumulated state to drift. Anything beyond the
     // current weather's fog distance is hidden rather than drawn — with eight on a 400 m
@@ -1204,14 +1630,19 @@ onMounted(() => {
       drawLabel(`${p.kind} · ${p.speed.toFixed(1)} km/h`)
       labelSprite.position.set(rig.group.position.x, 2.1, rig.group.position.z)
       // A Sprite shrinks with distance, so a fixed world size is unreadable at 30 m and
-      // overwhelming at 2 m. Grow it with range, clamped at both ends.
-      const s = Math.min(2.5, Math.max(0.6, nearestDist / 8))
+      // overwhelming at 2 m. Grow it with range, clamped at both ends. The upper clamp is
+      // deliberately modest: a label sized to stay crisp at 30 m projects onto the horizon
+      // line, where it reads as a billboard hanging in the sky rather than a name over
+      // someone's head. Past LABEL_FADE_M it fades out instead of growing further.
+      const s = Math.min(1.5, Math.max(0.6, nearestDist / 12))
       labelSprite.scale.set(2.2 * s, 0.55 * s, 1)
-      labelSprite.visible = true
+      labelSprite.material.opacity = 1 - smoothstep(LABEL_FADE_M, LABEL_MAX_M, nearestDist)
+      labelSprite.visible = labelSprite.material.opacity > 0.02
     } else {
       labelSprite.visible = false
     }
-    renderer!.render(scene, camera)
+    if (composer) composer.render()
+    else renderer!.render(scene, camera)
   }
 
   function applyTier(next: Tier) {
@@ -1220,11 +1651,11 @@ onMounted(() => {
     // regenerate at the new resolution and swap the maps in place — the materials and
     // meshes stay, only the texture objects change, so the baked geometry is untouched
     const old = tex
-    tex = makeTextures(budget.textureSize)
+    tex = makeTextures(budget.textureSize, budget.normalMaps)
     const remap: [THREE.Material, THREE.Texture][] = [
       [mat.trunk, tex.bark],
-      [mat.crown1, tex.foliage],
-      [mat.crown2, tex.foliage],
+      [mat.crown1, tex.canopy1],
+      [mat.crown2, tex.canopy2],
       [mat.pine, tex.foliage],
       [mat.kerb, tex.concrete],
       [mat.grass, tex.grass],
@@ -1243,25 +1674,53 @@ onMounted(() => {
       mm.map = t
       mm.needsUpdate = true
     }
+    // Normal maps follow their colour map through the tier change, and must be cleared when
+    // the new tier has none — left pointing at the disposed set, the surface renders with a
+    // dead texture; left pointing at the OLD tier's set, a downgrade keeps paying for it.
+    const normalRemap: [THREE.Material, THREE.Texture | null][] = [
+      [mat.track, tex.normals?.tartan ?? null],
+      [mat.infield, tex.normals?.infield ?? null],
+      [mat.grass, tex.normals?.grass ?? null],
+      [mat.kerb, tex.normals?.concrete ?? null],
+      [mat.seating, tex.normals?.seating ?? null],
+      [mat.sand, tex.normals?.sand ?? null],
+    ]
+    for (const [m, n] of normalRemap) {
+      const mm = m as THREE.MeshStandardMaterial
+      mm.normalMap = n
+      mm.needsUpdate = true
+    }
     // pitchLines is excluded here too — old.pitchLines and tex.pitchLines are the SAME
     // memoized object (see makeTextures), so disposing it would kill the texture
     // mat.pitch is still using.
     Object.entries(old).forEach(([k, t]) => {
-      if (k !== 'pitchLines') t.dispose()
+      if (k === 'pitchLines' || t === null) return
+      if (k === 'normals')
+        Object.values(t as Record<string, THREE.Texture>).forEach((n) => n.dispose())
+      else (t as THREE.Texture).dispose()
     })
-    if (budget.shadowMap && !renderer!.shadowMap.enabled) enableShadows()
-    else if (!budget.shadowMap && renderer!.shadowMap.enabled) {
+    if (budget.shadowMapSize) enableShadows(budget.shadowMapSize, budget.shadowBoxM)
+    else if (renderer!.shadowMap.enabled) {
       // downgrade: stop paying for the depth pre-pass, and bring the blobs back
       renderer!.shadowMap.enabled = false
       sun.castShadow = false
     }
-    if (blobMesh) blobMesh.visible = !budget.shadowMap
+    if (blobMesh) blobMesh.visible = !budget.shadowMapSize
     // addClouds() is idempotent, so this pair is safe on repeated toggles either way —
     // without the visible=false half, a Quality->Performance downgrade left the drifting
     // cloud shell on forever, contradicting "on Performance there are none" (same shape
     // as the shadow-disable bug fixed previously: a tier path written one-way).
     if (budget.clouds) addClouds()
     if (clouds) clouds.visible = budget.clouds
+    // Built once at the largest count any tier asks for; a tier change only changes how
+    // many of them draw, because an InstancedMesh cannot grow after construction.
+    if (budget.post) buildComposer()
+    else disposeComposer()
+    if (budget.tufts) addTufts(MAX_TUFTS)
+    if (tufts) {
+      tufts.visible = budget.tufts > 0
+      tufts.count = budget.tufts
+    }
     starGeo.setAttribute(
       'position',
       new THREE.BufferAttribute(starPositions(budget.stars, SKY_R), 3),
@@ -1387,6 +1846,9 @@ onMounted(() => {
       starMat.size = 1.6 * dpr
     }
     renderer.setSize(w, h)
+    composer?.setPixelRatio(renderer.getPixelRatio())
+    composer?.setSize(w, h)
+    bloomPass?.setSize(w, h)
     camera.aspect = w / h
     camera.updateProjectionMatrix()
     update(display)
@@ -1416,6 +1878,7 @@ onMounted(() => {
       m.map?.dispose()
       m.dispose()
     })
+    disposeComposer()
     domeGeo.dispose()
     dome.material.dispose()
     glowTex.dispose()
@@ -1429,10 +1892,18 @@ onMounted(() => {
     blobGeo.dispose()
     blobMat.dispose()
     skylineMat.dispose()
+    treeLineTex.dispose()
+    treeLineMat.dispose()
     Object.values(geo).forEach((g) => g.dispose())
     Object.values(mat).forEach((m) => m.dispose())
-    Object.values(tex).forEach((t) => t.dispose())
+    Object.values(tex).forEach((t) => {
+      if (!t) return
+      if (t instanceof THREE.Texture) t.dispose()
+      else Object.values(t).forEach((n) => n.dispose())
+    })
     pacerBodyGeo.dispose()
+    pacerHeadGeo.dispose()
+    skinMat.dispose()
     pacerArmGeo.dispose()
     pacerLegGeo.dispose()
     pacerRigs.forEach((r) => r.kit.dispose())

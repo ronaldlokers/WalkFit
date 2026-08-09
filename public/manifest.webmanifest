@@ -7,6 +7,22 @@
   "orientation": "any",
   "background_color": "#dff2fe",
   "theme_color": "#aee3ff",
+  "shortcuts": [
+    {
+      "name": "Start free walk",
+      "short_name": "Free walk",
+      "description": "Open WalkFit ready for a free walk",
+      "url": "./?action=free",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Repeat last workout",
+      "short_name": "Repeat workout",
+      "description": "Open the most recently completed workout",
+      "url": "./?action=repeat",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
   "icons": [
     { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" },
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },

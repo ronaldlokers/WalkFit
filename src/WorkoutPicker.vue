@@ -22,6 +22,7 @@ const props = withDefaults(
     startTab?: 'plans' | 'hr' // 'plans' (weight loss) | 'hr' (heart rate)
     closable?: boolean
     lastWorkout?: Workout | null // most recently completed plan, for "Repeat" (#142)
+    initialPreview?: Workout | null // PWA shortcut can open directly on the repeat preview
   }>(),
   {
     connected: false,
@@ -31,6 +32,7 @@ const props = withDefaults(
     closable: true,
     customWorkouts: () => [],
     lastWorkout: null,
+    initialPreview: null,
   },
 )
 const emit = defineEmits<{
@@ -43,7 +45,7 @@ const emit = defineEmits<{
 }>()
 
 const tab = ref<'plans' | 'hr'>(props.startTab)
-const preview = ref<Workout | null>(null) // weight-loss workout shown in the detail view
+const preview = ref<Workout | null>(props.initialPreview) // weight-loss workout shown in detail
 
 // --- custom workout builder (#68) ---
 const building = ref(false)

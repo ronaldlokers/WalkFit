@@ -1,4 +1,16 @@
 {
   "version": 1,
-  "assets": []
+  "assets": [
+    {
+      "id": "kenney-tree-detailed",
+      "kind": "environment",
+      "path": "scenic/tree-detailed.glb",
+      "bytes": 30536,
+      "triangles": 402,
+      "tier": "all",
+      "license": "CC0-1.0",
+      "source": "https://kenney.nl/assets/nature-kit",
+      "attribution": "Kenney, Nature Kit 2.1 (CC0 1.0)"
+    }
+  ]
 }

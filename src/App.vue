@@ -2268,6 +2268,13 @@ code {
   color: #edf5ff;
   backdrop-filter: blur(8px);
   pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+.app.layout-immersive.hud-hidden .route-hud {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 .route-hud-copy {
   display: flex;

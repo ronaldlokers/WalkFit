@@ -251,6 +251,11 @@ test.describe('settings', () => {
         page.evaluate(() => JSON.parse(localStorage.getItem('walkfit.goals') || '{}').kcal),
       )
       .toBe(600)
+    await page.getByRole('button', { name: 'Display' }).click()
+    await page.locator('.set-row', { hasText: '3D camera' }).locator('select').selectOption('third')
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem('walkfit.scenic.camera')))
+      .toBe('third')
   })
 })
 

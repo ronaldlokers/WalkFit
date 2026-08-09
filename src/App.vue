@@ -37,6 +37,7 @@ import StatisticsSheet from './StatisticsSheet.vue'
 import SettingsSheet from './SettingsSheet.vue'
 import type { TimeOfDay } from './scenicSky'
 import type { QualitySetting } from './scenicQuality'
+import type { CameraView } from './scenicLife'
 
 const {
   state,
@@ -501,6 +502,10 @@ watch(scenicQuality, (v) => localStorage.setItem('walkfit.scenic.quality', v))
 // takes a boolean, which is why this needs no `as never` cast on the way through.
 const scenicMotion = ref(localStorage.getItem('walkfit.scenic.motion') !== 'off')
 watch(scenicMotion, (v) => localStorage.setItem('walkfit.scenic.motion', v ? 'on' : 'off'))
+const scenicCamera = ref<CameraView>(
+  localStorage.getItem('walkfit.scenic.camera') === 'third' ? 'third' : 'first',
+)
+watch(scenicCamera, (v) => localStorage.setItem('walkfit.scenic.camera', v))
 
 // --- live calorie counter ---
 // Integrated per-tick from actual speed (via metForSpeed), not a single average-speed
@@ -1471,6 +1476,7 @@ const pace = computed(() => {
           :steps="state.steps"
           :rabbit-distance="rabbitDistance"
           :motion="scenicMotion"
+          :camera-view="scenicCamera"
           @unsupported="scenicUnsupported"
         />
       </div>
@@ -1904,6 +1910,7 @@ const pace = computed(() => {
         v-model:scenic-time="scenicTime"
         v-model:scenic-quality="scenicQuality"
         v-model:scenic-motion="scenicMotion"
+        v-model:scenic-camera="scenicCamera"
         v-model:goal-weight="goalWeight"
         v-model:strava-auto-upload="stravaAutoUpload"
         :tm="{ state, connect, disconnect, forget: forgetTreadmill }"

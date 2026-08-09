@@ -124,7 +124,7 @@ Keep pinned Playwright version and image tag in sync.
 - `src/scenic.ts` — **pure, framework-free** world model for the 3D scenic walk (the
   400 m stadium-loop geometry, surroundings, day/night). Unit-tested in
   `src/scenic.test.ts`. See the scenic paragraph below.
-- `src/Scenic3D.vue` — the three.js first-person scenic renderer; async component, so
+- `src/Scenic3D.vue` — the three.js first/third-person scenic renderer; async component, so
   three.js lives in a lazy chunk (see below).
 - `src/scenicSky.ts` — day/night cycle, weather, palette, and `skyBodies()` (sun/moon
   azimuth+elevation, star opacity), split out of `scenic.ts`. The sun's elevation curve is
@@ -237,7 +237,8 @@ layout since #103: fullscreen visual, fading HUD pills, workout state in the
 `.imm-workout` ribbon; the big-numbers/kiosk option was removed), `walkfit.scenic.time`
 (3D time-of-day override), `walkfit.scenic.quality` (`auto` | `low` | `high`, 3D quality
 override), `walkfit.scenic.motion` (`on` | `off`, 3D head bob/sway/lean — on by default, and
-`prefers-reduced-motion` overrides it),
+`prefers-reduced-motion` overrides it), `walkfit.scenic.camera` (`first` | `third`, Scenic v3
+player camera — first person remains the default),
 `walkfit.capture` (raw BLE frame
 debug logging, off unless `'1'`), `walkfit.demo` (demo mode — src/demo.ts simulates the
 treadmill + HR strap behind the composable interfaces and seeds a fixture dataset;

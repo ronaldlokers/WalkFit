@@ -6,6 +6,7 @@ import type { StravaState } from './strava'
 import type { HealthProvider } from './health'
 import type { TimeOfDay } from './scenicSky'
 import type { QualitySetting } from './scenicQuality'
+import type { CameraView } from './scenicLife'
 
 // The composable objects are passed through whole (their `state` is reactive); methods
 // are called directly on them — only actions that mutate App-owned state (the weight
@@ -91,6 +92,7 @@ const goalWeight = defineModel<number>('goalWeight', { required: true })
 const scenicTime = defineModel<TimeOfDay>('scenicTime', { required: true })
 const scenicQuality = defineModel<QualitySetting>('scenicQuality', { required: true })
 const scenicMotion = defineModel<boolean>('scenicMotion', { required: true })
+const scenicCamera = defineModel<CameraView>('scenicCamera', { required: true })
 const viewMode = defineModel<'track' | 'scenic'>('viewMode', { required: true })
 const goalKcal = defineModel<number>('goalKcal', { required: true })
 const goalSteps = defineModel<number>('goalSteps', { required: true })
@@ -346,6 +348,13 @@ function confirmForgetNow() {
             <option value="low">{{ t('settings.qualityLow') }}</option>
             <option value="high">{{ t('settings.qualityHigh') }}</option>
             <option value="ultra">{{ t('settings.qualityUltra') }}</option>
+          </select>
+        </div>
+        <div class="set-row">
+          <span>{{ t('settings.camera') }}</span>
+          <select v-model="scenicCamera" class="set-select">
+            <option value="first">{{ t('settings.cameraFirst') }}</option>
+            <option value="third">{{ t('settings.cameraThird') }}</option>
           </select>
         </div>
         <div class="set-row">

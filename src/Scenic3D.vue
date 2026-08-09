@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// First-person 3D walk around the 400 m athletics track (#51). Lazy-loaded (this file
+// First/third-person 3D walk around the 400 m athletics track (#51, #220). Lazy-loaded (this file
 // pulls in three.js, so App.vue imports it with defineAsyncComponent — the chunk only
 // downloads when scenic is opened). All world *decisions* (track geometry, scenery
 // placement, sky cycle) live in scenic.ts; this component only turns them into meshes.
@@ -41,10 +41,11 @@ import {
   strideLength,
   limbSwing,
   cameraMotion,
+  cameraViewConfig,
   FOV_BASE_DEG,
   FOV_EPSILON_DEG,
 } from './scenicLife'
-import type { Pacer } from './scenicLife'
+import type { Pacer, CameraView } from './scenicLife'
 import {
   stadium,
   PART_SIZES,
@@ -117,6 +118,7 @@ const props = defineProps<{
   steps?: number
   rabbitDistance?: number | null // target-pace rabbit (#realism slice 3); null/omitted = none
   motion?: boolean // head bob / sway / bend lean (#realism slice 4); omitted = on
+  cameraView?: CameraView // Scenic v3 player camera; omitted preserves first person
 }>()
 const emit = defineEmits<{ unsupported: [] }>()
 
@@ -167,7 +169,6 @@ const GRADE_SHADER = {
   `,
 }
 
-const EYE_HEIGHT = 1.6
 // The perimeter fence's height. Used in three places (ribbon vertex, chain-link texture
 // v-repeat, post length) — a single source so changing it can't silently smear the uv.
 const FENCE_H = 2
@@ -1362,13 +1363,30 @@ onMounted(() => {
   rabbitGroup.visible = false
   scene.add(rabbitGroup)
 
-  // --- your own body (live, never baked) ---
-  // The body exists only to cast your shadow — its geometry sits inside the camera's
-  // 0.3 m near plane, so it is clipped away and never itself visible.
+  // --- your player rig (live, never baked) ---
+  // First person keeps only the torso for its cast shadow; third person reveals the full
+  // split-limb rig. It deliberately shares the NPC geometry and cadence model so the two
+  // populations cannot drift into different proportions or animation timing.
   const avatarKit = new THREE.MeshStandardMaterial({ color: 0x9fb4d0, roughness: 0.8 })
+  const avatarGroup = new THREE.Group()
   const avatarBody = new THREE.Mesh(pacerBodyGeo, avatarKit)
   avatarBody.castShadow = true
-  scene.add(avatarBody)
+  avatarGroup.add(avatarBody)
+  const avatarHead = new THREE.Mesh(pacerHeadGeo, skinMat)
+  avatarHead.castShadow = true
+  avatarGroup.add(avatarHead)
+  const mkAvatarLimb = (g: THREE.BufferGeometry, x: number, y: number) => {
+    const m = new THREE.Mesh(g, avatarKit)
+    m.position.set(x, y, 0)
+    m.castShadow = true
+    avatarGroup.add(m)
+    return m
+  }
+  const avatarArmL = mkAvatarLimb(pacerArmGeo, -0.22, 1.42)
+  const avatarArmR = mkAvatarLimb(pacerArmGeo, 0.22, 1.42)
+  const avatarLegL = mkAvatarLimb(pacerLegGeo, -0.09, 0.86)
+  const avatarLegR = mkAvatarLimb(pacerLegGeo, 0.09, 0.86)
+  scene.add(avatarGroup)
 
   // Forearms, parented to the camera at the bottom corners of the frustum — the standard
   // first-person viewmodel. Same stepPhase as the shadow, so they cannot drift apart.
@@ -1441,28 +1459,39 @@ onMounted(() => {
       curvatureEased(d),
       (props.motion ?? true) && !reducedMotion,
     )
+    const view = cameraViewConfig(props.cameraView ?? 'first')
     // Sway is a lateral offset in the world model's own terms, so it goes straight through
-    // trackPoint — and through the look-at point too, or swaying would yaw the view.
-    const p = trackPoint(d, motion.dx)
-    camera.position.set(p.x, EYE_HEIGHT + motion.dy, p.z)
-    const ahead = trackPoint(d + 10, motion.dx)
-    // The bob shifts the look-at target by the same dy: a pure vertical translation, which
-    // keeps the horizon where it is instead of pitching the camera at it.
-    camera.lookAt(ahead.x, EYE_HEIGHT + motion.dy - 0.2, ahead.z)
+    // every trackPoint. Third person follows from behind on the same surveyed path; this
+    // gives collision-safe framing on the open lane without a renderer-side physics system.
+    const avatarAt = trackPoint(d, motion.dx)
+    const cameraAt = trackPoint(d - view.followM, motion.dx)
+    const cameraBob = motion.dy * view.motionScale
+    camera.position.set(cameraAt.x, view.heightM + cameraBob, cameraAt.z)
+    const ahead = trackPoint(d + view.lookAheadM, motion.dx)
+    camera.lookAt(ahead.x, view.targetHeightM + cameraBob, ahead.z)
     const bodySwing = limbSwing(d, stride) * 0.55
-    avatarBody.position.set(camera.position.x, 0, camera.position.z)
-    // Read the yaw BEFORE the roll below: rotateZ mixes into the XYZ euler decomposition,
-    // so camera.rotation.y stops being the heading the moment the camera is rolled.
-    avatarBody.rotation.y = camera.rotation.y
+    avatarGroup.position.set(avatarAt.x, 0, avatarAt.z)
+    avatarGroup.rotation.y = Math.atan2(-avatarAt.tx, -avatarAt.tz)
+    avatarHead.visible = view.showAvatar
+    avatarArmL.visible = view.showAvatar
+    avatarArmR.visible = view.showAvatar
+    avatarLegL.visible = view.showAvatar
+    avatarLegR.visible = view.showAvatar
+    armL.visible = view.showViewmodelArms
+    armR.visible = view.showViewmodelArms
     // rotateZ is applied AFTER lookAt every frame, and lookAt rebuilds the quaternion from
     // scratch, so the roll replaces itself each frame rather than accumulating.
-    if (motion.roll !== 0) camera.rotateZ(motion.roll)
+    if (motion.roll !== 0) camera.rotateZ(motion.roll * view.motionScale)
     if (Math.abs(camera.fov - motion.fov) > FOV_EPSILON_DEG) {
       camera.fov = motion.fov
       camera.updateProjectionMatrix()
     }
     armL.rotation.x = bodySwing
     armR.rotation.x = -bodySwing
+    avatarArmL.rotation.x = -bodySwing * 0.75
+    avatarArmR.rotation.x = bodySwing * 0.75
+    avatarLegL.rotation.x = bodySwing
+    avatarLegR.rotation.x = -bodySwing
     // Settings can pin the time of day; 'auto' follows walked distance (#72)
     const tod = props.timeOfDay ?? 'auto'
     const phase = tod === 'auto' ? dayPhase(d) : TIME_PHASES[tod]
@@ -1822,6 +1851,10 @@ onMounted(() => {
     () => props.timeOfDay,
     () => update(display),
   )
+  const stopCameraWatch = watch(
+    () => props.cameraView,
+    () => update(display),
+  )
 
   const ro = new ResizeObserver(() => {
     const w = el.clientWidth
@@ -1852,6 +1885,7 @@ onMounted(() => {
     stopDistanceWatch?.()
     stopQualityWatch()
     stopTimeWatch()
+    stopCameraWatch()
     document.removeEventListener('visibilitychange', onVisibility)
     renderer?.domElement.removeEventListener('webglcontextlost', onContextLost)
     renderer?.domElement.removeEventListener('webglcontextrestored', onContextRestored)

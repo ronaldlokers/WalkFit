@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   assetsForTier,
+  loadScenicManifest,
   SCENIC_ASSET_BUDGET,
   validateScenicManifest,
   type ScenicAsset,
@@ -65,5 +66,39 @@ describe('assetsForTier', () => {
   it('adds rather than replaces higher-tier assets', () => {
     expect(assetsForTier(manifest, 'high')).toHaveLength(2)
     expect(assetsForTier(manifest, 'ultra')).toHaveLength(3)
+  })
+})
+
+describe('loadScenicManifest', () => {
+  const manifest: ScenicAssetManifest = { version: 1, assets: [] }
+
+  it('resolves below the application base path used by GitHub Pages', async () => {
+    const fetcher = vi.fn(async (input: string | URL) => {
+      void input
+      return { ok: true, status: 200, json: async () => manifest }
+    })
+    await expect(loadScenicManifest('https://example.com/WalkFit/', fetcher)).resolves.toEqual(
+      manifest,
+    )
+    expect(String(fetcher.mock.calls[0]![0])).toBe(
+      'https://example.com/WalkFit/scenic/manifest.json',
+    )
+  })
+
+  it('rejects HTTP and manifest failures with useful errors', async () => {
+    await expect(
+      loadScenicManifest('https://example.com/WalkFit/', async () => ({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      })),
+    ).rejects.toThrow('scenic manifest request failed (404)')
+    await expect(
+      loadScenicManifest('https://example.com/WalkFit/', async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ version: 2, assets: [] }),
+      })),
+    ).rejects.toThrow('manifest.version must be 1')
   })
 })

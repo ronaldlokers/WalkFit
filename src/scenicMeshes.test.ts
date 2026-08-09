@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { ribbonArrays, stripArrays, REPEAT, runnerParts } from './scenicMeshes'
+import * as THREE from 'three'
+import { ribbonArrays, stripArrays, REPEAT, runnerParts, tileUv } from './scenicMeshes'
 import { trackPoint, LAP_M, TRACK_IN, TRACK_OUT } from './scenic'
 
 const BREAK_S = 120 // an arbitrary arc position on the first bend, for the strip cases
@@ -65,6 +66,20 @@ describe('stripArrays', () => {
   it('carries a full 0..1 uv quad', () => {
     const r = stripArrays(0, 0.5, 0.07, TRACK_IN, TRACK_OUT)
     expect([...r.uv]).toEqual([0, 0, 0, 1, 1, 0, 1, 1])
+  })
+})
+
+describe('tileUv', () => {
+  it('scales primitive UVs to the requested physical tile size', () => {
+    const geometry = new THREE.PlaneGeometry(20, 10)
+    const initialVersion = (geometry.getAttribute('uv') as THREE.BufferAttribute).version
+    tileUv(geometry, 20, 10, 5)
+    const uv = geometry.getAttribute('uv') as THREE.BufferAttribute
+    expect(uv.getX(1) - uv.getX(0)).toBeCloseTo(4)
+    // PlaneGeometry's v axis happens to run top-to-bottom; tiling magnitude is what matters.
+    expect(Math.abs(uv.getY(2) - uv.getY(0))).toBeCloseTo(2)
+    expect(uv.version).toBe(initialVersion + 1)
+    geometry.dispose()
   })
 })
 

@@ -38,9 +38,8 @@ import {
 import type { Prop } from './scenic'
 import {
   pacers,
-  stepPhase,
   strideLength,
-  gaitCycleM,
+  limbSwing,
   cameraMotion,
   FOV_BASE_DEG,
   FOV_EPSILON_DEG,
@@ -90,6 +89,7 @@ import {
   treeLineTexture,
   TREELINE_GROUND_V,
   sandTexture,
+  tileUv,
 } from './scenicMeshes'
 import {
   dayPhase,
@@ -350,10 +350,9 @@ onMounted(() => {
   scene.add(sunSprite, moonSprite)
 
   const starGeo = new THREE.BufferGeometry()
-  starGeo.setAttribute(
-    'position',
-    new THREE.BufferAttribute(starPositions(TIER_BUDGET[tier].stars, SKY_R), 3),
-  )
+  const maxStars = Math.max(...Object.values(TIER_BUDGET).map((candidate) => candidate.stars))
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions(maxStars, SKY_R), 3))
+  starGeo.setDrawRange(0, TIER_BUDGET[tier].stars)
   const starMat = new THREE.PointsMaterial({
     color: 0xdfe6ff,
     // raw framebuffer pixels: sizeAttenuation:false means three does NOT apply the
@@ -777,14 +776,6 @@ onMounted(() => {
     // UVs. A PlaneGeometry (or CircleGeometry) spans 0..1, so without this the tile is
     // stretched tens of metres. Scaling the geometry's own uv attribute keeps the material
     // shared — a material per part would multiply the bake's draw calls.
-    const tileUv = (g2: THREE.BufferGeometry, w: number, l: number, metresPerTile: number) => {
-      const uv = g2.getAttribute('uv')
-      for (let i = 0; i < uv.count; i++) {
-        uv.setXY(i, uv.getX(i) * (w / metresPerTile), uv.getY(i) * (l / metresPerTile))
-      }
-      uv.needsUpdate = true
-    }
-
     if (p.type === 'stand') {
       // Eight stepped rows swept along the home straight. Built as a box per row rather
       // than an extruded profile: the straight is straight, so boxes are exact here and
@@ -1456,8 +1447,7 @@ onMounted(() => {
     // The bob shifts the look-at target by the same dy: a pure vertical translation, which
     // keeps the horizon where it is instead of pitching the camera at it.
     camera.lookAt(ahead.x, EYE_HEIGHT + motion.dy - 0.2, ahead.z)
-    const bodyPhase = stepPhase(d, gaitCycleM(stride)) * Math.PI * 2
-    const bodySwing = Math.sin(bodyPhase) * 0.55
+    const bodySwing = limbSwing(d, stride) * 0.55
     avatarBody.position.set(camera.position.x, 0, camera.position.z)
     // Read the yaw BEFORE the roll below: rotateZ mixes into the XYZ euler decomposition,
     // so camera.rotation.y stops being the heading the moment the camera is rolled.
@@ -1593,8 +1583,7 @@ onMounted(() => {
       // reading as a pump alongside the torso.
       // Faster runners take LONGER steps, not just quicker ones — a fixed step length makes
       // the quick ones look like they are sprinting on the spot.
-      const ph = stepPhase(p.d, gaitCycleM(0.6 + 0.045 * p.speed)) * Math.PI * 2
-      const swing = Math.sin(ph)
+      const swing = limbSwing(p.d, 0.6 + 0.045 * p.speed)
       rig.legL.rotation.x = swing * 0.55
       rig.legR.rotation.x = -swing * 0.55
       rig.armL.rotation.x = -swing * 0.4
@@ -1617,8 +1606,7 @@ onMounted(() => {
       rabbitGroup.rotation.y = Math.atan2(-at.tx, -at.tz)
       // No target-speed prop reaches the rabbit here (only its distance does), so it swings
       // at the default walking gait cycle rather than a speed-scaled one like the pacers.
-      const ph = stepPhase(rd, gaitCycleM(0.72)) * Math.PI * 2
-      const rabbitSwing = Math.sin(ph)
+      const rabbitSwing = limbSwing(rd, 0.72)
       rabbitLegL.rotation.x = rabbitSwing * 0.55
       rabbitLegR.rotation.x = -rabbitSwing * 0.55
       rabbitArmL.rotation.x = -rabbitSwing * 0.4
@@ -1721,10 +1709,9 @@ onMounted(() => {
       tufts.visible = budget.tufts > 0
       tufts.count = budget.tufts
     }
-    starGeo.setAttribute(
-      'position',
-      new THREE.BufferAttribute(starPositions(budget.stars, SKY_R), 3),
-    )
+    // The stable max-sized buffer avoids allocating an orphaned GPU attribute on every
+    // Settings toggle; tiers only change how many points are drawn.
+    starGeo.setDrawRange(0, budget.stars)
     // Draw the change. update() is the only path to renderer.render(), and frame() skips it
     // while the belt is stopped, so without this the Settings control does nothing at all
     // until the walker moves.

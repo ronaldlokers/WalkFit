@@ -3,6 +3,8 @@ import type { TreadmillState } from './treadmill'
 import type { HeartRateState } from './heartrate'
 import type { StravaState } from './strava'
 import type { HealthProvider } from './health'
+import type { TimeOfDay } from './scenicSky'
+import type { QualitySetting } from './scenicQuality'
 
 // The composable objects are passed through whole (their `state` is reactive); methods
 // are called directly on them — only actions that mutate App-owned state (the weight
@@ -85,8 +87,8 @@ const announceEvery = defineModel<'off' | '1km' | '2km' | '5min' | '10min'>('ann
 const debugOn = defineModel<boolean>('debugOn', { required: true })
 const stravaAutoUpload = defineModel<boolean>('stravaAutoUpload', { required: true })
 const goalWeight = defineModel<number>('goalWeight', { required: true })
-const scenicTime = defineModel<string>('scenicTime', { required: true })
-const scenicQuality = defineModel<string>('scenicQuality', { required: true })
+const scenicTime = defineModel<TimeOfDay>('scenicTime', { required: true })
+const scenicQuality = defineModel<QualitySetting>('scenicQuality', { required: true })
 const scenicMotion = defineModel<boolean>('scenicMotion', { required: true })
 const viewMode = defineModel<'track' | 'scenic'>('viewMode', { required: true })
 const goalKcal = defineModel<number>('goalKcal', { required: true })
@@ -313,7 +315,7 @@ function confirmForgetNow() {
             <option value="night">{{ t('settings.todNight') }}</option>
           </select>
         </div>
-        <div class="set-row">
+        <div v-if="scenicSupported" class="set-row">
           <span>{{ t('settings.quality') }}</span>
           <select v-model="scenicQuality" class="set-select">
             <option value="auto">{{ t('settings.qualityAuto') }}</option>

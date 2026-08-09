@@ -107,6 +107,14 @@ describe('skyBodies', () => {
     expect(late).toBeLessThan(day)
   })
 
+  it('crosses the dawn boundary continuously instead of popping above the horizon', () => {
+    const before = skyBodies(0.02 - 1e-6).sun.elevation
+    const at = skyBodies(0.02).sun.elevation
+    const after = skyBodies(0.02 + 1e-6).sun.elevation
+    expect(Math.abs(at - before)).toBeLessThan(1e-4)
+    expect(Math.abs(after - at)).toBeLessThan(1e-4)
+  })
+
   it('sun is below the horizon and hidden through the whole night band', () => {
     for (const phase of [0.87, 0.9, 0.95, 0.99, 0.0001]) {
       if (!isNight(phase)) continue

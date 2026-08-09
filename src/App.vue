@@ -33,6 +33,8 @@ import Logo from './Logo.vue'
 import WorkoutPicker from './WorkoutPicker.vue'
 import StatisticsSheet from './StatisticsSheet.vue'
 import SettingsSheet from './SettingsSheet.vue'
+import type { TimeOfDay } from './scenicSky'
+import type { QualitySetting } from './scenicQuality'
 
 const {
   state,
@@ -469,10 +471,23 @@ const bestLap = computed(() => (lapTimes.value.length ? Math.min(...lapTimes.val
 // per-walk weather seed (#72): fixed per mount, deterministic in the scene
 const weatherSeed = Date.now() % 100000
 // time-of-day override for the 3D view (Settings → Display)
-const scenicTime = ref(localStorage.getItem('walkfit.scenic.time') || 'auto')
+const storedScenicTime = localStorage.getItem('walkfit.scenic.time')
+const scenicTime = ref<TimeOfDay>(
+  storedScenicTime === 'dawn' ||
+    storedScenicTime === 'day' ||
+    storedScenicTime === 'sunset' ||
+    storedScenicTime === 'night'
+    ? storedScenicTime
+    : 'auto',
+)
 watch(scenicTime, (v) => localStorage.setItem('walkfit.scenic.time', v))
 // render-quality tier override for the 3D view (Settings → Display); 'auto' probes the device
-const scenicQuality = ref(localStorage.getItem('walkfit.scenic.quality') || 'auto')
+const storedScenicQuality = localStorage.getItem('walkfit.scenic.quality')
+const scenicQuality = ref<QualitySetting>(
+  storedScenicQuality === 'low' || storedScenicQuality === 'high' || storedScenicQuality === 'ultra'
+    ? storedScenicQuality
+    : 'auto',
+)
 watch(scenicQuality, (v) => localStorage.setItem('walkfit.scenic.quality', v))
 // Head bob/sway/lean in the 3D view (#realism slice 4). Stored as on/off rather than a
 // bare boolean so the key reads the same as every other scenic preference; the component
@@ -1415,8 +1430,8 @@ const pace = computed(() => {
           :distance="state.distance"
           :speed="state.speed"
           :weather-seed="weatherSeed"
-          :time-of-day="scenicTime as never"
-          :quality="scenicQuality as never"
+          :time-of-day="scenicTime"
+          :quality="scenicQuality"
           :steps="state.steps"
           :rabbit-distance="rabbitDistance"
           :motion="scenicMotion"

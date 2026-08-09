@@ -16,6 +16,19 @@ export interface MeshArrays {
   index: number[]
 }
 
+export function tileUv(
+  geometry: THREE.BufferGeometry,
+  widthM: number,
+  lengthM: number,
+  metresPerTile: number,
+): void {
+  const uv = geometry.getAttribute('uv')
+  for (let i = 0; i < uv.count; i++) {
+    uv.setXY(i, uv.getX(i) * (widthM / metresPerTile), uv.getY(i) * (lengthM / metresPerTile))
+  }
+  uv.needsUpdate = true
+}
+
 // Texture tiling scale per surface, in metres of arc per texture repeat.
 //
 // Every value here MUST divide LAP_M (400) exactly. `ribbonArrays` sets u = s /
